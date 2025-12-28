@@ -1,0 +1,13 @@
+[build]
+  command = "yarn build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NPM_CONFIG_REGISTRY = "https://registry.npmjs.org/"
+  YARN_ENABLE_IMMUTABLE_INSTALLS = "false"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
