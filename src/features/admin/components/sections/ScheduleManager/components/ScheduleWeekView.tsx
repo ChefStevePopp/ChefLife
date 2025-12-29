@@ -75,17 +75,38 @@ export const ScheduleWeekView: React.FC<ScheduleWeekViewProps> = ({
     }, {} as Record<string, ScheduleShift[]>);
 
     // Create array of all days - starting from MONDAY (not Sunday)
-    const start = new Date(startDate);
+    const start = new Date(startDate + 'T00:00:00'); // Force local time to avoid timezone shift
+    console.log('ScheduleWeekView startDate:', startDate, 'parsed as:', start);
+    
     const allDays = Array(7).fill(null).map((_, i) => {
       const date = new Date(start);
       date.setDate(date.getDate() + i);
-      const dateStr = date.toISOString().split("T")[0];
+      
+      // Format date in local time (not UTC)
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+      
+      // Get day name from the local date components (not the date object which might shift)
+      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const dayOfWeek = dayNames[date.getDay()];
+      
+      // Format the display date from components (not by creating a new Date object)
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const displayDate = `${monthNames[date.getMonth()]} ${date.getDate()}`;
+      
+      const dayShifts = shiftsByDate[dateStr] || [];
+      
+      console.log(`ScheduleWeekView Day ${i}: ${dateStr} (${dayOfWeek}) - ${dayShifts.length} shifts`);
+      
       return {
         date: dateStr,
-        dayOfWeek: date.toLocaleDateString('en-US', { weekday: 'long' }),
-        dayName: date.toLocaleDateString('en-US', { weekday: 'short' }),
+        dayOfWeek: dayOfWeek,
+        dayName: dayOfWeek.substring(0, 3),
         monthDay: date.getDate(),
-        shifts: shiftsByDate[dateStr] || [],
+        displayDate: displayDate, // Add formatted display date
+        shifts: dayShifts,
       };
     });
 
@@ -122,7 +143,7 @@ export const ScheduleWeekView: React.FC<ScheduleWeekViewProps> = ({
               {day.dayOfWeek}
             </div>
             <div className="text-sm text-gray-400">
-              {new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              {day.displayDate}
             </div>
           </div>
 

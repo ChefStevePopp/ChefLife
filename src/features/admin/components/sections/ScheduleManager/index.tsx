@@ -511,6 +511,16 @@ export const ScheduleManager: React.FC = () => {
     }
   }, [initialFetchDone]);
 
+  // DEBUG: Log whenever scheduleShifts changes
+  useEffect(() => {
+    if (scheduleShifts.length > 0) {
+      console.log('=== SCHEDULE SHIFTS CHANGED ===');
+      console.log('Total shifts:', scheduleShifts.length);
+      console.log('Sample shift:', scheduleShifts[0]);
+      console.log('All shift dates:', [...new Set(scheduleShifts.map(s => s.shift_date))].sort());
+    }
+  }, [scheduleShifts]);
+
   // Load all schedules for manual navigation
   const loadAllSchedules = async () => {
     try {
@@ -658,7 +668,7 @@ export const ScheduleManager: React.FC = () => {
     console.log('Display schedule:', displaySchedule.start_date, 'to', displaySchedule.end_date);
 
     // Create array of days
-    const startDate = new Date(displaySchedule.start_date);
+    const startDate = new Date(displaySchedule.start_date + 'T00:00:00'); // Force local time
     return Array(7)
       .fill(null)
       .map((_, i) => {
