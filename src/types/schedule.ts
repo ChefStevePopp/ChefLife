@@ -25,6 +25,7 @@ export interface ScheduleShift {
   break_duration: number;
   notes?: string;
   created_at?: string;
+  avatar_url?: string | null; // Added from team member join
 }
 
 export interface SevenShiftsIntegration {

@@ -40,7 +40,7 @@ interface ScheduleState {
   // Schedule management
   checkUpcomingSchedules: () => Promise<boolean>;
   fetchCurrentSchedule: () => Promise<Schedule | null>;
-  fetchUpcomingSchedule: () => Promise<void>;
+  fetchUpcomingSchedule: () => Promise<Schedule[]>;
   fetchPreviousSchedules: () => Promise<void>;
   fetchShifts: (scheduleId: string) => Promise<ScheduleShift[]>;
   uploadSchedule: (
@@ -155,8 +155,25 @@ export const useScheduleStore = create<ScheduleState>()(
             throw new Error("No organization ID found");
           }
 
-          // Get today's date in YYYY-MM-DD format
-          const today = new Date().toISOString().split("T")[0];
+          // Get organization settings to retrieve timezone
+          const { data: orgData, error: orgError } = await supabase
+            .from("organizations")
+            .select("settings")
+            .eq("id", organizationId)
+            .single();
+
+          if (orgError) throw orgError;
+
+          // Get timezone from settings, default to America/Toronto
+          const timezone = orgData?.settings?.timezone || orgData?.settings?.default_timezone || "America/Toronto";
+
+          // Get today's date in the organization's timezone
+          const localToday = new Date().toLocaleDateString("en-CA", {
+            timeZone: timezone,
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit"
+          }); // Returns YYYY-MM-DD format
 
           // Find any upcoming schedules that should now be current (start date <= today)
           const { data: upcomingSchedules, error } = await supabase
@@ -164,7 +181,7 @@ export const useScheduleStore = create<ScheduleState>()(
             .select("*")
             .eq("organization_id", organizationId)
             .eq("status", "upcoming")
-            .lte("start_date", today); // start_date <= today
+            .lte("start_date", localToday); // start_date <= today
 
           if (error) throw error;
 
@@ -284,14 +301,34 @@ export const useScheduleStore = create<ScheduleState>()(
           }
 
           // If no current schedule found, look for a schedule that includes today's date
-          const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD format
+          // Get organization settings to retrieve timezone
+          const { data: orgData, error: orgError } = await supabase
+            .from("organizations")
+            .select("settings")
+            .eq("id", organizationId)
+            .single();
+
+          if (orgError) {
+            console.warn("Could not fetch organization timezone, using browser timezone");
+          }
+
+          // Get timezone from settings, default to America/Toronto
+          const timezone = orgData?.settings?.timezone || orgData?.settings?.default_timezone || "America/Toronto";
+
+          // Get today's date in the organization's timezone (YYYY-MM-DD format)
+          const localToday = new Date().toLocaleDateString("en-CA", {
+            timeZone: timezone,
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit"
+          });
 
           const { data: dateBasedSchedule, error: dateError } = await supabase
             .from("schedules")
             .select("*")
             .eq("organization_id", organizationId)
-            .lte("start_date", today) // start_date <= today
-            .gte("end_date", today) // end_date >= today
+            .lte("start_date", localToday) // start_date <= today
+            .gte("end_date", localToday) // end_date >= today
             .order("created_at", { ascending: false })
             .limit(1);
 
@@ -338,8 +375,8 @@ export const useScheduleStore = create<ScheduleState>()(
         try {
           set({ isLoading: true, error: null });
 
-          // First check if any upcoming schedules should be activated
-          await get().checkUpcomingSchedules();
+          // COMMENTED OUT: Don't auto-activate when just viewing upcoming
+          // await get().checkUpcomingSchedules();
 
           const {
             data: { user },
@@ -350,18 +387,20 @@ export const useScheduleStore = create<ScheduleState>()(
             throw new Error("No organization ID found");
           }
 
+          // Get ALL upcoming schedules, sorted by start_date
           const { data, error } = await supabase
             .from("schedules")
             .select("*")
             .eq("organization_id", organizationId)
             .eq("status", "upcoming")
-            .single();
+            .order("start_date", { ascending: true }); // Earliest start date first
 
-          if (error && error.code !== "PGRST116") {
+          if (error) {
             throw error;
           }
 
-          set({ upcomingSchedule: data || null });
+          set({ upcomingSchedule: data?.[0] || null }); // Store first one for backwards compatibility
+          return data || []; // RETURN array of schedules
         } catch (error) {
           console.error("Error fetching upcoming schedule:", error);
           set({
@@ -370,6 +409,7 @@ export const useScheduleStore = create<ScheduleState>()(
                 ? error.message
                 : "Failed to load upcoming schedule",
           });
+          return []; // RETURN empty array on error
         } finally {
           set({ isLoading: false });
         }
@@ -417,16 +457,66 @@ export const useScheduleStore = create<ScheduleState>()(
         try {
           set({ isLoading: true, error: null });
 
-          const { data, error } = await supabase
+          // First get the schedule shifts
+          const { data: shiftsData, error: shiftsError } = await supabase
             .from("schedule_shifts")
             .select("*")
             .eq("schedule_id", scheduleId);
 
-          if (error) {
-            throw error;
+          if (shiftsError) throw shiftsError;
+
+          if (!shiftsData || shiftsData.length === 0) {
+            set({ scheduleShifts: [] });
+            return [];
           }
 
-          const shifts = data || [];
+          // Get organization_id to filter team members
+          const { data: { user } } = await supabase.auth.getUser();
+          const organizationId = user?.user_metadata?.organizationId;
+
+          if (!organizationId) {
+            // If no org ID, just return shifts without avatars
+            set({ scheduleShifts: shiftsData });
+            return shiftsData;
+          }
+
+          // Get all team members for this organization
+          const { data: teamMembers, error: teamError } = await supabase
+            .from("organization_team_members")
+            .select("id, punch_id, email, avatar_url")
+            .eq("organization_id", organizationId);
+
+          if (teamError) {
+            console.warn("Could not fetch team members:", teamError);
+            set({ scheduleShifts: shiftsData });
+            return shiftsData;
+          }
+
+          // Create lookup maps
+          const teamMembersByPunchId = new Map(
+            (teamMembers || []).filter(m => m.punch_id).map(m => [m.punch_id, m])
+          );
+          const teamMembersById = new Map(
+            (teamMembers || []).map(m => [m.id, m])
+          );
+
+          // Merge avatar_url into shifts
+          const shifts = shiftsData.map(shift => {
+            let avatar_url = null;
+            
+            // Try to match by employee_id (punch_id or direct ID)
+            if (shift.employee_id) {
+              const byPunchId = teamMembersByPunchId.get(shift.employee_id);
+              const byId = teamMembersById.get(shift.employee_id);
+              avatar_url = byPunchId?.avatar_url || byId?.avatar_url || null;
+            }
+
+            return {
+              ...shift,
+              avatar_url,
+            };
+          });
+
           set({ scheduleShifts: shifts });
           return shifts;
         } catch (error) {

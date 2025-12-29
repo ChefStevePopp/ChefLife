@@ -50,15 +50,20 @@ export const EmployeeMatchingModal: React.FC<EmployeeMatchingModalProps> = ({
     }
   }, [isOpen]);
 
-  // Filter employees based on search term
+  // Filter employees based on search term and get unique employees
   useEffect(() => {
+    // Get unique employees by name
+    const uniqueEmployees = Array.from(
+      new Map(scheduleEmployees.map(emp => [emp.employee_name, emp])).values()
+    );
+
     if (searchTerm) {
-      const filtered = scheduleEmployees.filter((emp) =>
+      const filtered = uniqueEmployees.filter((emp) =>
         emp.employee_name.toLowerCase().includes(searchTerm.toLowerCase()),
       );
       setFilteredEmployees(filtered);
     } else {
-      setFilteredEmployees(scheduleEmployees);
+      setFilteredEmployees(uniqueEmployees);
     }
   }, [searchTerm, scheduleEmployees]);
 

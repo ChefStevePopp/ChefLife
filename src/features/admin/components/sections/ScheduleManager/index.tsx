@@ -14,9 +14,12 @@ import {
   Eye,
   Trash,
   AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import Papa from "papaparse";
 import toast from "react-hot-toast";
+import { supabase } from "@/lib/supabase";
 import { useScheduleStore } from "@/stores/scheduleStore";
 import { ScheduleShift } from "@/types/schedule";
 import {
@@ -24,6 +27,9 @@ import {
   ColumnMapping,
   TimeFormatToggle,
   EmployeeMatchingModal,
+  ScheduleWeekView,
+  PreviousSchedulesView,
+  UpcomingSchedulesView,
 } from "./components";
 import { parseScheduleCsvWithMapping } from "@/lib/schedule-parser-enhanced";
 import { useScheduleMappingStore } from "@/stores/scheduleMappingStore";
@@ -95,7 +101,7 @@ export const ScheduleManager: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [previewData, setPreviewData] = useState<any[] | null>(null);
-  const [upcomingSchedule, setUpcomingSchedule] = useState<any | null>(null);
+  const [upcomingSchedules, setUpcomingSchedules] = useState<any[]>([]);
   const [activateImmediately, setActivateImmediately] = useState(false);
   const [showCSVConfig, setShowCSVConfig] = useState(false);
   const [selectedMapping, setSelectedMapping] = useState<ColumnMapping | null>(
@@ -131,6 +137,9 @@ export const ScheduleManager: React.FC = () => {
   });
   // Track if we've already fetched the current schedule to prevent multiple refreshes
   const [initialFetchDone, setInitialFetchDone] = useState(false);
+  // Manual schedule navigation - safety override
+  const [allSchedules, setAllSchedules] = useState<any[]>([]);
+  const [manualScheduleId, setManualScheduleId] = useState<string | null>(null);
 
   // Get the schedule functions and state from the store
   const {
@@ -460,21 +469,19 @@ export const ScheduleManager: React.FC = () => {
     }
   }, []);
 
-  // Handle activating the upcoming schedule
-  const handleActivateUpcoming = async () => {
-    if (!upcomingSchedule?.id) return;
-
+  // Handle activating an upcoming schedule
+  const handleActivateUpcoming = async (scheduleId: string) => {
     setIsUploading(true);
     try {
       // Call the actual activate function from the store
-      await useScheduleStore.getState().activateSchedule(upcomingSchedule.id);
+      await useScheduleStore.getState().activateSchedule(scheduleId);
 
       // Refresh the schedule data
       await fetchCurrentSchedule();
-      await fetchUpcomingSchedule();
+      const schedules = await fetchUpcomingSchedule();
+      setUpcomingSchedules(schedules);
 
       toast.success("Schedule activated successfully");
-      setUpcomingSchedule(null);
     } catch (error) {
       console.error("Error activating schedule:", error);
       toast.error(scheduleError || "Failed to activate schedule");
@@ -492,12 +499,92 @@ export const ScheduleManager: React.FC = () => {
         const latestSchedule = useScheduleStore.getState().currentSchedule;
         if (latestSchedule?.id) {
           await fetchShifts(latestSchedule.id);
+          setManualScheduleId(latestSchedule.id);
         }
+        
+        // Also load ALL schedules for navigation
+        await loadAllSchedules();
+        
         setInitialFetchDone(true);
       };
       fetchCurrentScheduleData();
     }
   }, [initialFetchDone]);
+
+  // Load all schedules for manual navigation
+  const loadAllSchedules = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const organizationId = user?.user_metadata?.organizationId;
+
+      if (!organizationId) return;
+
+      // Fetch ALL schedules - current, upcoming, AND previous
+      const { data, error } = await supabase
+        .from("schedules")
+        .select("*")
+        .eq("organization_id", organizationId)
+        .order("start_date", { ascending: false }); // Most recent first
+
+      if (error) {
+        console.error("Error loading schedules:", error);
+        throw error;
+      }
+
+      console.log(`Loaded ${data?.length || 0} total schedules for navigation`);
+      setAllSchedules(data || []);
+    } catch (error) {
+      console.error("Error loading all schedules:", error);
+      toast.error("Failed to load schedule history");
+    }
+  };
+
+  // Navigate to previous week schedule
+  const handlePreviousWeek = async () => {
+    if (allSchedules.length === 0) return;
+    
+    const currentIndex = allSchedules.findIndex(s => s.id === manualScheduleId);
+    const nextIndex = currentIndex + 1; // Next index is previous week (sorted descending)
+    
+    if (nextIndex < allSchedules.length) {
+      const prevSchedule = allSchedules[nextIndex];
+      setManualScheduleId(prevSchedule.id);
+      await fetchShifts(prevSchedule.id);
+      toast.success(`Viewing week of ${prevSchedule.start_date}`);
+    } else {
+      toast.info("No earlier schedules available");
+    }
+  };
+
+  // Navigate to next week schedule
+  const handleNextWeek = async () => {
+    if (allSchedules.length === 0) return;
+    
+    const currentIndex = allSchedules.findIndex(s => s.id === manualScheduleId);
+    const nextIndex = currentIndex - 1; // Previous index is next week (sorted descending)
+    
+    if (nextIndex >= 0) {
+      const nextSchedule = allSchedules[nextIndex];
+      setManualScheduleId(nextSchedule.id);
+      await fetchShifts(nextSchedule.id);
+      toast.success(`Viewing week of ${nextSchedule.start_date}`);
+    } else {
+      toast.info("No later schedules available");
+    }
+  };
+
+  // Handle manual schedule selection from dropdown
+  const handleManualScheduleChange = async (scheduleId: string) => {
+    if (!scheduleId) return;
+    
+    setManualScheduleId(scheduleId);
+    await fetchShifts(scheduleId);
+    
+    const selectedSchedule = allSchedules.find(s => s.id === scheduleId);
+    if (selectedSchedule) {
+      toast.success(`Viewing week of ${selectedSchedule.start_date}`);
+    }
+  };
 
   // Fetch data when tab changes
   useEffect(() => {
@@ -514,7 +601,9 @@ export const ScheduleManager: React.FC = () => {
       };
       fetchCurrentScheduleData();
     } else if (activeTab === "upcoming") {
-      fetchUpcomingSchedule();
+      fetchUpcomingSchedule().then((schedules) => {
+        setUpcomingSchedules(schedules);
+      });
     } else if (activeTab === "previous") {
       // Fetch previous schedules when the tab is selected
       const { fetchPreviousSchedules } = useScheduleStore.getState();
@@ -525,9 +614,14 @@ export const ScheduleManager: React.FC = () => {
     }
   }, [activeTab, initialFetchDone]);
 
-  // Process shifts to organize them by day
+  // Process shifts to organize them by day - use manual selection
   const days = useMemo(() => {
-    if (!currentSchedule) {
+    // Find the manually selected schedule or fall back to current
+    const displaySchedule = manualScheduleId 
+      ? allSchedules.find(s => s.id === manualScheduleId) || currentSchedule
+      : currentSchedule;
+      
+    if (!displaySchedule) {
       // Return empty days for the week
       return Array(7)
         .fill(null)
@@ -558,14 +652,32 @@ export const ScheduleManager: React.FC = () => {
       {} as Record<string, ScheduleShift[]>,
     );
 
+    // DEBUG: Log what dates we have shifts for
+    console.log('Schedule shifts by date:', Object.keys(shiftsByDate));
+    console.log('Total shifts:', scheduleShifts.length);
+    console.log('Display schedule:', displaySchedule.start_date, 'to', displaySchedule.end_date);
+
     // Create array of days
-    const startDate = new Date(currentSchedule.start_date);
+    const startDate = new Date(displaySchedule.start_date);
     return Array(7)
       .fill(null)
       .map((_, i) => {
         const date = new Date(startDate);
         date.setDate(date.getDate() + i);
         const dateStr = date.toISOString().split("T")[0];
+        const shiftsForDay = shiftsByDate[dateStr] || [];
+        
+        // DEBUG: Log each day
+        console.log(`Day ${i}: ${dateStr} (${[
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday",
+          "Saturday",
+          "Sunday",
+        ][i]}) - ${shiftsForDay.length} shifts`);
+        
         return {
           date: dateStr,
           dayOfWeek: [
@@ -577,10 +689,10 @@ export const ScheduleManager: React.FC = () => {
             "Saturday",
             "Sunday",
           ][i],
-          shifts: shiftsByDate[dateStr] || [],
+          shifts: shiftsForDay,
         };
       });
-  }, [currentSchedule, scheduleShifts]);
+  }, [currentSchedule, scheduleShifts, manualScheduleId, allSchedules]);
 
   return (
     <div className="space-y-6">
@@ -648,21 +760,59 @@ export const ScheduleManager: React.FC = () => {
         <div className="space-y-6">
           {/* Current Schedule Card */}
           <div className="card p-6">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-lg bg-primary-500/20 flex items-center justify-center">
-                <Calendar className="w-5 h-5 text-primary-400" />
+            {/* Header Section - Matching Design */}
+            <div className="flex items-center justify-between mb-6 bg-[#262d3c] p-2 rounded-lg shadow-lg">
+              <div className="flex items-center gap-3 p-4 rounded-lg bg-[#262d3c]">
+                <div className="w-10 h-10 rounded-lg bg-primary-500/20 flex items-center justify-center">
+                  <Calendar className="w-5 h-5 text-primary-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-medium text-white">
+                    Current Schedule
+                  </h3>
+                  <p className="text-sm text-gray-400">
+                    {currentSchedule
+                      ? `Week of ${currentSchedule.start_date} - ${currentSchedule.end_date}`
+                      : "No active schedule"}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h2 className="text-lg font-medium text-white">
-                  Current Schedule
-                </h2>
-                <p className="text-sm text-gray-400">
-                  {currentSchedule
-                    ? `Week of ${currentSchedule.start_date} - ${currentSchedule.end_date}`
-                    : "No active schedule"}
-                </p>
-              </div>
-              <div className="ml-auto flex gap-2">
+              <div className="flex gap-2 mr-2 items-center">
+                {/* Week Navigation - Safety Override */}
+                {allSchedules.length > 0 && (
+                  <div className="flex items-center gap-2 mr-2 px-3 py-1.5 bg-gray-700/50 rounded-lg border border-gray-600/50">
+                    <button
+                      onClick={handlePreviousWeek}
+                      className="p-1 hover:bg-gray-600/50 rounded transition-colors"
+                      title="Previous week"
+                    >
+                      <ChevronLeft className="w-4 h-4 text-gray-300" />
+                    </button>
+                    <select
+                      value={manualScheduleId || ""}
+                      onChange={(e) => handleManualScheduleChange(e.target.value)}
+                      className="bg-transparent border-none text-sm text-gray-300 focus:outline-none cursor-pointer pr-6"
+                      style={{ minWidth: "180px" }}
+                      title={`${allSchedules.length} schedules available`}
+                    >
+                      {allSchedules.map((schedule) => (
+                        <option key={schedule.id} value={schedule.id}>
+                          {schedule.start_date} to {schedule.end_date}
+                          {schedule.status === "current" ? " (Current)" : ""}
+                          {schedule.status === "upcoming" ? " (Upcoming)" : ""}
+                          {schedule.status === "previous" ? " (Previous)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleNextWeek}
+                      className="p-1 hover:bg-gray-600/50 rounded transition-colors"
+                      title="Next week"
+                    >
+                      <ChevronRight className="w-4 h-4 text-gray-300" />
+                    </button>
+                  </div>
+                )}
                 <TimeFormatToggle
                   timeFormat={timeFormat}
                   onChange={setTimeFormat}
@@ -674,7 +824,7 @@ export const ScheduleManager: React.FC = () => {
                 {currentSchedule && (
                   <button
                     onClick={() => setIsDeleteModalOpen(true)}
-                    className="btn-ghost text-rose-400 hover:text-rose-300"
+                    className="btn-ghost-red"
                   >
                     <Trash className="w-4 h-4 mr-2" />
                     Delete Schedule
@@ -708,75 +858,11 @@ export const ScheduleManager: React.FC = () => {
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-7 gap-2">
-                  {days.map((day, index) => (
-                    <div
-                      key={`day-${index}-${day.date}`}
-                      className="text-center"
-                    >
-                      <div className="font-medium text-gray-300 mb-2">
-                        {day.dayOfWeek}
-                      </div>
-                      <div className="bg-gray-700/50 rounded-lg p-3 min-h-[300px] overflow-y-auto">
-                        {day.shifts.length > 0 ? (
-                          <div className="space-y-2">
-                            {day.shifts.map((shift) => {
-                              // Generate a consistent color for each role
-                              const roleHash = shift.role
-                                ? shift.role
-                                    .split("")
-                                    .reduce(
-                                      (acc, char) => acc + char.charCodeAt(0),
-                                      0,
-                                    )
-                                : 0;
-
-                              // Use colors from our theme palette
-                              const roleColors = [
-                                "text-primary-400",
-                                "text-green-400",
-                                "text-amber-400",
-                                "text-rose-400",
-                                "text-purple-400",
-                                "text-blue-400",
-                              ];
-                              const roleColor =
-                                roleColors[roleHash % roleColors.length];
-
-                              return (
-                                <div
-                                  key={shift.id}
-                                  className="text-xs bg-slate-600/50 p-2 rounded text-center flex items-center gap-2"
-                                >
-                                  <div className="flex-1 min-w-0">
-                                    <div className="font-medium text-white truncate">
-                                      {shift.employee_name}
-                                    </div>
-                                    {shift.role && (
-                                      <div
-                                        className={`${roleColor} text-[10px] uppercase font-medium`}
-                                      >
-                                        {shift.role}
-                                      </div>
-                                    )}
-                                    <div className="text-[8px] text-gray-300 mt-1">
-                                      {formatTime(shift.start_time, timeFormat)}{" "}
-                                      - {formatTime(shift.end_time, timeFormat)}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div className="text-xs text-gray-500">
-                            No shifts scheduled
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <ScheduleWeekView
+                  scheduleShifts={scheduleShifts}
+                  startDate={currentSchedule.start_date}
+                  timeFormat={timeFormat}
+                />
               )}
             </div>
           </div>
@@ -786,19 +872,22 @@ export const ScheduleManager: React.FC = () => {
       {/* Upcoming Schedules Tab */}
       {activeTab === "upcoming" && (
         <div className="card p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
-              <Clock className="w-5 h-5 text-green-400" />
+          {/* Header Section - Matching Design */}
+          <div className="flex items-center justify-between mb-6 bg-[#262d3c] p-2 rounded-lg shadow-lg">
+            <div className="flex items-center gap-3 p-4 rounded-lg bg-[#262d3c]">
+              <div className="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
+                <Clock className="w-5 h-5 text-green-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-medium text-white">
+                  Upcoming Schedules
+                </h3>
+                <p className="text-sm text-gray-400">
+                  View and manage upcoming schedules
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-lg font-medium text-white">
-                Upcoming Schedules
-              </h2>
-              <p className="text-sm text-gray-400">
-                View and manage upcoming schedules
-              </p>
-            </div>
-            <div className="ml-auto flex gap-2">
+            <div className="flex gap-2 mr-2">
               <button
                 onClick={() => setIsUploadModalOpen(true)}
                 className="btn-primary"
@@ -809,206 +898,91 @@ export const ScheduleManager: React.FC = () => {
             </div>
           </div>
 
-          {/* Upcoming Schedule Card */}
-          {upcomingSchedule ? (
-            <div className="bg-gray-800/50 rounded-lg p-6 mb-4">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
-                  <Calendar className="w-5 h-5 text-blue-400" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-medium text-white">
-                    Week of {upcomingSchedule.start_date} -{" "}
-                    {upcomingSchedule.end_date}
-                  </h3>
-                  <p className="text-sm text-gray-400">
-                    Uploaded:{" "}
-                    {new Date(upcomingSchedule.created_at).toLocaleString()}
-                  </p>
-                </div>
-                <div className="ml-auto">
-                  <button
-                    onClick={handleActivateUpcoming}
-                    className="btn-primary bg-blue-500 hover:bg-blue-600"
-                  >
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Activate Now
-                  </button>
-                </div>
-              </div>
-
-              <div className="bg-gray-700/50 rounded-lg p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-300">
-                      Source:{" "}
-                      <span className="text-blue-400">
-                        {upcomingSchedule.source || "CSV Upload"}
-                      </span>
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      This schedule will replace the current schedule when
-                      activated.
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => exportScheduleToCSV(upcomingSchedule.id)}
-                      className="btn-ghost text-sm"
-                    >
-                      <Download className="w-4 h-4 mr-1" />
-                      Download
-                    </button>
-                    <button
-                      onClick={async () => {
-                        if (
-                          confirm(
-                            "Are you sure you want to delete this upcoming schedule?",
-                          )
-                        ) {
-                          const success = await useScheduleStore
-                            .getState()
-                            .deleteSchedule(upcomingSchedule.id);
-
-                          if (success) {
-                            toast.success(
-                              "Upcoming schedule deleted successfully",
-                            );
-                            fetchUpcomingSchedule();
-                          } else {
-                            toast.error("Failed to delete upcoming schedule");
-                          }
-                        }
-                      }}
-                      className="btn-ghost text-sm text-rose-400 hover:text-rose-300"
-                    >
-                      <X className="w-4 h-4 mr-1" />
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-12 bg-gray-800/50 rounded-lg">
-              <Clock className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-white mb-2">
-                No Upcoming Schedules
-              </h3>
-              <p className="text-gray-400 max-w-md mx-auto">
-                Upload a new schedule to have it appear here before activating
-                it.
-              </p>
-              <button
-                onClick={() => setIsUploadModalOpen(true)}
-                className="btn-primary mt-4"
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                Upload Schedule
-              </button>
-            </div>
-          )}
+           {/* Upcoming Schedules Tab */}
+               <UpcomingSchedulesView
+            upcomingSchedules={upcomingSchedules}
+            onActivate={handleActivateUpcoming}
+            onExport={exportScheduleToCSV}
+            onView={async (scheduleId) => {
+              setSelectedScheduleId(scheduleId);
+              await fetchShifts(scheduleId);
+              setIsViewModalOpen(true);
+            }}
+            onDelete={async (scheduleId) => {
+              const success = await useScheduleStore.getState().deleteSchedule(scheduleId);
+              if (success) {
+                toast.success("Upcoming schedule deleted successfully");
+                const schedules = await fetchUpcomingSchedule();
+                setUpcomingSchedules(schedules);
+              } else {
+                toast.error("Failed to delete upcoming schedule");
+              }
+            }}
+            onUploadNew={() => setIsUploadModalOpen(true)}
+            isLoading={isLoading}
+          />
         </div>
       )}
 
       {/* Previous Schedules Tab */}
       {activeTab === "previous" && (
         <div className="card p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
-              <History className="w-5 h-5 text-amber-400" />
-            </div>
-            <div>
-              <h2 className="text-lg font-medium text-white">
-                Previous Schedules
-              </h2>
-              <p className="text-sm text-gray-400">
-                View and download past schedules
-              </p>
+          {/* Header Section - Matching Design */}
+          <div className="flex items-center justify-between mb-6 bg-[#262d3c] p-2 rounded-lg shadow-lg">
+            <div className="flex items-center gap-3 p-4 rounded-lg bg-[#262d3c]">
+              <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <History className="w-5 h-5 text-amber-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-medium text-white">
+                  Previous Schedules
+                </h3>
+                <p className="text-sm text-gray-400">
+                  View and download past schedules
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* Previous Schedules List */}
-          <div className="space-y-4">
-            {isLoading ? (
-              <div className="flex items-center justify-center h-[200px]">
-                <div className="animate-spin h-8 w-8 border-4 border-amber-500 border-t-transparent rounded-full"></div>
-              </div>
-            ) : useScheduleStore.getState().previousSchedules.length > 0 ? (
-              useScheduleStore.getState().previousSchedules.map((schedule) => (
-                <div
-                  key={schedule.id}
-                  className="bg-gray-800/50 rounded-lg p-4"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
-                        <Calendar className="w-5 h-5 text-amber-400" />
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-medium text-white">
-                          Week of {schedule.start_date} - {schedule.end_date}
-                        </h3>
-                        <p className="text-sm text-gray-400">
-                          Source: {schedule.source || "CSV Upload"}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={async () => {
-                          if (schedule.id) {
-                            setSelectedScheduleId(schedule.id);
-                            await fetchShifts(schedule.id);
-                            setIsViewModalOpen(true);
-                          }
-                        }}
-                        className="btn-ghost text-sm"
-                      >
-                        <Eye className="w-4 h-4 mr-1" />
-                        View
-                      </button>
-                      <button
-                        onClick={() => exportScheduleToCSV(schedule.id)}
-                        className="btn-ghost text-sm"
-                      >
-                        <Download className="w-4 h-4 mr-1" />
-                        Export
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-12 bg-gray-800/50 rounded-lg">
-                <Calendar className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-white mb-2">
-                  No Previous Schedules
-                </h3>
-                <p className="text-gray-400 max-w-md mx-auto">
-                  When you upload and activate schedules, they will appear here
-                  for future reference.
-                </p>
-              </div>
-            )}
-          </div>
+          <PreviousSchedulesView
+            schedules={useScheduleStore.getState().previousSchedules}
+            onView={async (scheduleId) => {
+              setSelectedScheduleId(scheduleId);
+              await fetchShifts(scheduleId);
+              setIsViewModalOpen(true);
+            }}
+            onExport={exportScheduleToCSV}
+            onDelete={async (scheduleId) => {
+              const success = await useScheduleStore.getState().deleteSchedule(scheduleId);
+              if (success) {
+                toast.success("Schedule deleted successfully");
+                await useScheduleStore.getState().fetchPreviousSchedules();
+              } else {
+                toast.error("Failed to delete schedule");
+              }
+            }}
+            isLoading={isLoading}
+          />
         </div>
       )}
 
       {/* 7shifts Integration Tab */}
       {activeTab === "integration" && (
         <div className="card p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-lg bg-rose-500/20 flex items-center justify-center">
-              <Link className="w-5 h-5 text-rose-400" />
-            </div>
-            <div>
-              <h2 className="text-lg font-medium text-white">
-                7shifts Integration
-              </h2>
-              <p className="text-sm text-gray-400">
-                Connect your 7shifts account to automatically sync schedules
-              </p>
+          {/* Header Section - Matching Design */}
+          <div className="flex items-center justify-between mb-6 bg-[#262d3c] p-2 rounded-lg shadow-lg">
+            <div className="flex items-center gap-3 p-4 rounded-lg bg-[#262d3c]">
+              <div className="w-10 h-10 rounded-lg bg-rose-500/20 flex items-center justify-center">
+                <Link className="w-5 h-5 text-rose-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-medium text-white">
+                  7shifts Integration
+                </h3>
+                <p className="text-sm text-gray-400">
+                  Connect your 7shifts account to automatically sync schedules
+                </p>
+              </div>
             </div>
           </div>
 
@@ -1182,16 +1156,49 @@ export const ScheduleManager: React.FC = () => {
       {/* CSV Configuration Tab */}
       {activeTab === "config" && (
         <div className="card p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
-              <Settings className="w-5 h-5 text-purple-400" />
+          {/* Header Section - Matching Vendor Invoice Manager Style */}
+          <div className="flex items-center justify-between mb-6 bg-[#262d3c] p-2 rounded-lg shadow-lg">
+            <div className="flex items-center gap-3 p-4 rounded-lg bg-[#262d3c]">
+              <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                <Settings className="w-5 h-5 text-purple-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-medium text-white">
+                  CSV Configuration
+                </h3>
+                <p className="text-sm text-gray-400">
+                  Manage CSV import mappings for different schedule formats
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-lg font-medium text-white">
-                CSV Configuration
-              </h2>
-              <p className="text-sm text-gray-400">
-                Manage CSV import mappings for different schedule formats
+          </div>
+
+          {/* Help Section - What are CSV Mappings? */}
+          <div className="expandable-info-section mb-6">
+            <button
+              onClick={(e) => {
+                const section = e.currentTarget.closest('.expandable-info-section');
+                section?.classList.toggle('expanded');
+              }}
+              className="expandable-info-header w-full justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-info w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <path d="M12 16v-4"></path>
+                  <path d="M12 8h.01"></path>
+                </svg>
+                <h3 className="text-lg font-medium text-white">What are CSV Mappings?</h3>
+              </div>
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-chevron-up w-5 h-5 text-gray-400">
+                <path d="m18 15-6-6-6 6"></path>
+              </svg>
+            </button>
+            <div className="expandable-info-content">
+              <p className="text-sm text-gray-300 p-4">
+                CSV Mappings tell ChefLife how to read your schedule files. Different scheduling systems (7shifts, HotSchedules, Excel) export data with different column names and formats. 
+                For example, one system might use "Employee Name" while another uses "Staff Member" or "Team Member". 
+                Mappings let you save these configurations so you don't have to set them up every time you upload a schedule.
               </p>
             </div>
           </div>
@@ -1206,42 +1213,104 @@ export const ScheduleManager: React.FC = () => {
               setShowCSVConfig(true);
             }}
           />
+        </div>
+      )}
 
-          {/* CSV Format Information */}
-          <div className="mt-6 bg-gray-800/50 rounded-lg p-6">
-            <h3 className="text-lg font-medium text-white mb-4">
-              Supported Formats
-            </h3>
+      {/* Quick Reference - Separate Card */}
+      {activeTab === "config" && (
+        <div className="card p-6 mt-6">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
+              <FileSpreadsheet className="w-5 h-5 text-purple-400" />
+            </div>
+            <div>
+              <h3 className="text-lg font-medium text-white">
+                Quick Reference
+              </h3>
+              <p className="text-sm text-gray-400">
+                Common CSV format types and their use cases
+              </p>
+            </div>
+          </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-gray-700/50 rounded-lg p-4">
-                <h4 className="font-medium text-white mb-2">Standard Format</h4>
-                <p className="text-sm text-gray-400 mb-2">
-                  CSV with separate columns for date, start time, and end time.
-                </p>
-                <div className="text-xs text-gray-500">
-                  Example: 7shifts, HotSchedules exports
+          {/* Help Section - Format Types */}
+          <div className="expandable-info-section mb-6">
+            <button
+              onClick={(e) => {
+                const section = e.currentTarget.closest('.expandable-info-section');
+                section?.classList.toggle('expanded');
+              }}
+              className="expandable-info-header w-full justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-info w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <path d="M12 16v-4"></path>
+                  <path d="M12 8h.01"></path>
+                </svg>
+                <h3 className="text-lg font-medium text-white">Understanding Format Types</h3>
+              </div>
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-chevron-up w-5 h-5 text-gray-400">
+                <path d="m18 15-6-6-6 6"></path>
+              </svg>
+            </button>
+            <div className="expandable-info-content">
+              <div className="text-sm text-gray-300 p-4 space-y-3">
+                <div>
+                  <p className="font-medium text-purple-400 mb-1">Standard Format</p>
+                  <p className="text-sm">Each row is one shift with separate columns for employee, date, start time, and end time. Common in systems like 7shifts and HotSchedules.</p>
+                  <p className="text-xs text-gray-500 mt-1">Example: John Doe | 2024-12-28 | 09:00 | 17:00 | Server</p>
+                </div>
+                <div>
+                  <p className="font-medium text-purple-400 mb-1">Weekly Format</p>
+                  <p className="text-sm">Employees are listed in rows, days of the week are columns, and shift times are in the cells. Common in Excel-based schedules.</p>
+                  <p className="text-xs text-gray-500 mt-1">Example: John Doe | 9am-5pm | OFF | 10am-6pm | ...</p>
+                </div>
+                <div>
+                  <p className="font-medium text-purple-400 mb-1">Custom Format</p>
+                  <p className="text-sm">For unique CSV layouts that don't fit the standard or weekly patterns. Map any columns you need from your custom export.</p>
                 </div>
               </div>
+            </div>
+          </div>
 
-              <div className="bg-gray-700/50 rounded-lg p-4">
-                <h4 className="font-medium text-white mb-2">Weekly Format</h4>
-                <p className="text-sm text-gray-400 mb-2">
-                  CSV with days of the week as columns and shift times in cells.
-                </p>
-                <div className="text-xs text-gray-500">
-                  Example: Excel weekly schedules
-                </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-gray-800/30 border border-gray-700/50 rounded-lg p-4 hover:bg-gray-800/50 transition-colors">
+              <div className="flex items-center gap-2 mb-2">
+                <FileSpreadsheet className="w-5 h-5 text-purple-400" />
+                <h4 className="font-medium text-white">Standard Format</h4>
               </div>
+              <p className="text-sm text-gray-400 mb-2">
+                One row per shift with date, time, and employee columns
+              </p>
+              <div className="text-xs text-gray-500">
+                Best for: 7shifts, HotSchedules, POS exports
+              </div>
+            </div>
 
-              <div className="bg-gray-700/50 rounded-lg p-4">
-                <h4 className="font-medium text-white mb-2">Custom Format</h4>
-                <p className="text-sm text-gray-400 mb-2">
-                  Any CSV format with custom column mappings you define.
-                </p>
-                <div className="text-xs text-gray-500">
-                  Example: POS exports, custom spreadsheets
-                </div>
+            <div className="bg-gray-800/30 border border-gray-700/50 rounded-lg p-4 hover:bg-gray-800/50 transition-colors">
+              <div className="flex items-center gap-2 mb-2">
+                <Calendar className="w-5 h-5 text-purple-400" />
+                <h4 className="font-medium text-white">Weekly Format</h4>
+              </div>
+              <p className="text-sm text-gray-400 mb-2">
+                Employees in rows, weekdays as columns
+              </p>
+              <div className="text-xs text-gray-500">
+                Best for: Excel schedules, printed rotas
+              </div>
+            </div>
+
+            <div className="bg-gray-800/30 border border-gray-700/50 rounded-lg p-4 hover:bg-gray-800/50 transition-colors">
+              <div className="flex items-center gap-2 mb-2">
+                <Settings className="w-5 h-5 text-purple-400" />
+                <h4 className="font-medium text-white">Custom Format</h4>
+              </div>
+              <p className="text-sm text-gray-400 mb-2">
+                Define your own column mappings for unique layouts
+              </p>
+              <div className="text-xs text-gray-500">
+                Best for: Custom spreadsheets, legacy systems
               </div>
             </div>
           </div>
@@ -1298,7 +1367,8 @@ export const ScheduleManager: React.FC = () => {
             if (activateImmediately) {
               await fetchCurrentSchedule();
             } else {
-              await fetchUpcomingSchedule();
+              const schedules = await fetchUpcomingSchedule();
+              setUpcomingSchedules(schedules);
             }
 
             toast.success(
@@ -1745,24 +1815,24 @@ export const ScheduleManager: React.FC = () => {
                 <button
                   onClick={async () => {
                     try {
-                      setIsLoading(true);
                       const success = await useScheduleStore
                         .getState()
                         .deleteSchedule(currentSchedule.id);
                       if (success) {
                         toast.success("Schedule deleted successfully");
                         setIsDeleteModalOpen(false);
+                        // Refresh the current schedule
+                        await fetchCurrentSchedule();
                       } else {
                         toast.error("Failed to delete schedule");
                       }
                     } catch (error) {
                       console.error("Error deleting schedule:", error);
                       toast.error("An error occurred while deleting schedule");
-                    } finally {
-                      setIsLoading(false);
                     }
                   }}
                   className="btn-danger"
+                  disabled={isLoading}
                 >
                   {isLoading ? (
                     <>

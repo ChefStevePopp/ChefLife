@@ -6,15 +6,20 @@ import type { TeamMember } from "../../types";
 interface TeamListProps {
   viewMode?: "full" | "compact";
   onEdit?: (member: TeamMember) => void;
+  members?: TeamMember[]; // Optional override
 }
 
 export const TeamList: React.FC<TeamListProps> = ({
   viewMode = "full",
   onEdit,
+  members: membersProp,
 }) => {
-  const { members, isLoading, error, deleteTeamMember } = useTeamStore();
+  const { members: storeMembers, isLoading, error, deleteTeamMember } = useTeamStore();
+  
+  // Use prop if provided, otherwise use store
+  const members = membersProp || storeMembers;
 
-  if (isLoading) {
+  if (isLoading && !membersProp) {
     return (
       <div className="flex items-center justify-center h-32">
         <div className="text-gray-400">Loading team members...</div>
@@ -22,7 +27,7 @@ export const TeamList: React.FC<TeamListProps> = ({
     );
   }
 
-  if (error) {
+  if (error && !membersProp) {
     return (
       <div className="p-4 bg-rose-500/10 text-rose-400 rounded-lg">
         <h2 className="text-lg font-medium">Error Loading Team</h2>
@@ -33,7 +38,7 @@ export const TeamList: React.FC<TeamListProps> = ({
 
   return (
     <div className="space-y-4">
-      {viewMode === "full" && (
+      {viewMode === "full" && !membersProp && (
         <div className="flex items-center gap-2 mb-4">
           <Users className="w-5 h-5 text-primary-400" />
           <h2 className="text-lg font-medium text-white">Team Members</h2>
@@ -66,11 +71,11 @@ export const TeamList: React.FC<TeamListProps> = ({
                 {member.first_name} {member.last_name}
               </div>
               <div className="text-sm text-primary-400 truncate">
-                {(member as any).kitchen_role || (member as any).role}
+                {member.kitchen_role || 'team_member'}
               </div>
-              {(member as any).station && (
+              {member.departments && member.departments.length > 0 && (
                 <div className="text-xs text-gray-400 mt-1 truncate">
-                  {(member as any).station}
+                  {member.departments.join(', ')}
                 </div>
               )}
             </div>
@@ -80,12 +85,14 @@ export const TeamList: React.FC<TeamListProps> = ({
                 <button
                   onClick={() => onEdit?.(member)}
                   className="p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-gray-700/50"
+                  aria-label="Edit member"
                 >
                   <Edit2 className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => deleteTeamMember(member.id)}
                   className="p-2 text-gray-400 hover:text-rose-400 transition-colors rounded-lg hover:bg-rose-500/10"
+                  aria-label="Delete member"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>

@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useRoutes } from "react-router-dom";
 import { MainLayout, AuthLayout } from "@/shared/layouts";
 import { SignIn } from "@/features/auth/components/SignIn";
 import { SignUp } from "@/features/auth/components/SignUp";
+import ForgotPassword from "@/features/auth/components/ForgotPassword";
 import { PrivateRoute } from "@/components/PrivateRoute";
 import { ROUTES } from "@/config/routes";
 import { AdminRoutes } from "@/features/admin/routes";
@@ -43,6 +44,7 @@ function App() {
           <Route element={<AuthLayout />}>
             <Route path="/auth/signin" element={<SignIn />} />
             <Route path="/auth/signup" element={<SignUp />} />
+            <Route path="/auth/forgot-password" element={<ForgotPassword />} />
           </Route>
 
           {/* Protected Kitchen Routes */}

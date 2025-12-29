@@ -6,7 +6,7 @@ export interface TeamMember {
   first_name: string;
   last_name: string;
   display_name?: string | null;
-  email: string;
+  email: string | null;
   phone?: string;
   punch_id?: string;
   avatar_url?: string;
@@ -16,6 +16,7 @@ export interface TeamMember {
   notification_preferences?: Record<string, any>;
   kitchen_role?: string;
   kitchen_stations?: string[];
+  is_active?: boolean;
 }
 
 export interface TeamStore {
@@ -26,4 +27,11 @@ export interface TeamStore {
   createTeamMember: (member: Omit<TeamMember, "id">) => Promise<void>;
   updateTeamMember: (id: string, updates: Partial<TeamMember>) => Promise<void>;
   deleteTeamMember: (id: string) => Promise<void>;
+  importTeamMembers: (csvData: any[]) => Promise<{
+    newMembers: any[];
+    duplicateCount: number;
+    notInCSV: TeamMember[];
+    needsConfirmation: boolean;
+  }>;
+  executeTeamImport: (newMembers: any[], handleMissingAction: 'keep' | 'inactive' | 'delete', missingMemberIds: string[]) => Promise<number>;
 }
