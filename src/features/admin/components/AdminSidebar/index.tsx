@@ -1,12 +1,30 @@
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { menuItems } from "./menuItems";
+import { menuItems, type MenuItem } from "./menuItems";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 interface AdminSidebarProps {
   onToggleCollapse?: (collapsed: boolean) => void;
 }
+
+// Tooltip component for menu items - displays below the item
+const MenuItemTooltip: React.FC<{ text: string; comingSoon?: boolean }> = ({
+  text,
+  comingSoon,
+}) => (
+  <div 
+    className="absolute left-0 right-0 top-full mt-1 px-3 py-2 rounded text-xs text-gray-200 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-xl z-50 border border-gray-600"
+    style={{ backgroundColor: 'rgba(55, 65, 81, 0.95)' }}
+  >
+    <div className="leading-relaxed">
+      {text}
+      {comingSoon && (
+        <span className="block text-amber-400 mt-1">Coming Soon</span>
+      )}
+    </div>
+  </div>
+);
 
 export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   onToggleCollapse,
@@ -24,9 +42,80 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     }
   };
 
+  const renderMenuItem = (item: MenuItem) => {
+    const isActive = location.pathname === item.path;
+    const isDisabled = item.disabled || item.comingSoon;
+
+    // Base classes for the menu item
+    const baseClasses = `relative group flex items-center ${
+      isCollapsed ? "justify-center p-3" : "gap-3 px-4 py-2"
+    } rounded-lg transition-colors`;
+
+    // State-specific classes
+    const stateClasses = isDisabled
+      ? "text-gray-600 cursor-not-allowed hover:bg-gray-800"
+      : isActive
+        ? "bg-gray-800 text-white"
+        : "text-gray-400 hover:text-white hover:bg-gray-800";
+
+    // If disabled/coming soon, render as div instead of Link
+    if (isDisabled) {
+      return (
+        <div
+          className={`${baseClasses} ${stateClasses}`}
+          title={isCollapsed ? item.label : ""}
+        >
+          <item.icon
+            size={isCollapsed ? 24 : 20}
+            className={`flex-shrink-0 ${
+              item.comingSoon ? "text-gray-600" : "text-primary-400/30"
+            }`}
+          />
+          {!isCollapsed && (
+            <>
+              <span className="flex-1">{item.label}</span>
+              {item.comingSoon && (
+                <span className="text-[10px] text-amber-500/60 font-medium uppercase tracking-wide">
+                  Soon
+                </span>
+              )}
+            </>
+          )}
+          {/* Tooltip on hover */}
+          {item.tooltip && !isCollapsed && (
+            <MenuItemTooltip text={item.tooltip} comingSoon={item.comingSoon} />
+          )}
+        </div>
+      );
+    }
+
+    // Active/regular menu item as Link
+    return (
+      <Link
+        to={item.path}
+        className={`${baseClasses} ${stateClasses}`}
+        title={isCollapsed ? item.label : ""}
+      >
+        <item.icon
+          size={isCollapsed ? 24 : 20}
+          className={`flex-shrink-0 ${
+            isCollapsed ? "text-primary-400/30" : ""
+          }`}
+        />
+        {!isCollapsed && <span>{item.label}</span>}
+        {/* Tooltip on hover */}
+        {item.tooltip && !isCollapsed && (
+          <MenuItemTooltip text={item.tooltip} />
+        )}
+      </Link>
+    );
+  };
+
   return (
     <div
-      className={`h-screen bg-gray-900 border-r border-gray-800 flex flex-col transition-all duration-300 relative ${isCollapsed ? "w-20" : ""}`}
+      className={`h-screen bg-gray-900 border-r border-gray-800 flex flex-col transition-all duration-300 relative z-50 ${
+        isCollapsed ? "w-20" : ""
+      }`}
     >
       {/* Logo */}
       <div className="p-6 border-b border-gray-800">
@@ -46,6 +135,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           )}
         </div>
       </div>
+
       {/* Toggle Button */}
       <button
         onClick={toggleSidebar}
@@ -54,6 +144,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       >
         {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
       </button>
+
       {/* Navigation */}
       <nav
         className="flex-1 overflow-y-auto py-6"
@@ -67,28 +158,9 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                   {section.label}
                 </h3>
               )}
-              <ul className="space-y-1">
+              <ul className="space-y-1 relative">
                 {section.items.map((item) => (
-                  <li key={item.path}>
-                    <Link
-                      to={item.path}
-                      className={`flex items-center ${isCollapsed ? "justify-center p-3" : "gap-3 px-4 py-2"} rounded-lg transition-colors ${
-                        location.pathname === item.path
-                          ? "bg-gray-800 text-white"
-                          : "text-gray-400 hover:text-white hover:bg-gray-800"
-                      }`}
-                      title={isCollapsed ? item.label : ""}
-                    >
-                      <item.icon
-                        className={
-                          isCollapsed
-                            ? "w-6 h-6 text-primary-400/30"
-                            : "w-5 h-5"
-                        }
-                      />
-                      {!isCollapsed && <span>{item.label}</span>}
-                    </Link>
-                  </li>
+                  <li key={item.path} className="relative z-0 hover:z-10">{renderMenuItem(item)}</li>
                 ))}
               </ul>
             </div>

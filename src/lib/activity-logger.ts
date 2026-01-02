@@ -1,18 +1,40 @@
 import { supabase } from "@/lib/supabase";
 
 type ActivityType =
+  // Team activities
   | "team_member_added"
   | "team_member_updated"
   | "team_member_removed"
   | "role_assigned"
   | "role_removed"
+  | "bulk_team_import"
+  // Recipe activities
   | "recipe_created"
   | "recipe_updated"
   | "recipe_deleted"
   | "recipe_status_changed"
+  // Schedule activities
+  | "schedule_uploaded"
+  | "schedule_activated"
+  | "schedule_deleted"
+  | "schedule_synced_7shifts"
+  // Inventory activities
   | "inventory_updated"
+  | "inventory_counted"
+  | "inventory_adjusted"
+  | "inventory_imported"
+  // Vendor/Purchasing activities
+  | "invoice_imported"
+  | "price_change_detected"
+  | "vendor_added"
+  // Settings activities
   | "settings_changed"
-  | "task_completed";
+  | "permissions_changed"
+  | "notification_preferences_updated"
+  // Task activities
+  | "task_completed"
+  | "task_created"
+  | "task_assigned";
 
 interface ActivityLogEntry {
   organization_id: string;

@@ -33,21 +33,46 @@ interface ActivityLog {
 }
 
 // Map activity types to categories
-const ACTIVITY_TYPE_TO_CATEGORY = {
+const ACTIVITY_TYPE_TO_CATEGORY: Record<string, string> = {
+  // Recipe activities
   recipe_created: "recipes",
   recipe_updated: "recipes",
   recipe_deleted: "recipes",
+  recipe_status_changed: "recipes",
+  // Inventory activities
   inventory_updated: "inventory",
+  inventory_counted: "inventory",
+  inventory_adjusted: "inventory",
+  inventory_imported: "inventory",
+  // Team activities
   team_member_added: "team",
   team_member_updated: "team",
   team_member_removed: "team",
   role_changed: "team",
+  role_assigned: "team",
+  role_removed: "team",
+  bulk_team_import: "team",
+  // Schedule activities (under team category)
+  schedule_uploaded: "team",
+  schedule_activated: "team",
+  schedule_deleted: "team",
+  schedule_synced_7shifts: "team",
+  // System/Settings activities
   settings_updated: "system",
+  settings_changed: "system",
+  permissions_changed: "system",
+  notification_preferences_updated: "system",
+  // Task activities
   task_created: "system",
   task_updated: "system",
   task_deleted: "system",
   task_completed: "system",
   task_assigned: "system",
+  // Vendor/Financial activities
+  invoice_imported: "financial",
+  price_change_detected: "financial",
+  vendor_added: "financial",
+  // Security activities
   login: "security",
   logout: "security",
 };

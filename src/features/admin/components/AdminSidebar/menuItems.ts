@@ -23,10 +23,30 @@ import {
   ClipboardList,
   LibraryBig,
   Globe,
+  ClipboardCheck,
+  Briefcase,
+  Scale,
+  Eye,
+  type LucideIcon,
 } from "lucide-react";
 
-export const menuItems = (isDev: boolean) => {
-  const items = [
+export interface MenuItem {
+  icon: LucideIcon;
+  label: string;
+  path: string;
+  tooltip?: string;
+  disabled?: boolean;
+  comingSoon?: boolean;
+}
+
+export interface MenuSection {
+  id: string;
+  label?: string;
+  items: MenuItem[];
+}
+
+export const menuItems = (isDev: boolean): MenuSection[] => {
+  const items: MenuSection[] = [
     {
       id: "account",
       items: [
@@ -56,18 +76,51 @@ export const menuItems = (isDev: boolean) => {
       id: "team",
       label: "TEAM",
       items: [
-        { icon: Users, label: "Team Management", path: "/admin/team" },
+        {
+          icon: Users,
+          label: "The Roster",
+          path: "/admin/team",
+          tooltip: "Who's on the team",
+        },
         {
           icon: Calendar,
-          label: "Schedule Manager",
+          label: "The Schedule",
           path: "/admin/schedule",
+          tooltip: "When they're here",
+        },
+        {
+          icon: ClipboardCheck,
+          label: "Attendance",
+          path: "/admin/attendance",
+          tooltip: "Are they here? Points & tracking",
+          comingSoon: true,
+        },
+        {
+          icon: Briefcase,
+          label: "Job Descriptions",
+          path: "/admin/job-descriptions",
+          tooltip: "What they do here",
+          comingSoon: true,
+        },
+        {
+          icon: Scale,
+          label: "Policies",
+          path: "/admin/policies",
+          tooltip: "How we operate",
+          comingSoon: true,
         },
         {
           icon: Bell,
-          label: "Notification Settings",
+          label: "Notifications",
           path: "/admin/notifications",
+          tooltip: "How we communicate",
         },
-        { icon: Shield, label: "Permissions", path: "/admin/permissions" },
+        {
+          icon: Eye,
+          label: "App Access",
+          path: "/admin/permissions",
+          tooltip: "What they can see in the app",
+        },
       ],
     },
     {

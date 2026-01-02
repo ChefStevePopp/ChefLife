@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import type { InventoryCount, InventoryCountDB } from "@/types/inventory";
 import type { MasterIngredient } from "@/types/master-ingredient";
 import toast from "react-hot-toast";
+import { logActivity } from "@/lib/activity-logger";
 
 // Local storage keys
 const LOCAL_STORAGE_KEY = "inventory_counts";
@@ -485,6 +486,26 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
         ingredient: count.ingredient, // Preserve ingredient info if available
       };
 
+      // Log the activity
+      await logActivity({
+        organization_id: organizationId,
+        user_id: user.id,
+        activity_type: "inventory_updated" as any,
+        details: {
+          action: "count_added",
+          master_ingredient_id: masterIngredientId,
+          quantity: quantity,
+          unit_cost: unitCost,
+          total_value: totalValue,
+          location: count.location,
+          ingredient_name: count.ingredient?.product || "Unknown",
+        },
+        metadata: {
+          category: "inventory",
+          severity: "info",
+        },
+      });
+
       // Instead of just adding the new count, do a full refresh to get all counts
       // This ensures we have the complete and accurate data
       await get().fetchItems(true); // Force refresh to get the latest data including the new count
@@ -562,6 +583,28 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
         );
       }
 
+      // Log the activity
+      await logActivity({
+        organization_id: organizationId,
+        user_id: user.id,
+        activity_type: "inventory_updated" as any,
+        details: {
+          action: "count_updated",
+          count_id: id,
+          changes: Object.keys(updates),
+          ingredient_name: currentCount.ingredient?.product || "Unknown",
+        },
+        metadata: {
+          category: "inventory",
+          severity: "info",
+          diffs: {
+            table_name: "inventory_counts",
+            record_id: id,
+            new_values: updates,
+          },
+        },
+      });
+
       // Refresh the inventory items
       await get().fetchItems();
       toast.success("Inventory count updated successfully");
@@ -586,6 +629,9 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
         throw new Error("No organization ID found");
       }
 
+      // Get count info before deletion for logging
+      const countToDelete = get().items.find((item) => item.id === id);
+
       // Delete the count from the database
       const { error: deleteError } = await supabase
         .from("inventory_counts")
@@ -598,6 +644,23 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
           `Failed to delete inventory count: ${deleteError.message}`,
         );
       }
+
+      // Log the activity
+      await logActivity({
+        organization_id: organizationId,
+        user_id: user.id,
+        activity_type: "inventory_updated" as any,
+        details: {
+          action: "count_deleted",
+          count_id: id,
+          ingredient_name: countToDelete?.ingredient?.product || "Unknown",
+          quantity: countToDelete?.quantity,
+        },
+        metadata: {
+          category: "inventory",
+          severity: "warning",
+        },
+      });
 
       // Refresh the inventory items
       await get().fetchItems();

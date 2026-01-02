@@ -11,6 +11,7 @@ import { parseScheduleCsv } from "@/lib/schedule-parser";
 import { parseScheduleCsvWithMapping } from "@/lib/schedule-parser-enhanced";
 import { matchEmployeeWithTeamMember } from "@/utils/employeeMatching";
 import { Schedule, ScheduleShift } from "@/types/schedule";
+import { logActivity } from "@/lib/activity-logger";
 
 interface ScheduleState {
   shifts: Shift[];
@@ -661,6 +662,26 @@ export const useScheduleStore = create<ScheduleState>()(
             set({ upcomingSchedule: newSchedule });
           }
 
+          // Log the activity
+          await logActivity({
+            organization_id: organizationId,
+            user_id: user.id,
+            activity_type: "schedule_uploaded" as any,
+            details: {
+              schedule_id: newSchedule.id,
+              start_date: options.startDate,
+              end_date: options.endDate,
+              shift_count: shifts.length,
+              source: options.source || "csv",
+              activated_immediately: options.activateImmediately || false,
+              file_name: file.name,
+            },
+            metadata: {
+              category: "team",
+              severity: "info",
+            },
+          });
+
           return newSchedule;
         } catch (error) {
           console.error("Error uploading schedule:", error);
@@ -750,6 +771,23 @@ export const useScheduleStore = create<ScheduleState>()(
               : [...get().previousSchedules],
           });
 
+          // Log the activity
+          await logActivity({
+            organization_id: organizationId,
+            user_id: user.id,
+            activity_type: "schedule_activated" as any,
+            details: {
+              schedule_id: scheduleId,
+              start_date: scheduleToActivate.start_date,
+              end_date: scheduleToActivate.end_date,
+              previous_schedule_id: currentSchedule?.id || null,
+            },
+            metadata: {
+              category: "team",
+              severity: "info",
+            },
+          });
+
           return updatedSchedule;
         } catch (error) {
           console.error("Error activating schedule:", error);
@@ -805,6 +843,18 @@ export const useScheduleStore = create<ScheduleState>()(
         try {
           set({ isLoading: true, error: null });
 
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+          const organizationId = user?.user_metadata?.organizationId;
+
+          // Get schedule info before deletion for logging
+          const { data: scheduleToDelete } = await supabase
+            .from("schedules")
+            .select("*")
+            .eq("id", scheduleId)
+            .single();
+
           // First delete all shifts associated with this schedule
           const { error: shiftsError } = await supabase
             .from("schedule_shifts")
@@ -835,6 +885,25 @@ export const useScheduleStore = create<ScheduleState>()(
               previousSchedules: get().previousSchedules.filter(
                 (s) => s.id !== scheduleId,
               ),
+            });
+          }
+
+          // Log the activity
+          if (organizationId && user) {
+            await logActivity({
+              organization_id: organizationId,
+              user_id: user.id,
+              activity_type: "schedule_deleted" as any,
+              details: {
+                schedule_id: scheduleId,
+                start_date: scheduleToDelete?.start_date,
+                end_date: scheduleToDelete?.end_date,
+                status: scheduleToDelete?.status,
+              },
+              metadata: {
+                category: "team",
+                severity: "warning",
+              },
             });
           }
 
@@ -934,6 +1003,24 @@ export const useScheduleStore = create<ScheduleState>()(
 
           // Update the store state
           set({ upcomingSchedule: newSchedule });
+
+          // Log the activity
+          await logActivity({
+            organization_id: organizationId,
+            user_id: user.id,
+            activity_type: "schedule_synced_7shifts" as any,
+            details: {
+              schedule_id: newSchedule.id,
+              start_date: startDate,
+              end_date: endDate,
+              shift_count: shifts.length,
+              source: "7shifts",
+            },
+            metadata: {
+              category: "team",
+              severity: "info",
+            },
+          });
 
           return newSchedule;
         } catch (error) {

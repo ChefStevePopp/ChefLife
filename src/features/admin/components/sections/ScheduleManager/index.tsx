@@ -1,3 +1,4 @@
+// MODULARIZATION IN PROGRESS - BACKUP EXISTS AS index.backup.tsx IF NEEDED
 import React, { useState, useEffect, useMemo } from "react";
 import {
   Calendar,
@@ -17,9 +18,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import Papa from "papaparse";
 import toast from "react-hot-toast";
-import { supabase } from "@/lib/supabase";
 import { useScheduleStore } from "@/stores/scheduleStore";
 import { ScheduleShift } from "@/types/schedule";
 import {
@@ -31,9 +30,14 @@ import {
   PreviousSchedulesView,
   UpcomingSchedulesView,
 } from "./components";
-import { parseScheduleCsvWithMapping } from "@/lib/schedule-parser-enhanced";
 import { useScheduleMappingStore } from "@/stores/scheduleMappingStore";
 import { MappingManager } from "./components/MappingManager";
+
+import { useScheduleExport } from "./hooks/useScheduleExport";
+import { useScheduleData } from "./hooks/useScheduleData";
+import { useScheduleUpload } from "./hooks/useScheduleUpload";
+import { useScheduleUI } from "./hooks/useScheduleUI";
+import { use7shiftsIntegration } from "./hooks/use7shiftsIntegration";
 
 // Helper function to format time based on user preference
 const formatTime = (timeStr: string, format: "12h" | "24h"): string => {
@@ -88,72 +92,99 @@ const convertTo24Hour = (time12: string): string => {
 };
 
 export const ScheduleManager: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<
-    "current" | "upcoming" | "previous" | "integration" | "config"
-  >("current");
-  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  const [isEmployeeMatchingModalOpen, setIsEmployeeMatchingModalOpen] =
-    useState(false);
-  const [parsedShifts, setParsedShifts] = useState<any[]>([]);
-  const [employeeMatches, setEmployeeMatches] = useState<{
-    [key: string]: any;
-  }>({});
-  const [isUploading, setIsUploading] = useState(false);
-  const [csvFile, setCsvFile] = useState<File | null>(null);
-  const [previewData, setPreviewData] = useState<any[] | null>(null);
-  const [upcomingSchedules, setUpcomingSchedules] = useState<any[]>([]);
-  const [activateImmediately, setActivateImmediately] = useState(false);
-  const [showCSVConfig, setShowCSVConfig] = useState(false);
-  const [selectedMapping, setSelectedMapping] = useState<ColumnMapping | null>(
-    null,
-  );
-  const [timeFormat, setTimeFormat] = useState<"12h" | "24h">("12h");
-  const [startDate, setStartDate] = useState<string>(
-    new Date().toISOString().split("T")[0],
-  );
-  const [endDate, setEndDate] = useState<string>(() => {
-    const date = new Date();
-    date.setDate(date.getDate() + 6); // 7 days total (today + 6)
-    return date.toISOString().split("T")[0];
-  });
-  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(
-    null,
-  );
-  const [sevenShiftsApiKey, setSevenShiftsApiKey] = useState("");
-  const [sevenShiftsLocationId, setSevenShiftsLocationId] = useState("");
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
-  const [autoSync, setAutoSync] = useState(false);
-  const [notifyChanges, setNotifyChanges] = useState(false);
-  const [syncStartDate, setSyncStartDate] = useState<string>(
-    new Date().toISOString().split("T")[0],
-  );
-  const [syncEndDate, setSyncEndDate] = useState<string>(() => {
-    const date = new Date();
-    date.setDate(date.getDate() + 13); // 14 days total (today + 13)
-    return date.toISOString().split("T")[0];
-  });
-  // Track if we've already fetched the current schedule to prevent multiple refreshes
-  const [initialFetchDone, setInitialFetchDone] = useState(false);
-  // Manual schedule navigation - safety override
-  const [allSchedules, setAllSchedules] = useState<any[]>([]);
-  const [manualScheduleId, setManualScheduleId] = useState<string | null>(null);
-
-  // Get the schedule functions and state from the store
+  // UI state hook for tabs, modals, and preferences
   const {
-    uploadSchedule,
-    fetchCurrentSchedule,
-    fetchUpcomingSchedule,
-    fetchShifts,
+    activeTab,
+    setActiveTab,
+    timeFormat,
+    setTimeFormat,
+    isViewModalOpen,
+    openViewModal,
+    closeViewModal,
+    isDeleteModalOpen,
+    openDeleteModal,
+    closeDeleteModal,
+    selectedScheduleId,
+  } = useScheduleUI();
+
+  // 7shifts integration hook
+  const {
+    apiKey: sevenShiftsApiKey,
+    setApiKey: setSevenShiftsApiKey,
+    locationId: sevenShiftsLocationId,
+    setLocationId: setSevenShiftsLocationId,
+    isConnecting,
+    isConnected,
+    autoSync,
+    setAutoSync,
+    notifyChanges,
+    setNotifyChanges,
+    syncStartDate,
+    setSyncStartDate,
+    syncEndDate,
+    setSyncEndDate,
+    testConnection: handleTestConnection,
+    syncSchedule: handleSync7shifts,
+    saveSettings: handleSaveSettings,
+    hasCredentials,
+  } = use7shiftsIntegration();
+
+  // Use the export hook
+  const { exportScheduleToCSV } = useScheduleExport();
+
+  // Use the upload hook for CSV upload workflow
+  const {
+    csvFile,
+    previewData,
+    parsedShifts,
+    isUploading,
+    isUploadModalOpen,
+    isEmployeeMatchingModalOpen,
+    showCSVConfig,
+    selectedMapping,
+    activateImmediately,
+    startDate,
+    endDate,
+    setCsvFile,
+    setPreviewData,
+    setIsUploadModalOpen,
+    setIsEmployeeMatchingModalOpen,
+    setShowCSVConfig,
+    setSelectedMapping,
+    setActivateImmediately,
+    setStartDate,
+    setEndDate,
+    handleFileChange,
+    handleDrop,
+    handleDragOver,
+    handleUpload,
+    handleConfirmMatches,
+  } = useScheduleUpload();
+
+  // Use the data hook for all schedule data operations
+  const {
     currentSchedule,
     scheduleShifts,
+    upcomingSchedules,
+    previousSchedules,
+    allSchedules,
     isLoading,
-    error: scheduleError,
-    testConnection,
-    sync7shiftsSchedule,
-  } = useScheduleStore();
+    initialFetchDone,
+    error,
+    manualScheduleId,
+    setManualScheduleId,
+    fetchCurrentScheduleData,
+    fetchUpcomingSchedulesData,
+    fetchPreviousSchedulesData,
+    fetchShiftsForSchedule,
+    handlePreviousWeek,
+    handleNextWeek,
+    handleManualScheduleChange,
+    refreshCurrentSchedule,
+  } = useScheduleData();
+
+  // Get operation functions from the store (schedule activation only)
+  const { error: scheduleError } = useScheduleStore();
 
   // Get the mapping store functions
   const { mappings, fetchMappings } = useScheduleMappingStore();
@@ -162,52 +193,6 @@ export const ScheduleManager: React.FC = () => {
   useEffect(() => {
     fetchMappings();
   }, [fetchMappings]);
-
-  // Parse CSV file
-  const parseCSVFile = (file: File) => {
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        if (results.errors && results.errors.length > 0) {
-          console.error("Error parsing CSV:", results.errors);
-          toast.error("Error parsing CSV file");
-          return;
-        }
-
-        // Set the parsed data
-        setPreviewData(results.data);
-      },
-      error: (error) => {
-        console.error("Error parsing CSV:", error);
-        toast.error("Failed to parse CSV file");
-      },
-    });
-  };
-
-  // Handle file selection
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setCsvFile(file);
-      parseCSVFile(file);
-    }
-  };
-
-  // Handle file drop
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-      setCsvFile(file);
-      parseCSVFile(file);
-    }
-  };
-
-  // Handle drag events
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-  };
 
   // Save a column mapping
   const handleSaveMapping = (mapping: ColumnMapping) => {
@@ -226,248 +211,6 @@ export const ScheduleManager: React.FC = () => {
       });
   };
 
-  // Handle upload
-  const handleUpload = async () => {
-    if (!csvFile) return;
-
-    setIsUploading(true);
-    try {
-      let shifts;
-
-      // If we have a selected mapping, use it to parse the CSV
-      if (selectedMapping) {
-        shifts = await parseScheduleCsvWithMapping(
-          csvFile,
-          selectedMapping,
-          startDate,
-        );
-      } else {
-        // Otherwise, use the default parser
-        shifts = [];
-        toast.error("Please select or create a CSV mapping first");
-        setIsUploading(false);
-        return;
-      }
-
-      if (shifts.length === 0) {
-        toast.error("No valid shifts found in the CSV file");
-        setIsUploading(false);
-        return;
-      }
-
-      console.log(`Found ${shifts.length} shifts in the uploaded file`);
-
-      // Validate that all shifts have a date
-      const shiftsWithoutDate = shifts.filter((shift) => !shift.date);
-      if (shiftsWithoutDate.length > 0) {
-        console.warn(
-          `Found ${shiftsWithoutDate.length} shifts without dates, adding today's date`,
-        );
-        // Fix shifts without dates by adding today's date
-        const today = new Date().toISOString().split("T")[0];
-        shifts = shifts.map((shift) => ({
-          ...shift,
-          date: shift.date || today,
-        }));
-      }
-
-      // Close the upload modal first, then show the employee matching modal
-      setIsUploadModalOpen(false);
-      setParsedShifts(shifts);
-      setIsEmployeeMatchingModalOpen(true);
-      return; // Stop here and wait for employee matching
-    } catch (error) {
-      console.error("Error uploading schedule:", error);
-      toast.error(scheduleError || "Failed to upload schedule");
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  // Export schedule to CSV
-  const exportScheduleToCSV = async (scheduleId: string) => {
-    try {
-      // Fetch the shifts for this schedule if not already loaded
-      if (selectedScheduleId !== scheduleId) {
-        await fetchShifts(scheduleId);
-        setSelectedScheduleId(scheduleId);
-      }
-
-      // Get the shifts from the store
-      const shifts = useScheduleStore.getState().scheduleShifts;
-
-      if (shifts.length === 0) {
-        toast.error("No shifts found to export");
-        return;
-      }
-
-      // Convert shifts to CSV format
-      const csvData = shifts.map((shift) => ({
-        "Employee Name":
-          `${shift.first_name || ""} ${shift.last_name || ""}`.trim() ||
-          shift.employee_name,
-        Role: shift.role || "",
-        Date: shift.shift_date,
-        "Start Time": shift.start_time,
-        "End Time": shift.end_time,
-        "Break Duration": shift.break_duration || 0,
-        Notes: shift.notes || "",
-      }));
-
-      // Use PapaParse to convert to CSV string
-      const csv = Papa.unparse(csvData);
-
-      // Create a blob and download link
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-
-      // Find the schedule to get date info for the filename
-      const schedule = useScheduleStore
-        .getState()
-        .previousSchedules.find((s) => s.id === scheduleId);
-      const filename = schedule
-        ? `schedule_${schedule.start_date}_to_${schedule.end_date}.csv`
-        : `schedule_export_${new Date().toISOString().split("T")[0]}.csv`;
-
-      link.setAttribute("download", filename);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      toast.success("Schedule exported successfully");
-    } catch (error) {
-      console.error("Error exporting schedule:", error);
-      toast.error("Failed to export schedule");
-    }
-  };
-
-  // Handle 7shifts connection test
-  const handleTestConnection = async () => {
-    if (!sevenShiftsApiKey || !sevenShiftsLocationId) {
-      toast.error("Please enter both API key and location ID");
-      return;
-    }
-
-    setIsConnecting(true);
-    try {
-      // Set credentials in the store
-      useScheduleStore.getState().setCredentials({
-        accessToken: sevenShiftsApiKey,
-        companyId: "7140", // Default company ID
-        locationId: sevenShiftsLocationId,
-      });
-
-      // Test the connection
-      const success = await testConnection();
-
-      if (success) {
-        toast.success("Connection successful!");
-        setIsConnected(true);
-      } else {
-        toast.error("Connection failed. Please check your credentials.");
-        setIsConnected(false);
-      }
-    } catch (error) {
-      console.error("Connection test error:", error);
-      toast.error("Error testing connection");
-      setIsConnected(false);
-    } finally {
-      setIsConnecting(false);
-    }
-  };
-
-  // Handle 7shifts sync
-  const handleSync7shifts = async () => {
-    if (!sevenShiftsApiKey || !sevenShiftsLocationId) {
-      toast.error("Please enter both API key and location ID");
-      return;
-    }
-
-    if (!syncStartDate || !syncEndDate) {
-      toast.error("Please select a date range");
-      return;
-    }
-
-    setIsConnecting(true);
-    try {
-      // First set the credentials
-      useScheduleStore.getState().setCredentials({
-        accessToken: sevenShiftsApiKey,
-        companyId: "7140", // Default company ID
-        locationId: sevenShiftsLocationId,
-      });
-
-      // Try to sync directly first to test the API
-      const shifts = await useScheduleStore
-        .getState()
-        .syncSchedule(syncStartDate, syncEndDate);
-
-      if (shifts && shifts.length > 0) {
-        // If we got shifts, now use the sync7shiftsSchedule to save them to the database
-        await sync7shiftsSchedule(
-          sevenShiftsApiKey,
-          sevenShiftsLocationId,
-          syncStartDate,
-          syncEndDate,
-        );
-        toast.success(
-          `Schedule synced successfully with ${shifts.length} shifts!`,
-        );
-      } else {
-        toast.warning("No shifts found in the selected date range");
-      }
-    } catch (error) {
-      console.error("Sync error:", error);
-      toast.error(scheduleError || "Error syncing schedule");
-    } finally {
-      setIsConnecting(false);
-    }
-  };
-
-  // Handle saving 7shifts settings
-  const handleSaveSettings = () => {
-    // Save settings to localStorage or database
-    localStorage.setItem(
-      "7shifts-settings",
-      JSON.stringify({
-        apiKey: sevenShiftsApiKey,
-        locationId: sevenShiftsLocationId,
-        autoSync,
-        notifyChanges,
-      }),
-    );
-    toast.success("Settings saved successfully");
-  };
-
-  // Load 7shifts settings from localStorage
-  useEffect(() => {
-    const savedSettings = localStorage.getItem("7shifts-settings");
-    if (savedSettings) {
-      try {
-        const settings = JSON.parse(savedSettings);
-        setSevenShiftsApiKey(settings.apiKey || "");
-        setSevenShiftsLocationId(settings.locationId || "");
-        setAutoSync(settings.autoSync || false);
-        setNotifyChanges(settings.notifyChanges || false);
-
-        // If we have credentials, check connection status
-        if (settings.apiKey && settings.locationId) {
-          useScheduleStore.getState().setCredentials({
-            accessToken: settings.apiKey,
-            companyId: "7140",
-            locationId: settings.locationId,
-          });
-          testConnection().then((success) => {
-            setIsConnected(success);
-          });
-        }
-      } catch (error) {
-        console.error("Error loading 7shifts settings:", error);
-      }
-    }
-  }, []);
 
   // Handle activating an upcoming schedule
   const handleActivateUpcoming = async (scheduleId: string) => {
@@ -476,10 +219,9 @@ export const ScheduleManager: React.FC = () => {
       // Call the actual activate function from the store
       await useScheduleStore.getState().activateSchedule(scheduleId);
 
-      // Refresh the schedule data
-      await fetchCurrentSchedule();
-      const schedules = await fetchUpcomingSchedule();
-      setUpcomingSchedules(schedules);
+      // Refresh the schedule data using the hook
+      await refreshCurrentSchedule();
+      await fetchUpcomingSchedulesData();
 
       toast.success("Schedule activated successfully");
     } catch (error) {
@@ -490,139 +232,19 @@ export const ScheduleManager: React.FC = () => {
     }
   };
 
-  // Fetch current schedule when component mounts - only once
-  useEffect(() => {
-    if (!initialFetchDone) {
-      const fetchCurrentScheduleData = async () => {
-        const result = await fetchCurrentSchedule();
-        // Get the latest currentSchedule from the store after fetching
-        const latestSchedule = useScheduleStore.getState().currentSchedule;
-        if (latestSchedule?.id) {
-          await fetchShifts(latestSchedule.id);
-          setManualScheduleId(latestSchedule.id);
-        }
-        
-        // Also load ALL schedules for navigation
-        await loadAllSchedules();
-        
-        setInitialFetchDone(true);
-      };
-      fetchCurrentScheduleData();
-    }
-  }, [initialFetchDone]);
-
-  // DEBUG: Log whenever scheduleShifts changes
-  useEffect(() => {
-    if (scheduleShifts.length > 0) {
-      console.log('=== SCHEDULE SHIFTS CHANGED ===');
-      console.log('Total shifts:', scheduleShifts.length);
-      console.log('Sample shift:', scheduleShifts[0]);
-      console.log('All shift dates:', [...new Set(scheduleShifts.map(s => s.shift_date))].sort());
-    }
-  }, [scheduleShifts]);
-
-  // Load all schedules for manual navigation
-  const loadAllSchedules = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const organizationId = user?.user_metadata?.organizationId;
-
-      if (!organizationId) return;
-
-      // Fetch ALL schedules - current, upcoming, AND previous
-      const { data, error } = await supabase
-        .from("schedules")
-        .select("*")
-        .eq("organization_id", organizationId)
-        .order("start_date", { ascending: false }); // Most recent first
-
-      if (error) {
-        console.error("Error loading schedules:", error);
-        throw error;
-      }
-
-      console.log(`Loaded ${data?.length || 0} total schedules for navigation`);
-      setAllSchedules(data || []);
-    } catch (error) {
-      console.error("Error loading all schedules:", error);
-      toast.error("Failed to load schedule history");
-    }
-  };
-
-  // Navigate to previous week schedule
-  const handlePreviousWeek = async () => {
-    if (allSchedules.length === 0) return;
-    
-    const currentIndex = allSchedules.findIndex(s => s.id === manualScheduleId);
-    const nextIndex = currentIndex + 1; // Next index is previous week (sorted descending)
-    
-    if (nextIndex < allSchedules.length) {
-      const prevSchedule = allSchedules[nextIndex];
-      setManualScheduleId(prevSchedule.id);
-      await fetchShifts(prevSchedule.id);
-      toast.success(`Viewing week of ${prevSchedule.start_date}`);
-    } else {
-      toast.info("No earlier schedules available");
-    }
-  };
-
-  // Navigate to next week schedule
-  const handleNextWeek = async () => {
-    if (allSchedules.length === 0) return;
-    
-    const currentIndex = allSchedules.findIndex(s => s.id === manualScheduleId);
-    const nextIndex = currentIndex - 1; // Previous index is next week (sorted descending)
-    
-    if (nextIndex >= 0) {
-      const nextSchedule = allSchedules[nextIndex];
-      setManualScheduleId(nextSchedule.id);
-      await fetchShifts(nextSchedule.id);
-      toast.success(`Viewing week of ${nextSchedule.start_date}`);
-    } else {
-      toast.info("No later schedules available");
-    }
-  };
-
-  // Handle manual schedule selection from dropdown
-  const handleManualScheduleChange = async (scheduleId: string) => {
-    if (!scheduleId) return;
-    
-    setManualScheduleId(scheduleId);
-    await fetchShifts(scheduleId);
-    
-    const selectedSchedule = allSchedules.find(s => s.id === scheduleId);
-    if (selectedSchedule) {
-      toast.success(`Viewing week of ${selectedSchedule.start_date}`);
-    }
-  };
-
   // Fetch data when tab changes
   useEffect(() => {
-    // Skip the initial fetch for the current tab since we already did it in the mount effect
-    if (activeTab === "current" && initialFetchDone) {
-      // Only fetch if we're switching back to this tab, not on initial load
-      const fetchCurrentScheduleData = async () => {
-        const result = await fetchCurrentSchedule();
-        // Get the latest currentSchedule from the store after fetching
-        const latestSchedule = useScheduleStore.getState().currentSchedule;
-        if (latestSchedule?.id) {
-          await fetchShifts(latestSchedule.id);
-        }
-      };
-      fetchCurrentScheduleData();
-    } else if (activeTab === "upcoming") {
-      fetchUpcomingSchedule().then((schedules) => {
-        setUpcomingSchedules(schedules);
-      });
+    if (!initialFetchDone) return; // Wait for initial data load
+    
+    if (activeTab === "upcoming") {
+      fetchUpcomingSchedulesData();
     } else if (activeTab === "previous") {
-      // Fetch previous schedules when the tab is selected
-      const { fetchPreviousSchedules } = useScheduleStore.getState();
-      fetchPreviousSchedules();
+      fetchPreviousSchedulesData();
     } else if (activeTab === "config") {
-      // Fetch mappings when the config tab is selected
       fetchMappings();
     }
-  }, [activeTab, initialFetchDone]);
+    // Note: "current" tab doesn't need to refetch on switch - data is already loaded
+  }, [activeTab, initialFetchDone, fetchUpcomingSchedulesData, fetchPreviousSchedulesData, fetchMappings]);
 
   // Process shifts to organize them by day - use manual selection
   const days = useMemo(() => {
@@ -706,62 +328,64 @@ export const ScheduleManager: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
+      {/* Header - Responsive */}
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white mb-2">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1 sm:mb-2">
             Schedule Manager
           </h1>
-          <p className="text-gray-400">Upload and manage employee schedules</p>
+          <p className="text-sm sm:text-base text-gray-400">Upload and manage employee schedules</p>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-1 overflow-visible">
+      {/* Tabs - Responsive with horizontal scroll on mobile */}
+      <div className="flex gap-1 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-800/50 -mx-1 px-1">
         <button
           onClick={() => setActiveTab("current")}
-          className={`tab primary whitespace-nowrap ${activeTab === "current" ? "active" : ""}`}
+          className={`tab primary whitespace-nowrap flex-shrink-0 snap-start ${activeTab === "current" ? "active" : ""}`}
         >
           <Calendar
-            className={`w-5 h-5 mr-2 flex-shrink-0 ${activeTab === "current" ? "text-primary-400" : ""}`}
+            className={`w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2 flex-shrink-0 ${activeTab === "current" ? "text-primary-400" : ""}`}
           />
-          <span>Current Schedule</span>
+          <span className="text-sm sm:text-base">Current Schedule</span>
         </button>
         <button
           onClick={() => setActiveTab("upcoming")}
-          className={`tab green whitespace-nowrap ${activeTab === "upcoming" ? "active" : ""}`}
+          className={`tab green whitespace-nowrap flex-shrink-0 snap-start ${activeTab === "upcoming" ? "active" : ""}`}
         >
           <Clock
-            className={`w-5 h-5 mr-2 flex-shrink-0 ${activeTab === "upcoming" ? "text-green-400" : ""}`}
+            className={`w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2 flex-shrink-0 ${activeTab === "upcoming" ? "text-green-400" : ""}`}
           />
-          <span>Upcoming Schedules</span>
+          <span className="text-sm sm:text-base">Upcoming</span>
         </button>
         <button
           onClick={() => setActiveTab("previous")}
-          className={`tab amber whitespace-nowrap ${activeTab === "previous" ? "active" : ""}`}
+          className={`tab amber whitespace-nowrap flex-shrink-0 snap-start ${activeTab === "previous" ? "active" : ""}`}
         >
           <History
-            className={`w-5 h-5 mr-2 flex-shrink-0 ${activeTab === "previous" ? "text-amber-400" : ""}`}
+            className={`w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2 flex-shrink-0 ${activeTab === "previous" ? "text-amber-400" : ""}`}
           />
-          <span>Previous Schedules</span>
+          <span className="text-sm sm:text-base">Previous</span>
         </button>
         <button
           onClick={() => setActiveTab("integration")}
-          className={`tab rose whitespace-nowrap ${activeTab === "integration" ? "active" : ""}`}
+          className={`tab rose whitespace-nowrap flex-shrink-0 snap-start ${activeTab === "integration" ? "active" : ""}`}
         >
           <Link
-            className={`w-5 h-5 mr-2 flex-shrink-0 ${activeTab === "integration" ? "text-rose-400" : ""}`}
+            className={`w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2 flex-shrink-0 ${activeTab === "integration" ? "text-rose-400" : ""}`}
           />
-          <span>7shifts Integration</span>
+          <span className="text-sm sm:text-base hidden sm:inline">7shifts Integration</span>
+          <span className="text-sm sm:text-base sm:hidden">7shifts</span>
         </button>
         <button
           onClick={() => setActiveTab("config")}
-          className={`tab purple whitespace-nowrap ${activeTab === "config" ? "active" : ""}`}
+          className={`tab purple whitespace-nowrap flex-shrink-0 snap-start ${activeTab === "config" ? "active" : ""}`}
         >
           <Settings
-            className={`w-5 h-5 mr-2 flex-shrink-0 ${activeTab === "config" ? "text-purple-400" : ""}`}
+            className={`w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2 flex-shrink-0 ${activeTab === "config" ? "text-purple-400" : ""}`}
           />
-          <span>CSV Configuration</span>
+          <span className="text-sm sm:text-base hidden sm:inline">CSV Configuration</span>
+          <span className="text-sm sm:text-base sm:hidden">CSV</span>
         </button>
       </div>
 
@@ -770,39 +394,39 @@ export const ScheduleManager: React.FC = () => {
         <div className="space-y-6">
           {/* Current Schedule Card */}
           <div className="card p-6">
-            {/* Header Section - Matching Design */}
-            <div className="flex items-center justify-between mb-6 bg-[#262d3c] p-2 rounded-lg shadow-lg">
-              <div className="flex items-center gap-3 p-4 rounded-lg bg-[#262d3c]">
-                <div className="w-10 h-10 rounded-lg bg-primary-500/20 flex items-center justify-center">
+            {/* Header Section - Responsive */}
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6 bg-[#262d3c] p-3 sm:p-4 rounded-lg shadow-lg">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-primary-500/20 flex items-center justify-center flex-shrink-0">
                   <Calendar className="w-5 h-5 text-primary-400" />
                 </div>
-                <div>
-                  <h3 className="text-lg font-medium text-white">
+                <div className="min-w-0">
+                  <h3 className="text-base sm:text-lg font-medium text-white">
                     Current Schedule
                   </h3>
-                  <p className="text-sm text-gray-400">
+                  <p className="text-xs sm:text-sm text-gray-400 truncate">
                     {currentSchedule
                       ? `Week of ${currentSchedule.start_date} - ${currentSchedule.end_date}`
                       : "No active schedule"}
                   </p>
                 </div>
               </div>
-              <div className="flex gap-2 mr-2 items-center">
-                {/* Week Navigation - Safety Override */}
+              <div className="flex flex-wrap gap-2 items-center">
+                {/* Week Navigation - Safety Override - Responsive */}
                 {allSchedules.length > 0 && (
-                  <div className="flex items-center gap-2 mr-2 px-3 py-1.5 bg-gray-700/50 rounded-lg border border-gray-600/50">
+                  <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 bg-gray-700/50 rounded-lg border border-gray-600/50 flex-shrink-0">
                     <button
                       onClick={handlePreviousWeek}
                       className="p-1 hover:bg-gray-600/50 rounded transition-colors"
                       title="Previous week"
                     >
-                      <ChevronLeft className="w-4 h-4 text-gray-300" />
+                      <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4 text-gray-300" />
                     </button>
                     <select
                       value={manualScheduleId || ""}
                       onChange={(e) => handleManualScheduleChange(e.target.value)}
-                      className="bg-transparent border-none text-sm text-gray-300 focus:outline-none cursor-pointer pr-6"
-                      style={{ minWidth: "180px" }}
+                      className="bg-transparent border-none text-xs sm:text-sm text-gray-300 focus:outline-none cursor-pointer pr-4 sm:pr-6"
+                      style={{ minWidth: "140px" }}
                       title={`${allSchedules.length} schedules available`}
                     >
                       {allSchedules.map((schedule) => (
@@ -819,7 +443,7 @@ export const ScheduleManager: React.FC = () => {
                       className="p-1 hover:bg-gray-600/50 rounded transition-colors"
                       title="Next week"
                     >
-                      <ChevronRight className="w-4 h-4 text-gray-300" />
+                      <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4 text-gray-300" />
                     </button>
                   </div>
                 )}
@@ -827,25 +451,46 @@ export const ScheduleManager: React.FC = () => {
                   timeFormat={timeFormat}
                   onChange={setTimeFormat}
                 />
-                <button className="btn-ghost">
+                <button 
+                  onClick={() => currentSchedule && exportScheduleToCSV(currentSchedule.id)}
+                  disabled={!currentSchedule}
+                  className="btn-ghost text-sm hidden md:flex"
+                >
                   <Download className="w-4 h-4 mr-2" />
                   Export
                 </button>
+                <button 
+                  onClick={() => currentSchedule && exportScheduleToCSV(currentSchedule.id)}
+                  disabled={!currentSchedule}
+                  className="btn-ghost text-sm md:hidden p-2"
+                >
+                  <Download className="w-4 h-4" />
+                </button>
                 {currentSchedule && (
-                  <button
-                    onClick={() => setIsDeleteModalOpen(true)}
-                    className="btn-ghost-red"
-                  >
-                    <Trash className="w-4 h-4 mr-2" />
-                    Delete Schedule
-                  </button>
+                  <>
+                    <button
+                      onClick={openDeleteModal}
+                      className="btn-ghost-red text-sm hidden md:flex"
+                    >
+                      <Trash className="w-4 h-4 mr-2" />
+                      Delete
+                    </button>
+                    <button
+                      onClick={openDeleteModal}
+                      className="btn-ghost-red text-sm md:hidden p-2"
+                      title="Delete Schedule"
+                    >
+                      <Trash className="w-4 h-4" />
+                    </button>
+                  </>
                 )}
                 <button
                   onClick={() => setIsUploadModalOpen(true)}
-                  className="btn-primary"
+                  className="btn-primary text-sm"
                 >
                   <Upload className="w-4 h-4 mr-2" />
-                  Upload Schedule
+                  <span className="hidden sm:inline">Upload Schedule</span>
+                  <span className="sm:hidden">Upload</span>
                 </button>
               </div>
             </div>
@@ -914,16 +559,14 @@ export const ScheduleManager: React.FC = () => {
             onActivate={handleActivateUpcoming}
             onExport={exportScheduleToCSV}
             onView={async (scheduleId) => {
-              setSelectedScheduleId(scheduleId);
-              await fetchShifts(scheduleId);
-              setIsViewModalOpen(true);
+              await fetchShiftsForSchedule(scheduleId);
+              openViewModal(scheduleId);
             }}
             onDelete={async (scheduleId) => {
               const success = await useScheduleStore.getState().deleteSchedule(scheduleId);
               if (success) {
                 toast.success("Upcoming schedule deleted successfully");
-                const schedules = await fetchUpcomingSchedule();
-                setUpcomingSchedules(schedules);
+                await fetchUpcomingSchedulesData();
               } else {
                 toast.error("Failed to delete upcoming schedule");
               }
@@ -957,16 +600,15 @@ export const ScheduleManager: React.FC = () => {
           <PreviousSchedulesView
             schedules={useScheduleStore.getState().previousSchedules}
             onView={async (scheduleId) => {
-              setSelectedScheduleId(scheduleId);
-              await fetchShifts(scheduleId);
-              setIsViewModalOpen(true);
+              await fetchShiftsForSchedule(scheduleId);
+              openViewModal(scheduleId);
             }}
             onExport={exportScheduleToCSV}
             onDelete={async (scheduleId) => {
               const success = await useScheduleStore.getState().deleteSchedule(scheduleId);
               if (success) {
                 toast.success("Schedule deleted successfully");
-                await useScheduleStore.getState().fetchPreviousSchedules();
+                await fetchPreviousSchedulesData();
               } else {
                 toast.error("Failed to delete schedule");
               }
@@ -1020,9 +662,7 @@ export const ScheduleManager: React.FC = () => {
               </div>
               <button
                 onClick={handleTestConnection}
-                disabled={
-                  isConnecting || !sevenShiftsApiKey || !sevenShiftsLocationId
-                }
+                disabled={isConnecting || !hasCredentials}
                 className="btn-primary bg-green-500 hover:bg-green-600 disabled:bg-gray-700 disabled:text-gray-500"
               >
                 {isConnecting
@@ -1338,60 +978,15 @@ export const ScheduleManager: React.FC = () => {
           role: shift.role,
         }))}
         onConfirmMatches={async (matches) => {
-          setEmployeeMatches(matches);
-          setIsEmployeeMatchingModalOpen(false);
-
-          try {
-            setIsUploading(true);
-
-            // Apply the matches to the parsed shifts
-            const matchedShifts = parsedShifts.map((shift) => {
-              const match = matches[shift.employee_name];
-              if (match) {
-                return {
-                  ...shift,
-                  employee_id: match.punch_id || match.id,
-                  first_name: match.first_name,
-                  last_name: match.last_name,
-                  punch_id: match.punch_id,
-                };
-              }
-              return shift;
-            });
-
-            console.log(
-              `Uploading ${matchedShifts.length} shifts to schedule store`,
-            );
-
-            // Call the actual upload function from the store with the matched shifts
-            await uploadSchedule(csvFile, {
-              startDate: startDate,
-              endDate: endDate,
-              activateImmediately: activateImmediately,
-              source: "csv",
-              selectedMapping: selectedMapping,
-              matchedShifts: matchedShifts,
-            });
-
-            // Refresh the schedule data
+          const success = await handleConfirmMatches(matches);
+          
+          // Refresh data after successful upload
+          if (success) {
             if (activateImmediately) {
-              await fetchCurrentSchedule();
+              await refreshCurrentSchedule();
             } else {
-              const schedules = await fetchUpcomingSchedule();
-              setUpcomingSchedules(schedules);
+              await fetchUpcomingSchedulesData();
             }
-
-            toast.success(
-              `Schedule uploaded successfully as ${activateImmediately ? "current" : "upcoming"} schedule`,
-            );
-            setCsvFile(null);
-            setPreviewData(null);
-            setIsUploadModalOpen(false);
-          } catch (error) {
-            console.error("Error uploading schedule:", error);
-            toast.error(scheduleError || "Failed to upload schedule");
-          } finally {
-            setIsUploading(false);
           }
         }}
       />
@@ -1417,7 +1012,7 @@ export const ScheduleManager: React.FC = () => {
                   Export
                 </button>
                 <button
-                  onClick={() => setIsViewModalOpen(false)}
+                  onClick={closeViewModal}
                   className="text-gray-400 hover:text-white"
                 >
                   <X className="w-5 h-5" />
@@ -1596,7 +1191,7 @@ export const ScheduleManager: React.FC = () => {
 
             <div className="p-4 border-t border-gray-800 flex justify-end">
               <button
-                onClick={() => setIsViewModalOpen(false)}
+                onClick={closeViewModal}
                 className="btn-secondary"
               >
                 Close
@@ -1817,7 +1412,7 @@ export const ScheduleManager: React.FC = () => {
               </p>
               <div className="flex justify-center gap-3">
                 <button
-                  onClick={() => setIsDeleteModalOpen(false)}
+                  onClick={closeDeleteModal}
                   className="btn-secondary"
                 >
                   Cancel
@@ -1830,9 +1425,9 @@ export const ScheduleManager: React.FC = () => {
                         .deleteSchedule(currentSchedule.id);
                       if (success) {
                         toast.success("Schedule deleted successfully");
-                        setIsDeleteModalOpen(false);
-                        // Refresh the current schedule
-                        await fetchCurrentSchedule();
+                        closeDeleteModal();
+                        // Refresh the current schedule using hook
+                        await refreshCurrentSchedule();
                       } else {
                         toast.error("Failed to delete schedule");
                       }
