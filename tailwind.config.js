@@ -77,7 +77,20 @@ export default {
         'fluid-normal': 'clamp(1.5, calc(1.5 + 0.25vw), 1.75)',
         'fluid-relaxed': 'clamp(1.625, calc(1.625 + 0.375vw), 2)',
         'fluid-loose': 'clamp(2, calc(2 + 0.5vw), 2.5)',
-      }
+      },
+      animation: {
+        'gradient-x': 'gradient-x 3s ease infinite',
+      },
+      keyframes: {
+        'gradient-x': {
+          '0%, 100%': {
+            'background-position': '0% 50%',
+          },
+          '50%': {
+            'background-position': '100% 50%',
+          },
+        },
+      },
     },
   },
   plugins: [],

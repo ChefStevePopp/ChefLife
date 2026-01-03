@@ -194,6 +194,9 @@ select::-ms-expand {
     &.primary::before {
       @apply bg-primary-500;
     }
+    &.cyan::before {
+      @apply bg-cyan-500;
+    }
     &.green::before {
       @apply bg-green-500;
     }
@@ -216,6 +219,9 @@ select::-ms-expand {
     &:not(.active).primary svg {
       @apply text-primary-500/60;
     }
+    &:not(.active).cyan svg {
+      @apply text-cyan-500/60;
+    }
     &:not(.active).green svg {
       @apply text-green-500/60;
     }
@@ -237,6 +243,9 @@ select::-ms-expand {
     /* Tab icon colors - active state */
     &.active.primary svg {
       @apply text-primary-500;
+    }
+    &.active.cyan svg {
+      @apply text-cyan-500;
     }
     &.active.green svg {
       @apply text-green-500;

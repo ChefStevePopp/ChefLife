@@ -1,0 +1,438 @@
+/**
+ * NEXUS - ChefLife Central Notification System
+ * 
+ * The single source of truth for all activity logging, notifications,
+ * and communication throughout the platform.
+ * 
+ * "Hey Team Guy - this crap happened when you weren't here"
+ */
+
+import { supabase } from "@/lib/supabase";
+import toast from "react-hot-toast";
+import React from "react";
+import { AlertTriangle, CheckCircle, XCircle } from "lucide-react";
+
+// =============================================================================
+// TYPES
+// =============================================================================
+
+export type ActivityCategory = 
+  | 'recipes'
+  | 'inventory'
+  | 'team'
+  | 'organization'
+  | 'financial'
+  | 'security'
+  | 'system'
+  | 'alerts';
+
+export type ActivitySeverity = 'info' | 'warning' | 'critical';
+
+export type ActivityType =
+  // Team activities
+  | "team_member_added"
+  | "team_member_updated"
+  | "team_member_removed"
+  | "team_member_deactivated"
+  | "team_member_reactivated"
+  | "role_assigned"
+  | "role_removed"
+  | "bulk_team_import"
+  | "bulk_team_deactivated"
+  | "bulk_team_reactivated"
+  | "bulk_team_removed"
+  // Recipe activities
+  | "recipe_created"
+  | "recipe_updated"
+  | "recipe_deleted"
+  | "recipe_status_changed"
+  // Schedule activities
+  | "schedule_uploaded"
+  | "schedule_activated"
+  | "schedule_deleted"
+  | "schedule_synced_7shifts"
+  // Inventory activities
+  | "inventory_updated"
+  | "inventory_counted"
+  | "inventory_adjusted"
+  | "inventory_imported"
+  | "inventory_low_stock"
+  | "inventory_critical_low"
+  // Vendor/Purchasing activities
+  | "invoice_imported"
+  | "price_change_detected"
+  | "vendor_added"
+  // Settings activities
+  | "settings_changed"
+  | "permissions_changed"
+  | "notification_preferences_updated"
+  // Task activities
+  | "task_completed"
+  | "task_created"
+  | "task_assigned"
+  // Security activities
+  | "login"
+  | "logout"
+  | "password_changed"
+  | "security_protocol_changed"
+  | "security_protocol_promoted"
+  | "security_protocol_demoted"
+  // System activities
+  | "maintenance_due"
+  | "system_error";
+
+export interface NexusEvent {
+  organization_id: string;
+  user_id: string;
+  activity_type: ActivityType;
+  details: Record<string, any>;
+  metadata?: Record<string, any>;
+  
+  // Optional overrides (auto-derived if not provided)
+  severity?: ActivitySeverity;
+  message?: string;
+  requires_acknowledgment?: boolean;
+}
+
+// =============================================================================
+// CATEGORY MAPPING
+// =============================================================================
+
+const ACTIVITY_TYPE_TO_CATEGORY: Record<ActivityType, ActivityCategory> = {
+  // Team
+  team_member_added: 'team',
+  team_member_updated: 'team',
+  team_member_removed: 'team',
+  team_member_deactivated: 'team',
+  team_member_reactivated: 'team',
+  role_assigned: 'team',
+  role_removed: 'team',
+  bulk_team_import: 'team',
+  bulk_team_deactivated: 'team',
+  bulk_team_reactivated: 'team',
+  bulk_team_removed: 'team',
+  schedule_uploaded: 'team',
+  schedule_activated: 'team',
+  schedule_deleted: 'team',
+  schedule_synced_7shifts: 'team',
+  
+  // Recipes
+  recipe_created: 'recipes',
+  recipe_updated: 'recipes',
+  recipe_deleted: 'recipes',
+  recipe_status_changed: 'recipes',
+  
+  // Inventory
+  inventory_updated: 'inventory',
+  inventory_counted: 'inventory',
+  inventory_adjusted: 'inventory',
+  inventory_imported: 'inventory',
+  inventory_low_stock: 'inventory',
+  inventory_critical_low: 'inventory',
+  
+  // Financial
+  invoice_imported: 'financial',
+  price_change_detected: 'financial',
+  vendor_added: 'financial',
+  
+  // System
+  settings_changed: 'system',
+  permissions_changed: 'system',
+  notification_preferences_updated: 'system',
+  task_completed: 'system',
+  task_created: 'system',
+  task_assigned: 'system',
+  maintenance_due: 'system',
+  system_error: 'system',
+  
+  // Security
+  login: 'security',
+  logout: 'security',
+  password_changed: 'security',
+  security_protocol_changed: 'security',
+  security_protocol_promoted: 'security',
+  security_protocol_demoted: 'security',
+};
+
+// =============================================================================
+// CATEGORY COLORS (for toasts)
+// =============================================================================
+
+const CATEGORY_COLORS: Record<ActivityCategory, string> = {
+  recipes: '#f59e0b',      // amber-500
+  inventory: '#3b82f6',    // blue-500
+  team: '#22c55e',         // green-500
+  organization: '#a855f7', // purple-500
+  financial: '#10b981',    // emerald-500
+  security: '#f43f5e',     // rose-500
+  system: '#6b7280',       // gray-500
+  alerts: '#eab308',       // yellow-500
+};
+
+// =============================================================================
+// TOAST CONFIGURATION
+// =============================================================================
+
+interface ToastConfig {
+  message: string | ((details: Record<string, any>) => string);
+  severity?: ActivitySeverity;
+  silent?: boolean; // No toast at all
+}
+
+const ACTIVITY_TOAST_CONFIG: Partial<Record<ActivityType, ToastConfig | null>> = {
+  // Team - Success messages
+  team_member_added: { 
+    message: (d) => `${d.name || 'Team member'} added to the roster` 
+  },
+  team_member_updated: { 
+    message: (d) => `${d.name || 'Team member'} updated` 
+  },
+  team_member_removed: { 
+    message: (d) => `${d.name || 'Team member'} removed from roster` 
+  },
+  team_member_deactivated: { 
+    message: (d) => `${d.name || 'Team member'} deactivated`,
+    severity: 'warning'
+  },
+  team_member_reactivated: { 
+    message: (d) => `${d.name || 'Team member'} reactivated` 
+  },
+  bulk_team_import: { 
+    message: (d) => `${d.imported || 0} team members imported` 
+  },
+  bulk_team_deactivated: { 
+    message: (d) => `${d.count || 0} team members deactivated`,
+    severity: 'warning'
+  },
+  bulk_team_reactivated: { 
+    message: (d) => `${d.count || 0} team members reactivated` 
+  },
+  bulk_team_removed: { 
+    message: (d) => `${d.count || 0} team members removed`,
+    severity: 'warning'
+  },
+  
+  // Schedule
+  schedule_uploaded: { 
+    message: 'Schedule uploaded successfully' 
+  },
+  schedule_activated: { 
+    message: (d) => `Schedule "${d.name || 'Untitled'}" is now active` 
+  },
+  schedule_synced_7shifts: { 
+    message: 'Schedule synced with 7shifts' 
+  },
+  
+  // Recipes
+  recipe_created: { 
+    message: (d) => `Recipe "${d.name || 'Untitled'}" created` 
+  },
+  recipe_updated: { 
+    message: (d) => `Recipe "${d.name || 'Untitled'}" updated` 
+  },
+  recipe_deleted: { 
+    message: (d) => `Recipe "${d.name || 'Untitled'}" deleted`,
+    severity: 'warning'
+  },
+  
+  // Inventory
+  inventory_updated: { 
+    message: 'Inventory updated' 
+  },
+  inventory_counted: { 
+    message: 'Inventory count saved' 
+  },
+  inventory_imported: { 
+    message: (d) => `${d.count || 0} inventory items imported` 
+  },
+  inventory_low_stock: { 
+    message: (d) => `Low stock: ${d.item || 'Unknown item'}`,
+    severity: 'warning'
+  },
+  inventory_critical_low: { 
+    message: (d) => `Critical: ${d.item || 'Unknown item'} needs restocking`,
+    severity: 'critical'
+  },
+  
+  // Financial
+  invoice_imported: { 
+    message: (d) => `Invoice from ${d.vendor || 'vendor'} imported` 
+  },
+  price_change_detected: { 
+    message: (d) => `Price change detected: ${d.item || 'item'}`,
+    severity: 'warning'
+  },
+  
+  // System - mostly silent
+  settings_changed: { 
+    message: 'Settings updated' 
+  },
+  task_completed: { 
+    message: (d) => `Task "${d.name || 'Untitled'}" completed` 
+  },
+  maintenance_due: { 
+    message: (d) => `Maintenance due: ${d.equipment || 'Equipment'}`,
+    severity: 'warning'
+  },
+  
+  // Security
+  login: null, // silent
+  logout: null, // silent
+  password_changed: { 
+    message: 'Password updated successfully' 
+  },
+  security_protocol_changed: {
+    message: (d) => `${d.member_name || 'Team member'} assigned to ${d.new_protocol || 'new protocol'}`,
+  },
+  security_protocol_promoted: {
+    message: (d) => `${d.member_name || 'Team member'} promoted to ${d.new_protocol || 'new protocol'}`,
+    severity: 'warning', // Important change, should be noticed
+  },
+  security_protocol_demoted: {
+    message: (d) => `${d.member_name || 'Team member'} demoted to ${d.new_protocol || 'new protocol'}`,
+    severity: 'warning', // Important change, should be noticed
+  },
+};
+
+// =============================================================================
+// NEXUS CORE
+// =============================================================================
+
+/**
+ * Log an activity through Nexus
+ * This is the SINGLE entry point for all activity logging in ChefLife
+ */
+export const nexus = async (event: NexusEvent): Promise<void> => {
+  const { 
+    organization_id, 
+    user_id, 
+    activity_type, 
+    details, 
+    metadata = {},
+    severity: overrideSeverity,
+    message: overrideMessage,
+    requires_acknowledgment: overrideAck,
+  } = event;
+
+  try {
+    // 1. Derive category and config
+    const category = ACTIVITY_TYPE_TO_CATEGORY[activity_type] || 'system';
+    const toastConfig = ACTIVITY_TOAST_CONFIG[activity_type];
+    
+    // 2. Determine severity
+    const severity = overrideSeverity || toastConfig?.severity || 'info';
+    
+    // 3. Determine if acknowledgment required (critical/warning by default)
+    const requires_acknowledgment = overrideAck ?? (severity === 'critical' || severity === 'warning');
+
+    // 4. Build the message
+    let message = overrideMessage;
+    if (!message && toastConfig?.message) {
+      message = typeof toastConfig.message === 'function' 
+        ? toastConfig.message(details) 
+        : toastConfig.message;
+    }
+    if (!message) {
+      // Fallback: humanize the activity type
+      message = activity_type
+        .split('_')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+    }
+
+    // 5. Get user name for logging
+    let userName = details.user_name;
+    if (!userName) {
+      const { data: userData } = await supabase
+        .from("organization_team_members")
+        .select("first_name, last_name")
+        .eq("user_id", user_id)
+        .single();
+
+      if (userData) {
+        userName = `${userData.first_name} ${userData.last_name}`;
+      }
+    }
+
+    // 6. Insert activity log
+    const { data: logData, error } = await supabase
+      .from("activity_logs")
+      .insert([{
+        organization_id,
+        user_id,
+        activity_type,
+        category,
+        severity,
+        message,
+        requires_acknowledgment,
+        details: { ...details, user_name: userName },
+        metadata,
+      }])
+      .select("id")
+      .single();
+
+    if (error) {
+      console.error("Nexus: Error inserting activity log:", error);
+      throw error;
+    }
+
+    // 7. Handle diffs if present
+    if (metadata.diffs && logData?.id) {
+      const { table_name, record_id, old_values, new_values, diff } = metadata.diffs;
+
+      if (table_name && record_id) {
+        await supabase
+          .from("activity_stream_diffs")
+          .insert([{
+            activity_log_id: logData.id,
+            organization_id,
+            table_name,
+            record_id,
+            old_values: old_values || {},
+            new_values: new_values || {},
+            diff: diff || {},
+          }]);
+      }
+    }
+
+    // 8. Fire toast (if not silent)
+    if (toastConfig !== null) {
+      const color = CATEGORY_COLORS[category];
+      
+      if (severity === 'critical') {
+        toast.error(message, {
+          icon: React.createElement(XCircle, { className: 'w-5 h-5 text-rose-500' }),
+          style: { borderLeftColor: color },
+          duration: 7000, // Longer for critical
+        });
+      } else if (severity === 'warning') {
+        toast(message, {
+          icon: React.createElement(AlertTriangle, { className: 'w-5 h-5 text-amber-500' }),
+          style: { borderLeftColor: color },
+          duration: 6000,
+        });
+      } else {
+        toast.success(message, {
+          icon: React.createElement(CheckCircle, { className: 'w-5 h-5 text-green-500' }),
+          style: { borderLeftColor: color },
+        });
+      }
+    }
+
+    // 9. Future: Push notifications, email, SMS routing would go here
+    // await routeNotifications(event, logData.id);
+
+  } catch (err) {
+    console.error("Nexus: Error processing event:", err);
+    // Don't throw - we don't want to break the main flow if logging fails
+  }
+};
+
+// =============================================================================
+// CONVENIENCE EXPORTS
+// =============================================================================
+
+export { ACTIVITY_TYPE_TO_CATEGORY, CATEGORY_COLORS, ACTIVITY_TOAST_CONFIG };
+
+// Legacy compatibility - wraps the old logActivity calls
+export const logActivity = nexus;

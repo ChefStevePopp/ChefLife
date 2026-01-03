@@ -27,8 +27,10 @@ import {
   Briefcase,
   Scale,
   Eye,
+  Lock,
   type LucideIcon,
 } from "lucide-react";
+import { type SecurityLevel, SECURITY_LEVELS } from "@/config/security";
 
 export interface MenuItem {
   icon: LucideIcon;
@@ -37,16 +39,31 @@ export interface MenuItem {
   tooltip?: string;
   disabled?: boolean;
   comingSoon?: boolean;
+  /** Minimum security level required to see this item (lower = more access) */
+  minSecurityLevel?: SecurityLevel;
 }
 
 export interface MenuSection {
   id: string;
   label?: string;
   items: MenuItem[];
+  /** Minimum security level required to see this section */
+  minSecurityLevel?: SecurityLevel;
 }
 
-export const menuItems = (isDev: boolean): MenuSection[] => {
-  const items: MenuSection[] = [
+/**
+ * Generate menu items based on user's security level
+ * @param isDev - Legacy flag, now derived from security level
+ * @param securityLevel - User's protocol level (0=Omega, 1=Alpha, etc.)
+ */
+export const menuItems = (isDev: boolean, securityLevel: SecurityLevel = SECURITY_LEVELS.ECHO): MenuSection[] => {
+  // Helper to check if user can see an item
+  const canSee = (minLevel?: SecurityLevel) => {
+    if (minLevel === undefined) return true;
+    return securityLevel <= minLevel; // Lower number = higher access
+  };
+
+  const allSections: MenuSection[] = [
     {
       id: "account",
       items: [
@@ -116,10 +133,11 @@ export const menuItems = (isDev: boolean): MenuSection[] => {
           tooltip: "How we communicate",
         },
         {
-          icon: Eye,
+          icon: Lock,
           label: "App Access",
-          path: "/admin/permissions",
-          tooltip: "What they can see in the app",
+          path: "/admin/app-access",
+          tooltip: "Security protocols & feature access",
+          minSecurityLevel: SECURITY_LEVELS.ALPHA, // Ω and α only
         },
       ],
     },
@@ -180,9 +198,9 @@ export const menuItems = (isDev: boolean): MenuSection[] => {
     },
   ];
 
-  // Add Dev Management section only for dev users
-  if (isDev) {
-    items.push({
+  // Add Dev Management section only for Omega (0) users
+  if (securityLevel === SECURITY_LEVELS.OMEGA) {
+    allSections.push({
       id: "dev",
       label: "DEVELOPMENT",
       items: [
@@ -195,5 +213,12 @@ export const menuItems = (isDev: boolean): MenuSection[] => {
     });
   }
 
-  return items;
+  // Filter sections and items based on security level
+  return allSections
+    .filter(section => canSee(section.minSecurityLevel))
+    .map(section => ({
+      ...section,
+      items: section.items.filter(item => canSee(item.minSecurityLevel))
+    }))
+    .filter(section => section.items.length > 0); // Remove empty sections
 };

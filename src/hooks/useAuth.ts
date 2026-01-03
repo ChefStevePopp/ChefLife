@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import type { User } from "@supabase/supabase-js";
 import toast from "react-hot-toast";
+import { SECURITY_LEVELS, type SecurityLevel } from "@/config/security";
 
 interface Organization {
   id: string;
@@ -10,9 +11,16 @@ interface Organization {
   settings?: any;
 }
 
+interface TeamMemberProfile {
+  id: string;
+  security_level: SecurityLevel;
+  kitchen_role?: string;
+}
+
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
+  const [teamMemberProfile, setTeamMemberProfile] = useState<TeamMemberProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -36,6 +44,7 @@ export function useAuth() {
       } else {
         setUser(null);
         setOrganization(null);
+        setTeamMemberProfile(null);
         setIsLoading(false);
       }
     });
@@ -80,6 +89,10 @@ export function useAuth() {
         if (!error && data) {
           console.log("[useAuth] Organization found:", data);
           setOrganization(data);
+          
+          // Fetch team member profile for security level
+          await fetchTeamMemberProfile(orgId, currentUser.email);
+          
           setIsLoading(false);
           return;
         } else {
@@ -109,6 +122,9 @@ export function useAuth() {
         if (!orgError && orgData) {
           console.log("[useAuth] Organization found from roles:", orgData);
           setOrganization(orgData);
+          
+          // Fetch team member profile for security level
+          await fetchTeamMemberProfile(roleData.organization_id, currentUser.email);
         } else {
           console.error("[useAuth] Error fetching org by role ID:", orgError);
         }
@@ -125,23 +141,50 @@ export function useAuth() {
     }
   };
 
+  const fetchTeamMemberProfile = async (orgId: string, email?: string | null) => {
+    if (!email) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from("organization_team_members")
+        .select("id, security_level, kitchen_role")
+        .eq("organization_id", orgId)
+        .eq("email", email)
+        .single();
+
+      if (!error && data) {
+        console.log("[useAuth] Team member profile found:", data);
+        setTeamMemberProfile({
+          id: data.id,
+          security_level: (data.security_level ?? SECURITY_LEVELS.ECHO) as SecurityLevel,
+          kitchen_role: data.kitchen_role,
+        });
+      } else {
+        console.log("[useAuth] No team member profile found, defaulting to Echo");
+        // User exists but not in team_members table - default to lowest access
+        setTeamMemberProfile(null);
+      }
+    } catch (error) {
+      console.error("[useAuth] Error fetching team member profile:", error);
+    }
+  };
+
   // Get display name from metadata
   const displayName = user
     ? `${user.user_metadata?.firstName || ""} ${user.user_metadata?.lastName || ""}`.trim()
     : "";
 
-  // Check if user has dev system role
-  const isDev = Boolean(
-    user?.user_metadata?.system_role === "dev" ||
-      user?.user_metadata?.role === "dev",
-  );
+  // Security level from team member profile, or check for dev in metadata
+  const securityLevel: SecurityLevel = 
+    user?.user_metadata?.system_role === "dev" || user?.user_metadata?.role === "dev"
+      ? SECURITY_LEVELS.OMEGA  // Dev = Omega (0)
+      : (teamMemberProfile?.security_level ?? SECURITY_LEVELS.ECHO); // Default to Echo (5)
 
-  // Check if user has admin access
-  const hasAdminAccess = Boolean(
-    isDev ||
-      user?.user_metadata?.role === "owner" ||
-      user?.user_metadata?.role === "admin",
-  );
+  // Check if user has dev system role (Omega)
+  const isDev = securityLevel === SECURITY_LEVELS.OMEGA;
+
+  // Check if user has admin access (Omega, Alpha, or Bravo)
+  const hasAdminAccess = securityLevel <= SECURITY_LEVELS.BRAVO;
 
   const signIn = async (email: string, password: string, rememberMe = true) => {
     try {
@@ -180,5 +223,9 @@ export function useAuth() {
     signIn,
     signOut,
     error: null,
+    // New security fields
+    securityLevel,
+    teamMemberId: teamMemberProfile?.id || null,
+    kitchenRole: teamMemberProfile?.kitchen_role || null,
   };
 }

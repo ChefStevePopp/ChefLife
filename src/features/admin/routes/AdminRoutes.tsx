@@ -26,7 +26,7 @@ export const AdminRoutes: React.FC = () => {
         <Route path="recipes" element={<RecipeManager />} />
         <Route path="team" element={<TeamManagement />} />
         <Route path="schedule/*" element={<ScheduleManager />} />
-        <Route path="permissions" element={<PermissionsManager />} />
+        <Route path="app-access" element={<PermissionsManager />} />
         <Route path="notifications" element={<NotificationCenter />} />
         <Route path="help" element={<HelpSupport />} />
         <Route path="excel-imports" element={<ExcelImports />} />

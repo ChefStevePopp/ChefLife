@@ -1,12 +1,59 @@
 import React, { useState, useEffect } from "react";
-import { Plus, Trash2, ChefHat, Briefcase, Building2 } from "lucide-react";
+import { Plus, Trash2, ChefHat, Briefcase, Building2, Loader2 } from "lucide-react";
 import type { TeamMember } from "../../../types";
 import { supabase } from "@/lib/supabase";
+import { ImportedBadge } from "@/shared/components/ImportedBadge";
 
 interface RolesTabProps {
   formData: TeamMember;
   setFormData: (data: TeamMember) => void;
 }
+
+// Section header component - consistent with L5 design system
+const SectionHeader: React.FC<{
+  icon: React.ElementType;
+  iconColor: string;
+  bgColor: string;
+  title: string;
+  subtitle: string;
+  action?: React.ReactNode;
+  badge?: React.ReactNode;
+}> = ({ icon: Icon, iconColor, bgColor, title, subtitle, action, badge }) => (
+  <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-700/50">
+    <div className="flex items-center gap-3">
+      <div className={`w-10 h-10 rounded-lg ${bgColor} flex items-center justify-center flex-shrink-0`}>
+        <Icon className={`w-5 h-5 ${iconColor}`} />
+      </div>
+      <div>
+        <div className="flex items-center gap-2">
+          <h3 className="text-base font-semibold text-white">{title}</h3>
+          {badge}
+        </div>
+        <p className="text-sm text-gray-400">{subtitle}</p>
+      </div>
+    </div>
+    {action}
+  </div>
+);
+
+// Empty state component
+const EmptyState: React.FC<{ message: string }> = ({ message }) => (
+  <div className="text-sm text-gray-500 text-center py-6 bg-gray-800/30 rounded-lg border border-dashed border-gray-700">
+    {message}
+  </div>
+);
+
+// Add button component
+const AddButton: React.FC<{ onClick: () => void; color: string }> = ({ onClick, color }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-${color}-400 hover:text-${color}-300 hover:bg-${color}-500/10 rounded-lg transition-colors`}
+  >
+    <Plus className="w-4 h-4" />
+    Add
+  </button>
+);
 
 export const RolesTab: React.FC<RolesTabProps> = ({
   formData,
@@ -20,10 +67,7 @@ export const RolesTab: React.FC<RolesTabProps> = ({
     const fetchKitchenStations = async () => {
       setIsLoading(true);
       try {
-        // Get the organization ID from the current user
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+        const { data: { user } } = await supabase.auth.getUser();
         const organizationId = user?.user_metadata?.organizationId;
 
         if (!organizationId) {
@@ -31,7 +75,6 @@ export const RolesTab: React.FC<RolesTabProps> = ({
           return;
         }
 
-        // Fetch operations settings
         const { data, error } = await supabase
           .from("operations_settings")
           .select("kitchen_stations")
@@ -43,9 +86,7 @@ export const RolesTab: React.FC<RolesTabProps> = ({
           return;
         }
 
-        // Extract kitchen stations
-        const stations = data?.kitchen_stations || [];
-        setKitchenStations(stations);
+        setKitchenStations(data?.kitchen_stations || []);
       } catch (error) {
         console.error("Error fetching kitchen stations:", error);
       } finally {
@@ -56,36 +97,24 @@ export const RolesTab: React.FC<RolesTabProps> = ({
     fetchKitchenStations();
   }, []);
 
-  const addWorkstationRole = () => {
+  // Role functions
+  const addRole = () => {
     setFormData({
       ...formData,
       roles: [...(formData.roles || []), ""],
     });
   };
 
-  const updateWorkstationRole = (index: number, value: string) => {
+  const updateRole = (index: number, value: string) => {
     const newRoles = [...(formData.roles || [])];
     newRoles[index] = value;
     setFormData({ ...formData, roles: newRoles });
   };
 
-  const removeWorkstationRole = (index: number) => {
+  const removeRole = (index: number) => {
     const newRoles = [...(formData.roles || [])];
     newRoles.splice(index, 1);
     setFormData({ ...formData, roles: newRoles });
-  };
-
-  const handleStationToggle = (station: string) => {
-    const currentStations = [...(formData.kitchen_stations || [])];
-    const stationIndex = currentStations.indexOf(station);
-
-    if (stationIndex >= 0) {
-      currentStations.splice(stationIndex, 1);
-    } else {
-      currentStations.push(station);
-    }
-
-    setFormData({ ...formData, kitchen_stations: currentStations });
   };
 
   // Department functions
@@ -108,185 +137,177 @@ export const RolesTab: React.FC<RolesTabProps> = ({
     setFormData({ ...formData, departments: newDepartments });
   };
 
+  // Station toggle
+  const handleStationToggle = (station: string) => {
+    const currentStations = [...(formData.kitchen_stations || [])];
+    const stationIndex = currentStations.indexOf(station);
+
+    if (stationIndex >= 0) {
+      currentStations.splice(stationIndex, 1);
+    } else {
+      currentStations.push(station);
+    }
+
+    setFormData({ ...formData, kitchen_stations: currentStations });
+  };
+
+  const selectedStationsCount = (formData.kitchen_stations || []).length;
+  
+  // Check if this member was imported (their departments/roles came from import)
+  const isImported = !!formData.import_source && formData.import_source !== 'manual';
+
   return (
-    <div className="space-y-6">
-      {/* Departments Section */}
-      <div>
-        <div className="flex justify-between items-center mb-4">
-          <div className="flex items-center gap-2">
-            <Building2 className="w-4 h-4 text-amber-400" />
-            <h3 className="text-sm font-medium text-gray-300">Departments</h3>
-          </div>
-          <button
-            type="button"
-            onClick={addDepartment}
-            className="text-amber-400 hover:text-amber-300 p-1 hover:bg-gray-800 rounded transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
+    <div className="space-y-8">
+      {/* Section: Departments */}
+      <section className="bg-gray-800/30 rounded-xl p-5 border border-gray-700/30">
+        <SectionHeader
+          icon={Building2}
+          iconColor="text-amber-400"
+          bgColor="bg-amber-500/20"
+          title="Departments"
+          subtitle="Which teams they belong to"
+          action={<AddButton onClick={addDepartment} color="amber" />}
+          badge={isImported && (formData.departments?.length || 0) > 0 ? (
+            <ImportedBadge source={formData.import_source} compact />
+          ) : undefined}
+        />
+
+        <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+          {(formData.departments || []).length > 0 ? (
+            (formData.departments || []).map((dept, index) => (
+              <div key={index} className="flex gap-2 group">
+                <input
+                  type="text"
+                  value={dept}
+                  onChange={(e) => updateDepartment(index, e.target.value)}
+                  className="input flex-1 min-w-0"
+                  placeholder="e.g., Kitchen, Front of House, Management"
+                  autoFocus={dept === ""}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeDepartment(index)}
+                  className="p-2.5 text-gray-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors opacity-50 group-hover:opacity-100 flex-shrink-0"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))
+          ) : (
+            <EmptyState message="No departments assigned. Click Add to assign this person to a department." />
+          )}
         </div>
-        <div className="space-y-2">
-          {(formData.departments || []).map((dept, index) => (
-            <div key={index} className="flex gap-2">
-              <input
-                type="text"
-                value={dept}
-                onChange={(e) => updateDepartment(index, e.target.value)}
-                className="input flex-1 text-sm"
-                placeholder="Enter department name"
-              />
-              <button
-                type="button"
-                onClick={() => removeDepartment(index)}
-                className="text-gray-400 hover:text-rose-400 p-2 hover:bg-gray-800/50 rounded transition-colors"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          ))}
-          {(formData.departments || []).length === 0 && (
-            <div className="text-sm text-gray-500 text-center py-2">
-              No departments assigned
-            </div>
+      </section>
+
+      {/* Section: Scheduled Roles */}
+      <section className="bg-gray-800/30 rounded-xl p-5 border border-gray-700/30">
+        <SectionHeader
+          icon={Briefcase}
+          iconColor="text-green-400"
+          bgColor="bg-green-500/20"
+          title="Scheduled Roles"
+          subtitle="Job titles used for scheduling"
+          action={<AddButton onClick={addRole} color="green" />}
+          badge={isImported && (formData.roles?.length || 0) > 0 ? (
+            <ImportedBadge source={formData.import_source} compact />
+          ) : undefined}
+        />
+
+        <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+          {(formData.roles || []).length > 0 ? (
+            (formData.roles || []).map((role, index) => (
+              <div key={index} className="flex gap-2 group">
+                <input
+                  type="text"
+                  value={role}
+                  onChange={(e) => updateRole(index, e.target.value)}
+                  className="input flex-1 min-w-0"
+                  placeholder="e.g., Line Cook, Server, Bartender, Dishwasher"
+                  autoFocus={role === ""}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeRole(index)}
+                  className="p-2.5 text-gray-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors opacity-50 group-hover:opacity-100 flex-shrink-0"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))
+          ) : (
+            <EmptyState message="No roles assigned. Click Add to define their scheduling roles." />
           )}
         </div>
 
-        <div className="bg-amber-500/10 rounded-lg p-4 mt-4">
-          <div className="flex items-start gap-3">
-            <Building2 className="w-5 h-5 text-amber-400 mt-0.5" />
-            <div>
-              <h4 className="text-sm font-medium text-amber-400">
-                About Departments
-              </h4>
-              <p className="text-sm text-gray-400 mt-1">
-                Departments help organize team members into functional groups. A
-                team member can belong to multiple departments and will receive
-                notifications and updates relevant to their assigned
-                departments.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+        <p className="mt-3 text-xs text-gray-500">
+          These roles appear on schedules and help organize shifts. One person can have multiple roles.
+        </p>
+      </section>
 
-      {/* Scheduled Team Roles */}
-      <div>
-        <div className="flex items-center gap-2 mb-4">
-          <Briefcase className="w-4 h-4 text-green-400" />
-          <h3 className="text-sm font-medium text-gray-300">
-            Scheduled Team Role(s)
-          </h3>
-        </div>
-
-        <div className="bg-green-500/10 rounded-lg p-4 mb-4">
-          <p className="text-sm text-gray-300">
-            These roles are used for scheduling purposes and represent the team
-            member's position in the kitchen schedule. A team member can have
-            multiple roles for different shifts.
-          </p>
-        </div>
-
-        <div className="flex justify-between items-center mb-4">
-          <h4 className="text-sm font-medium text-gray-400">Assigned Roles</h4>
-          <button
-            type="button"
-            onClick={addWorkstationRole}
-            className="text-green-400 hover:text-green-300 p-1 hover:bg-gray-800 rounded transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="space-y-2">
-          {(formData.roles || []).map((role, index) => (
-            <div key={index} className="flex gap-2">
-              <input
-                type="text"
-                value={role}
-                onChange={(e) => updateWorkstationRole(index, e.target.value)}
-                className="input flex-1 text-sm"
-                placeholder="Enter role (e.g., Line Cook, Prep Cook, Dishwasher)"
-              />
-              <button
-                type="button"
-                onClick={() => removeWorkstationRole(index)}
-                className="text-gray-400 hover:text-rose-400 p-2 hover:bg-gray-800/50 rounded transition-colors"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          ))}
-          {(formData.roles || []).length === 0 && (
-            <div className="text-sm text-gray-500 text-center py-2">
-              No scheduled roles added
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Kitchen Stations */}
-      <div>
-        <div className="flex items-center gap-2 mb-4">
-          <ChefHat className="w-4 h-4 text-blue-400" />
-          <h3 className="text-sm font-medium text-gray-300">
-            Kitchen Stations
-          </h3>
-        </div>
-
-        <div className="bg-blue-500/10 rounded-lg p-4 mb-4">
-          <p className="text-sm text-gray-300">
-            Kitchen stations represent the physical areas in the kitchen where
-            this team member is trained to work. These stations are configured
-            in Organization Settings and are used for scheduling and task
-            assignments.
-          </p>
-        </div>
+      {/* Section: Kitchen Stations */}
+      <section className="bg-gray-800/30 rounded-xl p-5 border border-gray-700/30">
+        <SectionHeader
+          icon={ChefHat}
+          iconColor="text-primary-400"
+          bgColor="bg-primary-500/20"
+          title="Kitchen Stations"
+          subtitle={selectedStationsCount > 0 
+            ? `Trained on ${selectedStationsCount} station${selectedStationsCount > 1 ? 's' : ''}`
+            : "Where they can work"
+          }
+        />
 
         {isLoading ? (
-          <div className="p-4 bg-gray-800/50 rounded-lg text-center">
-            <div className="animate-spin h-5 w-5 border-2 border-primary-500 border-t-transparent rounded-full mx-auto"></div>
-            <p className="text-gray-400 text-sm mt-2">Loading stations...</p>
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-6 h-6 text-primary-400 animate-spin" />
+            <span className="ml-2 text-gray-400">Loading stations...</span>
           </div>
         ) : kitchenStations.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-            {kitchenStations.map((station) => (
-              <div
-                key={station}
-                className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg hover:bg-gray-800 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
-                    <ChefHat className="w-4 h-4 text-blue-400" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {kitchenStations.map((station) => {
+              const isSelected = (formData.kitchen_stations || []).includes(station);
+              return (
+                <button
+                  key={station}
+                  type="button"
+                  onClick={() => handleStationToggle(station)}
+                  className={`flex items-center gap-3 p-3 rounded-lg border transition-all text-left ${
+                    isSelected
+                      ? 'bg-primary-500/20 border-primary-500/50 ring-1 ring-primary-500/30'
+                      : 'bg-gray-800/50 border-gray-700/50 hover:border-gray-600 hover:bg-gray-800'
+                  }`}
+                >
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                    isSelected ? 'bg-primary-500/30' : 'bg-gray-700/50'
+                  }`}>
+                    <ChefHat className={`w-4 h-4 ${isSelected ? 'text-primary-400' : 'text-gray-500'}`} />
                   </div>
-                  <div>
-                    <h5 className="font-medium text-white">{station}</h5>
-                  </div>
-                </div>
-                <div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="sr-only peer"
-                      checked={(formData.kitchen_stations || []).includes(
-                        station,
-                      )}
-                      onChange={() => handleStationToggle(station)}
-                    />
-                    <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-                  </label>
-                </div>
-              </div>
-            ))}
+                  <span className={`font-medium ${isSelected ? 'text-white' : 'text-gray-400'}`}>
+                    {station}
+                  </span>
+                  {isSelected && (
+                    <div className="ml-auto w-5 h-5 rounded-full bg-primary-500 flex items-center justify-center">
+                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
         ) : (
-          <div className="p-4 bg-gray-800/50 rounded-lg text-center">
-            <p className="text-gray-400 text-sm">
-              No kitchen stations configured. Add stations in Organization
-              Settings under Operations Variables.
+          <div className="text-center py-6 bg-gray-800/30 rounded-lg border border-dashed border-gray-700">
+            <ChefHat className="w-8 h-8 text-gray-600 mx-auto mb-2" />
+            <p className="text-sm text-gray-500">
+              No kitchen stations configured yet.
+            </p>
+            <p className="text-xs text-gray-600 mt-1">
+              Add stations in Organization Settings → Operations Variables
             </p>
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 };

@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { menuItems, type MenuItem } from "./menuItems";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { SECURITY_LEVELS, type SecurityLevel } from "@/config/security";
 
 interface AdminSidebarProps {
   onToggleCollapse?: (collapsed: boolean) => void;
@@ -30,9 +31,12 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   onToggleCollapse,
 }) => {
   const location = useLocation();
-  const { isDev } = useAuth();
+  const { isDev, securityLevel } = useAuth();
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const items = menuItems(isDev);
+  
+  // Use security level from auth, default to Echo (5) if not set
+  const userSecurityLevel: SecurityLevel = (securityLevel ?? SECURITY_LEVELS.ECHO) as SecurityLevel;
+  const items = menuItems(isDev, userSecurityLevel);
 
   const toggleSidebar = () => {
     const newCollapsedState = !isCollapsed;

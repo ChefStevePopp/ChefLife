@@ -38,6 +38,52 @@ function App() {
 
   return (
     <ErrorBoundary>
+      <Toaster
+        position="top-center"
+        containerStyle={{
+          top: 100,
+        }}
+        toastOptions={{
+          duration: 5000,
+          style: {
+            background: 'rgba(31, 41, 55, 0.95)',
+            color: '#f3f4f6',
+            border: '1px solid rgba(75, 85, 99, 0.5)',
+            backdropFilter: 'blur(8px)',
+            borderRadius: '0.75rem',
+            padding: '12px 16px',
+            fontSize: '14px',
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)',
+          },
+          success: {
+            style: {
+              borderLeft: '4px solid #38bdf8',
+            },
+            iconTheme: {
+              primary: '#38bdf8',
+              secondary: '#f3f4f6',
+            },
+          },
+          error: {
+            style: {
+              borderLeft: '4px solid #fb7185',
+            },
+            iconTheme: {
+              primary: '#fb7185',
+              secondary: '#f3f4f6',
+            },
+          },
+          loading: {
+            style: {
+              borderLeft: '4px solid #fbbf24',
+            },
+            iconTheme: {
+              primary: '#fbbf24',
+              secondary: '#f3f4f6',
+            },
+          },
+        }}
+      />
       <div className="min-h-screen h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 overflow-hidden">
         <Routes>
           {/* Auth Routes */}
@@ -95,14 +141,6 @@ function App() {
         {import.meta.env.VITE_TEMPO &&
           window.location.pathname.startsWith("/tempobook") &&
           tempoRoutes}
-
-        <Toaster
-          position="top-right"
-          toastOptions={{
-            className: "bg-gray-800 text-white",
-            duration: 3000,
-          }}
-        />
       </div>
     </ErrorBoundary>
   );

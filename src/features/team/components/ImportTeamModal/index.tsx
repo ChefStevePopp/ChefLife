@@ -7,11 +7,14 @@ import {
   AlertTriangle,
   CheckCircle,
   UserX,
+  RefreshCw,
+  UserPlus,
 } from "lucide-react";
 import { useTeamStore } from "@/stores/teamStore";
 import { useDropzone } from "react-dropzone";
 import Papa from "papaparse";
 import toast from "react-hot-toast";
+import type { ImportSummary } from "../../types";
 
 interface ImportTeamModalProps {
   isOpen?: boolean;
@@ -23,14 +26,14 @@ export const ImportTeamModal: React.FC<ImportTeamModalProps> = ({
   onClose,
 }) => {
   const { importTeamMembers, executeTeamImport } = useTeamStore();
+  const [file, setFile] = useState<File | null>(null);
   const [fileData, setFileData] = useState<any[] | null>(null);
   const [fileName, setFileName] = useState<string>("");
   const [previewData, setPreviewData] = useState<any[] | null>(null);
-  const [importSummary, setImportSummary] = useState<any | null>(null);
+  const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
   const [missingAction, setMissingAction] = useState<'keep' | 'inactive' | 'delete'>('inactive');
 
   const downloadTemplate = () => {
-    // Simplified - just create example CSV
     const csvContent = "First Name,Last name,Email,Mobile phone,Punch ID,Locations,Departments,Roles\n" +
       "John,Smith,john@example.com,555-0123,EMP001,Main Location,Kitchen,Line Cook";
 
@@ -47,13 +50,14 @@ export const ImportTeamModal: React.FC<ImportTeamModalProps> = ({
   };
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    const file = acceptedFiles[0];
-    if (!file) return;
+    const droppedFile = acceptedFiles[0];
+    if (!droppedFile) return;
 
-    setFileName(file.name);
+    setFile(droppedFile);
+    setFileName(droppedFile.name);
 
     try {
-      const text = await file.text();
+      const text = await droppedFile.text();
       Papa.parse(text, {
         header: true,
         skipEmptyLines: true,
@@ -66,26 +70,18 @@ export const ImportTeamModal: React.FC<ImportTeamModalProps> = ({
           const firstRow = results.data[0] as any;
           const headers = Object.keys(firstRow);
 
-          // Check if it's a 7shifts export
-          const is7shifts =
-            headers.includes("First Name") && headers.includes("Last name");
-
+          const is7shifts = headers.includes("First Name") && headers.includes("Last name");
           if (!is7shifts) {
             toast.error("Please use a 7shifts employee export CSV");
             return;
           }
 
-          // Validate required columns
-          const hasRequired =
-            headers.includes("First Name") &&
-            headers.includes("Last name");
-
+          const hasRequired = headers.includes("First Name") && headers.includes("Last name");
           if (!hasRequired) {
             toast.error("CSV must have First Name and Last name columns");
             return;
           }
 
-          // Create preview of first 5 rows
           const preview = results.data.slice(0, 5).map((row: any) => ({
             name: `${row["First Name"] || ""} ${row["Last name"] || ""}`.trim(),
             email: row["Email"] || "—",
@@ -96,13 +92,10 @@ export const ImportTeamModal: React.FC<ImportTeamModalProps> = ({
           setPreviewData(preview);
           setFileData(results.data);
 
-          // Process import to get summary
           try {
             const summary = await importTeamMembers(results.data);
             setImportSummary(summary);
-            toast.success(
-              `Found ${results.data.length} team members in CSV`
-            );
+            toast.success(`Found ${results.data.length} team members in CSV`);
           } catch (error) {
             console.error("Error analyzing CSV:", error);
             toast.error("Failed to analyze CSV file");
@@ -121,22 +114,23 @@ export const ImportTeamModal: React.FC<ImportTeamModalProps> = ({
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: {
-      "text/csv": [".csv"],
-    },
+    accept: { "text/csv": [".csv"] },
     multiple: false,
   });
 
   const handleConfirmImport = async () => {
-    if (!importSummary) return;
+    if (!importSummary || !file) return;
 
     try {
       const missingIds = importSummary.notInCSV.map((m: any) => m.id);
       await executeTeamImport(
         importSummary.newMembers,
         missingAction,
-        missingIds
+        missingIds,
+        file,
+        importSummary.existingToUpdate
       );
+      setFile(null);
       setFileData(null);
       setPreviewData(null);
       setFileName("");
@@ -148,6 +142,7 @@ export const ImportTeamModal: React.FC<ImportTeamModalProps> = ({
   };
 
   const handleCancel = () => {
+    setFile(null);
     setFileData(null);
     setPreviewData(null);
     setFileName("");
@@ -155,17 +150,25 @@ export const ImportTeamModal: React.FC<ImportTeamModalProps> = ({
     onClose?.();
   };
 
+  const resetFile = () => {
+    setFile(null);
+    setFileData(null);
+    setPreviewData(null);
+    setFileName("");
+    setImportSummary(null);
+  };
+
   if (!isOpen) return null;
+
+  const totalToProcess = (importSummary?.newMembers.length || 0) + (importSummary?.updateCount || 0);
+  const hasAnythingToImport = totalToProcess > 0;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-800 rounded-xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-semibold text-white">Import Team Data</h2>
-          <button
-            onClick={handleCancel}
-            className="text-gray-400 hover:text-white"
-          >
+          <button onClick={handleCancel} className="text-gray-400 hover:text-white">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -177,9 +180,7 @@ export const ImportTeamModal: React.FC<ImportTeamModalProps> = ({
               <div className="flex items-start gap-3">
                 <FileSpreadsheet className="w-5 h-5 text-primary-400 flex-shrink-0 mt-1" />
                 <div className="flex-1">
-                  <h3 className="text-sm font-medium text-white mb-1">
-                    7shifts Export
-                  </h3>
+                  <h3 className="text-sm font-medium text-white mb-1">7shifts Export</h3>
                   <p className="text-sm text-gray-400 mb-3">
                     Export your employee list from 7shifts and upload here.
                   </p>
@@ -209,72 +210,105 @@ export const ImportTeamModal: React.FC<ImportTeamModalProps> = ({
                 <p className="text-primary-400">Drop the file here...</p>
               ) : (
                 <div className="space-y-2">
-                  <p className="text-gray-300">
-                    Drag & drop your 7shifts CSV file here, or click to select
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    Supports 7shifts employee exports
-                  </p>
+                  <p className="text-gray-300">Drag & drop your 7shifts CSV file here, or click to select</p>
+                  <p className="text-sm text-gray-500">Supports 7shifts employee exports</p>
                 </div>
               )}
             </div>
           </>
-        ) : importSummary?.needsConfirmation ? (
+        ) : (
           <>
-            {/* Confirmation Screen */}
+            {/* Single Confirmation Screen */}
             <div className="space-y-6">
+              {/* File info header */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-medium text-white mb-1">Ready to Import</h3>
+                  <p className="text-sm text-gray-400">{fileName} • {fileData.length} records in CSV</p>
+                </div>
+                <button onClick={resetFile} className="text-sm text-gray-400 hover:text-white">
+                  Choose different file
+                </button>
+              </div>
+
+              {/* Import Summary Card */}
               <div className="bg-gray-900/50 rounded-lg p-4">
-                <h3 className="text-lg font-semibold text-white mb-4">
-                  Import Summary
-                </h3>
+                <h3 className="text-base font-semibold text-white mb-4">Import Summary</h3>
                 <div className="space-y-3">
+                  {/* New members */}
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-300">New members to add:</span>
+                    <span className="text-gray-300 flex items-center gap-2">
+                      <UserPlus className="w-4 h-4 text-green-400" />
+                      New members to add:
+                    </span>
                     <span className="text-green-400 font-semibold">
-                      {importSummary.newMembers.length}
+                      {importSummary?.newMembers.length || 0}
                     </span>
                   </div>
+                  
+                  {/* Existing to update */}
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-300">Existing members:</span>
-                    <span className="text-gray-400">
-                      {importSummary.duplicateCount}
+                    <span className="text-gray-300 flex items-center gap-2">
+                      <RefreshCw className="w-4 h-4 text-blue-400" />
+                      Existing members to update:
+                    </span>
+                    <span className="text-blue-400 font-semibold">
+                      {importSummary?.updateCount || 0}
                     </span>
                   </div>
+                  
+                  {/* Not in CSV */}
                   <div className="flex items-center justify-between border-t border-gray-700 pt-3">
                     <span className="text-gray-300 flex items-center gap-2">
                       <UserX className="w-4 h-4 text-rose-400" />
                       Not in CSV (86'd):
                     </span>
                     <span className="text-rose-400 font-semibold">
-                      {importSummary.notInCSV.length}
+                      {importSummary?.notInCSV.length || 0}
                     </span>
                   </div>
                 </div>
               </div>
 
-              {/* Missing Members List */}
-              {importSummary.notInCSV.length > 0 && (
+              {/* Update explanation */}
+              {(importSummary?.updateCount || 0) > 0 && (
+                <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <RefreshCw className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-sm font-medium text-blue-300 mb-1">
+                        Existing Members Will Be Updated
+                      </h4>
+                      <p className="text-sm text-gray-400">
+                        {importSummary?.updateCount} existing team members match records in your CSV (by email or punch ID). 
+                        Their name, contact info, departments, and roles will be synced from the CSV.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Missing Members Section */}
+              {(importSummary?.notInCSV.length || 0) > 0 && (
                 <div className="bg-rose-500/10 border border-rose-500/20 rounded-lg p-4">
-                  <div className="flex items-start gap-3 mb-3">
+                  <div className="flex items-start gap-3">
                     <AlertTriangle className="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5" />
                     <div className="flex-1">
                       <h4 className="text-sm font-medium text-rose-300 mb-2">
-                        Members Not in New CSV
+                        Members Not in CSV
                       </h4>
-                      <div className="space-y-1 mb-4">
-                        {importSummary.notInCSV.slice(0, 5).map((member: any) => (
+                      <div className="space-y-1 mb-4 max-h-32 overflow-y-auto">
+                        {importSummary?.notInCSV.slice(0, 10).map((member: any) => (
                           <div key={member.id} className="text-sm text-gray-300">
                             • {member.display_name || `${member.first_name} ${member.last_name}`}
                             {member.email && (
-                              <span className="text-gray-500 ml-2">
-                                ({member.email})
-                              </span>
+                              <span className="text-gray-500 ml-2">({member.email})</span>
                             )}
                           </div>
                         ))}
-                        {importSummary.notInCSV.length > 5 && (
+                        {(importSummary?.notInCSV.length || 0) > 10 && (
                           <div className="text-sm text-gray-500">
-                            ... and {importSummary.notInCSV.length - 5} more
+                            ... and {(importSummary?.notInCSV.length || 0) - 10} more
                           </div>
                         )}
                       </div>
@@ -294,9 +328,7 @@ export const ImportTeamModal: React.FC<ImportTeamModalProps> = ({
                               onChange={(e) => setMissingAction(e.target.value as 'keep')}
                               className="text-primary-600"
                             />
-                            <span className="text-sm text-gray-300">
-                              Keep them active (no change)
-                            </span>
+                            <span className="text-sm text-gray-300">Keep them active (no change)</span>
                           </label>
                           <label className="flex items-center gap-2 cursor-pointer">
                             <input
@@ -307,9 +339,7 @@ export const ImportTeamModal: React.FC<ImportTeamModalProps> = ({
                               onChange={(e) => setMissingAction(e.target.value as 'inactive')}
                               className="text-primary-600"
                             />
-                            <span className="text-sm text-gray-300">
-                              Mark as deactivated (recommended)
-                            </span>
+                            <span className="text-sm text-gray-300">Mark as deactivated (recommended)</span>
                           </label>
                           <label className="flex items-center gap-2 cursor-pointer">
                             <input
@@ -320,9 +350,7 @@ export const ImportTeamModal: React.FC<ImportTeamModalProps> = ({
                               onChange={(e) => setMissingAction(e.target.value as 'delete')}
                               className="text-primary-600"
                             />
-                            <span className="text-sm text-gray-300">
-                              Delete permanently
-                            </span>
+                            <span className="text-sm text-gray-300">Delete permanently</span>
                           </label>
                         </div>
                       </div>
@@ -330,114 +358,48 @@ export const ImportTeamModal: React.FC<ImportTeamModalProps> = ({
                   </div>
                 </div>
               )}
-            </div>
-
-            {/* Confirmation Actions */}
-            <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-gray-700">
-              <button onClick={handleCancel} className="btn-ghost text-sm">
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmImport}
-                className="btn-primary text-sm"
-              >
-                <CheckCircle className="w-4 h-4 mr-2" />
-                Confirm Import
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            {/* Preview Screen (no missing members) */}
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-sm font-medium text-white mb-1">
-                    Preview
-                  </h3>
-                  <p className="text-sm text-gray-400">
-                    {fileName} • {fileData.length} team members
-                  </p>
-                </div>
-                <button
-                  onClick={() => {
-                    setFileData(null);
-                    setPreviewData(null);
-                    setFileName("");
-                    setImportSummary(null);
-                  }}
-                  className="text-sm text-gray-400 hover:text-white"
-                >
-                  Choose different file
-                </button>
-              </div>
-
-              {/* Summary */}
-              {importSummary && (
-                <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4 mb-4">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-5 h-5 text-green-400" />
-                    <div className="text-sm text-green-300">
-                      {importSummary.newMembers.length} new members to add
-                      {importSummary.duplicateCount > 0 && (
-                        <span className="text-gray-400 ml-2">
-                          ({importSummary.duplicateCount} already exist)
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {/* Preview Table */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-700">
-                      <th className="text-left py-2 px-3 text-gray-400 font-medium">
-                        Name
-                      </th>
-                      <th className="text-left py-2 px-3 text-gray-400 font-medium">
-                        Email
-                      </th>
-                      <th className="text-left py-2 px-3 text-gray-400 font-medium">
-                        Punch ID
-                      </th>
-                      <th className="text-left py-2 px-3 text-gray-400 font-medium">
-                        Departments
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {previewData?.map((row, idx) => (
-                      <tr key={idx} className="border-b border-gray-800">
-                        <td className="py-2 px-3 text-white">{row.name}</td>
-                        <td className="py-2 px-3 text-gray-300">{row.email}</td>
-                        <td className="py-2 px-3 text-gray-300">
-                          {row.punchId}
-                        </td>
-                        <td className="py-2 px-3 text-gray-300 truncate max-w-xs">
-                          {row.departments}
-                        </td>
+              <div>
+                <h4 className="text-sm font-medium text-gray-300 mb-2">Preview (first 5 rows)</h4>
+                <div className="overflow-x-auto bg-gray-900/30 rounded-lg">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-700">
+                        <th className="text-left py-2 px-3 text-gray-400 font-medium">Name</th>
+                        <th className="text-left py-2 px-3 text-gray-400 font-medium">Email</th>
+                        <th className="text-left py-2 px-3 text-gray-400 font-medium">Punch ID</th>
+                        <th className="text-left py-2 px-3 text-gray-400 font-medium">Departments</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {previewData?.map((row, idx) => (
+                        <tr key={idx} className="border-b border-gray-800">
+                          <td className="py-2 px-3 text-white">{row.name}</td>
+                          <td className="py-2 px-3 text-gray-300">{row.email}</td>
+                          <td className="py-2 px-3 text-gray-300">{row.punchId}</td>
+                          <td className="py-2 px-3 text-gray-300 truncate max-w-xs">{row.departments}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
 
             {/* Actions */}
             <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-gray-700">
-              <button onClick={handleCancel} className="btn-ghost text-sm">
-                Cancel
-              </button>
+              <button onClick={handleCancel} className="btn-ghost text-sm">Cancel</button>
               <button
                 onClick={handleConfirmImport}
                 className="btn-primary text-sm"
-                disabled={!importSummary}
+                disabled={!hasAnythingToImport}
               >
-                <Upload className="w-4 h-4 mr-2" />
-                Import {importSummary?.newMembers.length || 0} Team Members
+                <CheckCircle className="w-4 h-4 mr-2" />
+                {hasAnythingToImport 
+                  ? `Import ${totalToProcess} Team Member${totalToProcess !== 1 ? 's' : ''}`
+                  : 'Nothing to Import'
+                }
               </button>
             </div>
           </>

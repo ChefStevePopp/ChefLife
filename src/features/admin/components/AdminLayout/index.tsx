@@ -3,12 +3,29 @@ import { useNavigate, Outlet } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { AdminSidebar } from "../AdminSidebar";
 import { UserMenu } from "@/shared/components/UserMenu";
+import { LiveClock } from "@/shared/components/LiveClock";
 import { ROUTES } from "@/config/routes";
 
 export const AdminLayout: React.FC = () => {
   const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const clockRef = useRef<HTMLDivElement>(null);
+
+  // Update CSS variable for toast position based on clock location
+  useEffect(() => {
+    const updateToastPosition = () => {
+      if (clockRef.current) {
+        const rect = clockRef.current.getBoundingClientRect();
+        const topOffset = rect.bottom + 12; // 12px gap below clock
+        document.documentElement.style.setProperty('--toast-top-offset', `${topOffset}px`);
+      }
+    };
+
+    updateToastPosition();
+    window.addEventListener('resize', updateToastPosition);
+    return () => window.removeEventListener('resize', updateToastPosition);
+  }, []);
 
   // Save scroll position before unmount
   useEffect(() => {
@@ -56,8 +73,15 @@ export const AdminLayout: React.FC = () => {
                 className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
               >
                 <ArrowLeft className="w-5 h-5" />
-                Return to Main Dashboard
+                <span className="hidden sm:inline">Return to Main Dashboard</span>
+                <span className="sm:hidden">Back</span>
               </button>
+              
+              {/* Eye of Sauron - Centered Clock with Toast Drop Zone */}
+              <div ref={clockRef} className="hidden md:flex flex-col items-center">
+                <LiveClock />
+              </div>
+              
               <UserMenu />
             </div>
           </div>
