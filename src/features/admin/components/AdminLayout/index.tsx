@@ -6,11 +6,18 @@ import { UserMenu } from "@/shared/components/UserMenu";
 import { LiveClock } from "@/shared/components/LiveClock";
 import { ROUTES } from "@/config/routes";
 
+// Rail = 72px, Expanded panel = 224px (w-56)
+const RAIL_WIDTH = 72;
+const PANEL_WIDTH = 224;
+
 export const AdminLayout: React.FC = () => {
   const navigate = useNavigate();
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
   const contentRef = useRef<HTMLDivElement>(null);
   const clockRef = useRef<HTMLDivElement>(null);
+
+  // Calculate sidebar width based on collapsed state
+  const sidebarWidth = isSidebarCollapsed ? RAIL_WIDTH : RAIL_WIDTH + PANEL_WIDTH;
 
   // Update CSS variable for toast position based on clock location
   useEffect(() => {
@@ -57,41 +64,41 @@ export const AdminLayout: React.FC = () => {
 
   return (
     <div className="h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 overflow-hidden">
-      <div className="flex h-full">
-        <div
-          className={`${isCollapsed ? "w-20" : "w-64"} transition-all duration-300 flex-shrink-0`}
-        >
-          <AdminSidebar
-            onToggleCollapse={(collapsed) => setIsCollapsed(collapsed)}
-          />
-        </div>
-        <div className="flex-1 h-full overflow-hidden w-full flex flex-col">
-          <div className="sticky top-0 z-40 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800 p-3">
-            <div className="flex justify-between items-center">
-              <button
-                onClick={() => navigate(ROUTES.KITCHEN.DASHBOARD)}
-                className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
-              >
-                <ArrowLeft className="w-5 h-5" />
-                <span className="hidden sm:inline">Return to Main Dashboard</span>
-                <span className="sm:hidden">Back</span>
-              </button>
-              
-              {/* Eye of Sauron - Centered Clock with Toast Drop Zone */}
-              <div ref={clockRef} className="hidden md:flex flex-col items-center">
-                <LiveClock />
-              </div>
-              
-              <UserMenu />
+      {/* Fixed Sidebar */}
+      <div className="fixed left-0 top-0 h-screen z-50">
+        <AdminSidebar onToggleCollapse={setIsSidebarCollapsed} />
+      </div>
+      
+      {/* Main Content - shifts based on sidebar width */}
+      <div 
+        className="h-full overflow-hidden flex flex-col transition-all duration-200"
+        style={{ marginLeft: sidebarWidth }}
+      >
+        <div className="sticky top-0 z-30 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800 p-3">
+          <div className="flex justify-between items-center">
+            <button
+              onClick={() => navigate(ROUTES.KITCHEN.DASHBOARD)}
+              className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span className="hidden sm:inline">Return to Main Dashboard</span>
+              <span className="sm:hidden">Back</span>
+            </button>
+            
+            {/* Eye of Sauron - Centered Clock with Toast Drop Zone */}
+            <div ref={clockRef} className="hidden md:flex flex-col items-center">
+              <LiveClock />
             </div>
+            
+            <UserMenu />
           </div>
-          <div
-            ref={contentRef}
-            className="p-4 md:p-6 lg:p-8 w-full overflow-y-auto flex-1"
-            style={{ height: "calc(100vh - 57px)" }} // 57px is the height of the header
-          >
-            <Outlet />
-          </div>
+        </div>
+        <div
+          ref={contentRef}
+          className="p-4 md:p-6 lg:p-8 w-full overflow-y-auto flex-1"
+          style={{ height: "calc(100vh - 57px)" }}
+        >
+          <Outlet />
         </div>
       </div>
     </div>

@@ -1,120 +1,393 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { YourKitchen } from "./YourKitchen";
-import { YourCrew } from "./YourCrew";
-import { YourStation } from "./YourStation";
+import { useLocation } from "react-router-dom";
+import { 
+  User, Shield, Building2, Mail, Phone, Award, Bell, Camera,
+  Calendar, Clock, ChevronRight, Edit3, Info
+} from "lucide-react";
 import { LoadingLogo } from "@/components/LoadingLogo";
 import { supabase } from "@/lib/supabase";
+import { EditTeamMemberModal } from "@/features/team/components/EditTeamMemberModal";
+import { getSecurityConfig, getProtocolCode, type SecurityLevel, SECURITY_LEVELS } from "@/config/security";
+import type { TeamMember, Certification } from "@/features/team/types";
+
+// Section header component - L5 design system
+const SectionHeader: React.FC<{
+  icon: React.ElementType;
+  iconColor: string;
+  bgColor: string;
+  title: string;
+  subtitle: string;
+  action?: React.ReactNode;
+}> = ({ icon: Icon, iconColor, bgColor, title, subtitle, action }) => (
+  <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-700/50">
+    <div className="flex items-center gap-3">
+      <div className={`w-10 h-10 rounded-lg ${bgColor} flex items-center justify-center flex-shrink-0`}>
+        <Icon className={`w-5 h-5 ${iconColor}`} />
+      </div>
+      <div>
+        <h3 className="text-base font-semibold text-white">{title}</h3>
+        <p className="text-sm text-gray-400">{subtitle}</p>
+      </div>
+    </div>
+    {action}
+  </div>
+);
+
+// Info row component
+const InfoRow: React.FC<{
+  icon: React.ElementType;
+  label: string;
+  value: string | React.ReactNode;
+  muted?: boolean;
+}> = ({ icon: Icon, label, value, muted }) => (
+  <div className="flex items-center gap-3 py-2">
+    <Icon className="w-4 h-4 text-gray-500 flex-shrink-0" />
+    <span className="text-sm text-gray-400 w-28 flex-shrink-0">{label}</span>
+    <span className={`text-sm ${muted ? 'text-gray-500' : 'text-gray-200'}`}>{value}</span>
+  </div>
+);
+
+// Certification badge
+const CertificationBadge: React.FC<{ cert: Certification }> = ({ cert }) => {
+  const isExpired = cert.expiry_date && new Date(cert.expiry_date) < new Date();
+  const isExpiringSoon = cert.expiry_date && !isExpired && 
+    new Date(cert.expiry_date) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+  return (
+    <div className={`px-3 py-1.5 rounded-lg border text-xs ${
+      isExpired 
+        ? 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+        : isExpiringSoon
+          ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+          : 'bg-green-500/10 border-green-500/30 text-green-400'
+    }`}>
+      {cert.name}
+    </div>
+  );
+};
 
 export const MyAccount: React.FC = () => {
-  const [activeTab, setActiveTab] = useState("kitchen");
-  const { user, organization, organizationId, isLoading, error } = useAuth();
-  const [kitchenRole, setKitchenRole] = useState<string | null>(null);
+  const { user, organization, organizationId, securityLevel, isLoading: authLoading } = useAuth();
+  const location = useLocation();
+  
+  const [teamMember, setTeamMember] = useState<TeamMember | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [initialTab, setInitialTab] = useState<string | undefined>();
 
-  // Fetch kitchen role
+  // Check for navigation state (from UserMenu)
   useEffect(() => {
-    const fetchKitchenRole = async () => {
-      if (!user?.id || !organizationId) return;
+    const state = location.state as { openProfile?: boolean; tab?: string } | null;
+    if (state?.openProfile && teamMember) {
+      setInitialTab(state.tab);
+      setIsModalOpen(true);
+      // Clear the state so it doesn't reopen on refresh
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state, teamMember]);
+
+  // Fetch team member data
+  useEffect(() => {
+    const fetchTeamMember = async () => {
+      if (!user?.email || !organizationId) {
+        setIsLoading(false);
+        return;
+      }
 
       try {
         const { data, error } = await supabase
           .from("organization_team_members")
-          .select("kitchen_role")
+          .select("*")
           .eq("organization_id", organizationId)
           .eq("email", user.email)
           .single();
 
         if (!error && data) {
-          setKitchenRole(data.kitchen_role);
-        } else {
-          console.log("No kitchen role found, error:", error);
+          setTeamMember(data as TeamMember);
         }
       } catch (err) {
-        console.error("Error fetching kitchen role:", err);
+        console.error("Error fetching team member:", err);
+      } finally {
+        setIsLoading(false);
       }
     };
 
-    fetchKitchenRole();
-  }, [user?.id, user?.email, organizationId]);
+    if (!authLoading) {
+      fetchTeamMember();
+    }
+  }, [user?.email, organizationId, authLoading]);
 
-  const tabs = [
-    { id: "kitchen", label: "Your Kitchen", color: "primary" },
-    { id: "crew", label: "Your Crew", color: "green" },
-    { id: "station", label: "Your Station", color: "amber" },
-  ];
+  // Refresh team member after modal closes
+  const handleModalClose = async () => {
+    setIsModalOpen(false);
+    setInitialTab(undefined);
+    
+    // Refetch data
+    if (user?.email && organizationId) {
+      const { data } = await supabase
+        .from("organization_team_members")
+        .select("*")
+        .eq("organization_id", organizationId)
+        .eq("email", user.email)
+        .single();
+      
+      if (data) setTeamMember(data as TeamMember);
+    }
+  };
 
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <LoadingLogo message="Loading account..." />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="p-4 bg-rose-500/10 text-rose-400 rounded-lg">
-        <h2 className="text-lg font-medium">Error Loading Account</h2>
-        <p className="mt-2">{error}</p>
+        <LoadingLogo message="Loading your profile..." />
       </div>
     );
   }
 
   if (!user || !organization) {
     return (
-      <div className="p-4 bg-amber-500/10 text-amber-400 rounded-lg">
-        <h2 className="text-lg font-medium">Account Not Available</h2>
-        <p className="mt-2">
-          Unable to load account information. Please try again later.
-        </p>
+      <div className="max-w-4xl mx-auto p-6">
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-6">
+          <div className="flex items-start gap-3">
+            <Info className="w-5 h-5 text-amber-400 mt-0.5" />
+            <div>
+              <h2 className="text-lg font-medium text-amber-400">Account Not Available</h2>
+              <p className="mt-1 text-sm text-gray-400">
+                Unable to load account information. Please try signing in again.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
+  // Get security info
+  const level = (securityLevel ?? SECURITY_LEVELS.ECHO) as SecurityLevel;
+  const securityConfig = getSecurityConfig(level);
+  const protocolCode = getProtocolCode(level);
+  const showProtocolBadge = level <= 3;
+
+  // Get display info
+  const displayName = teamMember?.display_name 
+    || `${teamMember?.first_name || ''} ${teamMember?.last_name || ''}`.trim()
+    || user.email?.split("@")[0];
+
+  const avatarUrl = teamMember?.avatar_url 
+    || `https://api.dicebear.com/7.x/initials/svg?seed=${displayName}&backgroundColor=1e293b`;
+
+  // Certifications
+  const certifications = teamMember?.certifications || [];
+  const expiredCerts = certifications.filter(c => c.expiry_date && new Date(c.expiry_date) < new Date());
+  const validCerts = certifications.filter(c => !c.expiry_date || new Date(c.expiry_date) >= new Date());
+
   return (
-    <div className="space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6">
+      {/* Page Header */}
       <header>
-        <h1 className="text-3xl font-bold text-white mb-2">My Account</h1>
-        <p className="text-gray-400">Manage your profile and preferences</p>
+        <h1 className="text-2xl font-bold text-white">My Profile</h1>
+        <p className="text-gray-400 mt-1">View and manage your account information</p>
       </header>
 
-      {/* Debug Info */}
-      <div className="p-4 bg-gray-800/50 rounded-lg text-xs font-mono text-gray-400">
-        <div>User ID: {user.id}</div>
-        <div>User Email: {user.email}</div>
-        <div>Organization ID: {organizationId || "Not set"}</div>
-        <div>Organization: {organization?.name || "Not available"}</div>
-        <div>Kitchen Role: {kitchenRole || "None"}</div>
-      </div>
+      {/* Profile Card */}
+      <section className="bg-gray-800/30 rounded-xl p-6 border border-gray-700/30">
+        <div className="flex flex-col sm:flex-row items-start gap-6">
+          {/* Avatar */}
+          <div className="relative group">
+            <img
+              src={avatarUrl}
+              alt={displayName}
+              className="w-24 h-24 rounded-2xl bg-gray-800 object-cover border border-gray-700"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src =
+                  `https://api.dicebear.com/7.x/initials/svg?seed=${displayName}&backgroundColor=1e293b`;
+              }}
+            />
+            <button
+              onClick={() => {
+                setInitialTab('avatar');
+                setIsModalOpen(true);
+              }}
+              className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center"
+            >
+              <Camera className="w-6 h-6 text-white" />
+            </button>
+          </div>
 
-      {/* Tab Navigation */}
-      <div className="flex gap-2">
-        {tabs.map((tab) => (
+          {/* Info */}
+          <div className="flex-1">
+            <div className="flex items-start justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-white">{displayName}</h2>
+                <p className="text-sm text-gray-400 mt-0.5">{user.email}</p>
+                
+                {/* Protocol Badge */}
+                <div className="flex items-center gap-2 mt-3">
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border ${
+                    level <= 1 ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :
+                    level <= 2 ? 'bg-rose-500/10 border-rose-500/30 text-rose-400' :
+                    level <= 3 ? 'bg-purple-500/10 border-purple-500/30 text-purple-400' :
+                    'bg-gray-500/10 border-gray-500/30 text-gray-400'
+                  }`}>
+                    {showProtocolBadge && <span className="font-mono font-bold">{protocolCode}</span>}
+                    {securityConfig.name}
+                  </span>
+                  <span className="text-xs text-gray-500">at {organization.name}</span>
+                </div>
+              </div>
+
+              {/* Edit Button */}
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800/50 border border-gray-700/50 hover:border-gray-600 hover:bg-gray-800 transition-colors text-sm text-gray-300 hover:text-white"
+              >
+                <Edit3 className="w-4 h-4" />
+                Edit Profile
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Quick Info Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Contact Information */}
+        <section className="bg-gray-800/30 rounded-xl p-5 border border-gray-700/30">
+          <SectionHeader
+            icon={Mail}
+            iconColor="text-green-400"
+            bgColor="bg-green-500/20"
+            title="Contact"
+            subtitle="How to reach you"
+            action={
+              <button
+                onClick={() => {
+                  setInitialTab('basic');
+                  setIsModalOpen(true);
+                }}
+                className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                Edit
+              </button>
+            }
+          />
+          <div className="space-y-1">
+            <InfoRow icon={Mail} label="Email" value={teamMember?.email || user.email || '—'} />
+            <InfoRow icon={Phone} label="Phone" value={teamMember?.phone || '—'} muted={!teamMember?.phone} />
+          </div>
+        </section>
+
+        {/* Organization */}
+        <section className="bg-gray-800/30 rounded-xl p-5 border border-gray-700/30">
+          <SectionHeader
+            icon={Building2}
+            iconColor="text-primary-400"
+            bgColor="bg-primary-500/20"
+            title="Organization"
+            subtitle="Your workplace"
+          />
+          <div className="space-y-1">
+            <InfoRow icon={Building2} label="Company" value={organization.name} />
+            <InfoRow 
+              icon={Shield} 
+              label="Access Level" 
+              value={
+                <span className="flex items-center gap-1.5">
+                  {showProtocolBadge && <span className="font-mono font-bold text-gray-400">{protocolCode}</span>}
+                  {securityConfig.name}
+                </span>
+              } 
+            />
+          </div>
+        </section>
+
+        {/* Certifications */}
+        <section className="bg-gray-800/30 rounded-xl p-5 border border-gray-700/30">
+          <SectionHeader
+            icon={Award}
+            iconColor="text-rose-400"
+            bgColor="bg-rose-500/20"
+            title="Certifications"
+            subtitle={`${certifications.length} on file`}
+            action={
+              <button
+                onClick={() => {
+                  setInitialTab('certifications');
+                  setIsModalOpen(true);
+                }}
+                className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                View All
+              </button>
+            }
+          />
+          {certifications.length > 0 ? (
+            <div className="space-y-2">
+              {expiredCerts.length > 0 && (
+                <p className="text-xs text-rose-400">{expiredCerts.length} expired</p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                {validCerts.slice(0, 3).map((cert) => (
+                  <CertificationBadge key={cert.id} cert={cert} />
+                ))}
+                {validCerts.length > 3 && (
+                  <span className="px-3 py-1.5 rounded-lg bg-gray-800/50 border border-gray-700/50 text-xs text-gray-500">
+                    +{validCerts.length - 3} more
+                  </span>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">No certifications on file</p>
+          )}
+        </section>
+
+        {/* Notifications */}
+        <section className="bg-gray-800/30 rounded-xl p-5 border border-gray-700/30">
+          <SectionHeader
+            icon={Bell}
+            iconColor="text-purple-400"
+            bgColor="bg-purple-500/20"
+            title="Notifications"
+            subtitle="Your preferences"
+            action={
+              <button
+                onClick={() => {
+                  setInitialTab('notifications');
+                  setIsModalOpen(true);
+                }}
+                className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                Manage
+              </button>
+            }
+          />
+          <p className="text-sm text-gray-500">
+            Configure how you receive schedule updates, team announcements, and operational alerts.
+          </p>
           <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`relative flex items-center gap-3 px-6 py-3 rounded-lg transition-all text-sm font-medium ${
-              activeTab === tab.id
-                ? "bg-gray-800 text-white"
-                : "text-gray-400 hover:text-white hover:bg-gray-800/50"
-            }`}
+            onClick={() => {
+              setInitialTab('notifications');
+              setIsModalOpen(true);
+            }}
+            className="mt-3 flex items-center gap-1 text-sm text-gray-400 hover:text-white transition-colors"
           >
-            {tab.label}
-            {activeTab === tab.id && (
-              <div
-                className={`absolute -top-px left-0 right-0 h-1 rounded-full bg-${tab.color}-500`}
-              />
-            )}
+            Manage preferences
+            <ChevronRight className="w-4 h-4" />
           </button>
-        ))}
+        </section>
       </div>
 
-      {/* Tab Content */}
-      <div className="card p-6">
-        {activeTab === "kitchen" && <YourKitchen />}
-        {activeTab === "crew" && <YourCrew />}
-        {activeTab === "station" && <YourStation />}
-      </div>
+      {/* Edit Modal */}
+      {teamMember && (
+        <EditTeamMemberModal
+          member={teamMember}
+          isOpen={isModalOpen}
+          onClose={handleModalClose}
+          isSelfEdit={true}
+          initialTab={initialTab as any}
+        />
+      )}
     </div>
   );
 };

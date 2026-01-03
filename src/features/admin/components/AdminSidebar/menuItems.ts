@@ -15,7 +15,7 @@ import {
   ChefHat,
   CircleDollarSign,
   History,
-  Bell,
+  Satellite,
   Calendar,
   Home,
   ThermometerSnowflake,
@@ -28,6 +28,7 @@ import {
   Scale,
   Eye,
   Lock,
+  LifeBuoy,
   type LucideIcon,
 } from "lucide-react";
 import { type SecurityLevel, SECURITY_LEVELS } from "@/config/security";
@@ -46,9 +47,12 @@ export interface MenuItem {
 export interface MenuSection {
   id: string;
   label?: string;
+  icon?: LucideIcon; // Section icon for collapsed rail view
   items: MenuItem[];
   /** Minimum security level required to see this section */
   minSecurityLevel?: SecurityLevel;
+  /** Whether section can be collapsed (default true for labeled sections) */
+  collapsible?: boolean;
 }
 
 /**
@@ -66,14 +70,16 @@ export const menuItems = (isDev: boolean, securityLevel: SecurityLevel = SECURIT
   const allSections: MenuSection[] = [
     {
       id: "account",
+      collapsible: false, // Dashboard always visible
       items: [
-        { icon: User, label: "My Account", path: "/admin/account" },
         { icon: Home, label: "Dashboard", path: "/admin" },
       ],
     },
     {
       id: "kitchen",
       label: "KITCHEN",
+      icon: ChefHat,
+      collapsible: true,
       items: [
         { icon: LibraryBig, label: "Recipe Manager", path: "/admin/recipes" },
         { icon: UtensilsCrossed, label: "Task Manager", path: "/admin/tasks" },
@@ -92,7 +98,15 @@ export const menuItems = (isDev: boolean, securityLevel: SecurityLevel = SECURIT
     {
       id: "team",
       label: "TEAM",
+      icon: Users,
+      collapsible: true,
       items: [
+        {
+          icon: User,
+          label: "My Profile",
+          path: "/admin/team/my-profile",
+          tooltip: "Your account settings",
+        },
         {
           icon: Users,
           label: "The Roster",
@@ -127,10 +141,11 @@ export const menuItems = (isDev: boolean, securityLevel: SecurityLevel = SECURIT
           comingSoon: true,
         },
         {
-          icon: Bell,
-          label: "Notifications",
-          path: "/admin/notifications",
-          tooltip: "How we communicate",
+          icon: Satellite,
+          label: "Nexus",
+          path: "/admin/nexus",
+          tooltip: "Notification broadcast settings",
+          minSecurityLevel: SECURITY_LEVELS.ALPHA, // Ω and α only
         },
         {
           icon: Lock,
@@ -144,6 +159,8 @@ export const menuItems = (isDev: boolean, securityLevel: SecurityLevel = SECURIT
     {
       id: "organization",
       label: "ORGANIZATION",
+      icon: Building2,
+      collapsible: true,
       items: [
         {
           icon: Building2,
@@ -160,6 +177,8 @@ export const menuItems = (isDev: boolean, securityLevel: SecurityLevel = SECURIT
     {
       id: "data",
       label: "DATA MANAGEMENT",
+      icon: Database,
+      collapsible: true,
       items: [
         {
           icon: Database,
@@ -191,6 +210,8 @@ export const menuItems = (isDev: boolean, securityLevel: SecurityLevel = SECURIT
     {
       id: "support",
       label: "SUPPORT",
+      icon: LifeBuoy,
+      collapsible: true,
       items: [
         { icon: HelpCircle, label: "Help & Support", path: "/admin/help" },
         { icon: Share2, label: "Refer a Friend", path: "/admin/refer" },
@@ -203,6 +224,8 @@ export const menuItems = (isDev: boolean, securityLevel: SecurityLevel = SECURIT
     allSections.push({
       id: "dev",
       label: "DEVELOPMENT",
+      icon: Shield,
+      collapsible: true,
       items: [
         {
           icon: Shield,

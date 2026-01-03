@@ -295,6 +295,69 @@ const ACTIVITY_TOAST_CONFIG: Partial<Record<ActivityType, ToastConfig | null>> =
 };
 
 // =============================================================================
+// BROADCAST CONFIG
+// =============================================================================
+
+type BroadcastChannel = 'in_app' | 'email' | 'sms';
+
+interface BroadcastRule {
+  enabled: boolean;
+  channels: BroadcastChannel[];
+  minSecurityLevel: number; // Who receives this broadcast (this level and above)
+}
+
+interface BroadcastConfig {
+  [eventType: string]: BroadcastRule;
+}
+
+// Cache broadcast config per organization (refreshes every 5 minutes)
+const broadcastConfigCache: Map<string, { config: BroadcastConfig; timestamp: number }> = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Fetch broadcast config for an organization
+ * Uses cache to avoid hitting DB on every event
+ */
+const getBroadcastConfig = async (organizationId: string): Promise<BroadcastConfig | null> => {
+  const cached = broadcastConfigCache.get(organizationId);
+  const now = Date.now();
+
+  if (cached && (now - cached.timestamp) < CACHE_TTL) {
+    return cached.config;
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('organization_communications')
+      .select('broadcast_config')
+      .eq('organization_id', organizationId)
+      .single();
+
+    if (error || !data?.broadcast_config) {
+      return null; // No config = use defaults (allow all)
+    }
+
+    const config = data.broadcast_config as BroadcastConfig;
+    broadcastConfigCache.set(organizationId, { config, timestamp: now });
+    return config;
+  } catch (err) {
+    console.error('Nexus: Error fetching broadcast config:', err);
+    return null;
+  }
+};
+
+/**
+ * Clear broadcast config cache (call after saving config in Nexus UI)
+ */
+export const clearBroadcastConfigCache = (organizationId?: string) => {
+  if (organizationId) {
+    broadcastConfigCache.delete(organizationId);
+  } else {
+    broadcastConfigCache.clear();
+  }
+};
+
+// =============================================================================
 // NEXUS CORE
 // =============================================================================
 
@@ -395,8 +458,16 @@ export const nexus = async (event: NexusEvent): Promise<void> => {
       }
     }
 
-    // 8. Fire toast (if not silent)
-    if (toastConfig !== null) {
+    // 8. Check broadcast config before firing notifications
+    const broadcastConfig = await getBroadcastConfig(organization_id);
+    const eventRule = broadcastConfig?.[activity_type];
+    
+    // If no config exists, or event is enabled for broadcast
+    const shouldBroadcast = !broadcastConfig || (eventRule?.enabled !== false);
+    const enabledChannels = eventRule?.channels || ['in_app']; // Default to in-app only
+
+    // 9. Fire toast (if not silent AND broadcast is enabled AND in_app channel is enabled)
+    if (toastConfig !== null && shouldBroadcast && enabledChannels.includes('in_app')) {
       const color = CATEGORY_COLORS[category];
       
       if (severity === 'critical') {
@@ -419,8 +490,13 @@ export const nexus = async (event: NexusEvent): Promise<void> => {
       }
     }
 
-    // 9. Future: Push notifications, email, SMS routing would go here
-    // await routeNotifications(event, logData.id);
+    // 10. Future: Email and SMS routing based on enabledChannels
+    // if (shouldBroadcast && enabledChannels.includes('email')) {
+    //   await sendEmailNotification(event, eventRule?.audience);
+    // }
+    // if (shouldBroadcast && enabledChannels.includes('sms')) {
+    //   await sendSmsNotification(event, eventRule?.audience);
+    // }
 
   } catch (err) {
     console.error("Nexus: Error processing event:", err);

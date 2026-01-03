@@ -466,3 +466,137 @@ select::-ms-expand {
     box-shadow: 0 0 0 6px rgba(16, 185, 129, 0.4);
   }
 }
+
+/* ============================================================================
+ * FLOATING ACTION BAR - Glowing focus bar for bulk actions, unsaved changes, etc.
+ * Usage: Wrap content in .floating-action-bar, it provides the glow ring
+ * ============================================================================ */
+
+@keyframes gradient-x {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.animate-gradient-x {
+  animation: gradient-x 3s ease infinite;
+}
+
+.floating-action-bar {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  animation: slideInUp 0.3s ease-out forwards;
+}
+
+.floating-action-bar-inner {
+  position: relative;
+}
+
+/* Outer glow - blurred */
+.floating-action-bar-inner::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 1rem;
+  opacity: 0.75;
+  filter: blur(4px);
+  background: linear-gradient(90deg, #0ea5e9, #22d3ee, #0ea5e9, #22d3ee, #0ea5e9);
+  background-size: 200% 100%;
+  animation: gradient-x 3s ease infinite;
+}
+
+/* Inner ring - sharp */
+.floating-action-bar-inner::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 1rem;
+  background: linear-gradient(90deg, #0ea5e9, #22d3ee, #0ea5e9, #22d3ee, #0ea5e9);
+  background-size: 200% 100%;
+  animation: gradient-x 3s ease infinite;
+}
+
+/* Content sits above the rings */
+.floating-action-bar-content {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
+  background-color: #111827; /* gray-900 */
+  border-radius: 0.75rem;
+  z-index: 1;
+}
+
+/* Variant: Warning (amber glow) */
+.floating-action-bar.warning .floating-action-bar-inner::before,
+.floating-action-bar.warning .floating-action-bar-inner::after {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24, #f59e0b, #fbbf24, #f59e0b);
+  background-size: 200% 100%;
+}
+
+/* Variant: Danger (rose glow) */
+.floating-action-bar.danger .floating-action-bar-inner::before,
+.floating-action-bar.danger .floating-action-bar-inner::after {
+  background: linear-gradient(90deg, #f43f5e, #fb7185, #f43f5e, #fb7185, #f43f5e);
+  background-size: 200% 100%;
+}
+
+/* Variant: Success (emerald glow) */
+.floating-action-bar.success .floating-action-bar-inner::before,
+.floating-action-bar.success .floating-action-bar-inner::after {
+  background: linear-gradient(90deg, #10b981, #34d399, #10b981, #34d399, #10b981);
+  background-size: 200% 100%;
+}
+
+/* ============================================================================
+ * ANIMATE-IN UTILITIES - Slide and fade animations
+ * ============================================================================ */
+
+.animate-in {
+  animation-fill-mode: both;
+}
+
+.slide-in-from-left-2 {
+  animation: slideInFromLeft 0.2s ease-out;
+}
+
+@keyframes slideInFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.slide-in-from-right-2 {
+  animation: slideInFromRight 0.2s ease-out;
+}
+
+@keyframes slideInFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.duration-200 {
+  animation-duration: 200ms;
+}

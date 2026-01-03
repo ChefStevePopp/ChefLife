@@ -28,6 +28,8 @@ interface EditTeamMemberModalProps {
   onClose?: () => void;
   /** Is this the user editing their own profile? Hides admin-only tabs */
   isSelfEdit?: boolean;
+  /** Initial tab to open */
+  initialTab?: TabId;
 }
 
 type TabId =
@@ -117,6 +119,7 @@ export const EditTeamMemberModal: React.FC<EditTeamMemberModalProps> = ({
   isOpen = false,
   onClose,
   isSelfEdit = false,
+  initialTab,
 }) => {
   const { updateTeamMember } = useTeamStore();
   const { securityLevel: editorSecurityLevel } = useAuth();
@@ -132,12 +135,18 @@ export const EditTeamMemberModal: React.FC<EditTeamMemberModalProps> = ({
     ? ALL_TABS.filter(tab => !tab.adminOnly)
     : ALL_TABS;
 
-  // Reset form when member changes
+  // Reset form when member changes or modal opens
   useEffect(() => {
     setFormData(member);
     setErrors({});
-    setActiveTab("basic");
-  }, [member]);
+    // Use initialTab if provided and valid for current context
+    const validTabs = isSelfEdit ? visibleTabs.map(t => t.id) : ALL_TABS.map(t => t.id);
+    if (initialTab && validTabs.includes(initialTab)) {
+      setActiveTab(initialTab);
+    } else {
+      setActiveTab("basic");
+    }
+  }, [member, initialTab, isOpen]);
 
   // Check for unsaved changes
   const isDirty = hasChanges(originalData, formData);
