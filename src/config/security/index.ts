@@ -1,3 +1,5 @@
+import type { BaseModuleConfig } from '@/types/modules';
+
 /**
  * ChefLife Security Protocol System
  * 
@@ -357,4 +359,93 @@ export function getProtocolCode(level: SecurityLevel): string {
     5: 'ε',  // Echo (Epsilon)
   };
   return codes[level] || '?';
+}
+
+// =============================================================================
+// MODULE ACCESS HELPERS
+// =============================================================================
+
+export type ModuleAction = 'view' | 'enable' | 'configure' | 'use';
+
+/**
+ * Check if a user can perform an action on a module
+ * 
+ * @param userLevel - The user's security level (0-5)
+ * @param module - The module configuration
+ * @param action - The action to check (view, enable, configure, use)
+ */
+export function canAccessModule(
+  userLevel: SecurityLevel,
+  module: BaseModuleConfig | undefined | null,
+  action: ModuleAction
+): boolean {
+  // No module config = no access
+  if (!module) return false;
+  
+  // For 'use' and 'configure', module must be enabled
+  if ((action === 'use' || action === 'configure') && !module.enabled) {
+    return false;
+  }
+  
+  // Get required level for this action
+  const requiredLevel = module.permissions[action];
+  
+  // Lower number = higher access
+  return userLevel <= requiredLevel;
+}
+
+/**
+ * Check if a user can view a module (see it exists in the UI)
+ */
+export function canViewModule(userLevel: SecurityLevel, module: BaseModuleConfig | undefined | null): boolean {
+  return canAccessModule(userLevel, module, 'view');
+}
+
+/**
+ * Check if a user can enable/disable a module
+ */
+export function canEnableModule(userLevel: SecurityLevel, module: BaseModuleConfig | undefined | null): boolean {
+  return canAccessModule(userLevel, module, 'enable');
+}
+
+/**
+ * Check if a user can configure a module's settings
+ */
+export function canConfigureModule(userLevel: SecurityLevel, module: BaseModuleConfig | undefined | null): boolean {
+  return canAccessModule(userLevel, module, 'configure');
+}
+
+/**
+ * Check if a user can use a module's features
+ */
+export function canUseModule(userLevel: SecurityLevel, module: BaseModuleConfig | undefined | null): boolean {
+  return canAccessModule(userLevel, module, 'use');
+}
+
+/**
+ * Get all modules a user can view
+ */
+export function getViewableModules<T extends Record<string, BaseModuleConfig>>(
+  userLevel: SecurityLevel,
+  modules: T | undefined | null
+): (keyof T)[] {
+  if (!modules) return [];
+  
+  return (Object.keys(modules) as (keyof T)[]).filter(
+    moduleId => canViewModule(userLevel, modules[moduleId])
+  );
+}
+
+/**
+ * Get all modules a user can use
+ */
+export function getUsableModules<T extends Record<string, BaseModuleConfig>>(
+  userLevel: SecurityLevel,
+  modules: T | undefined | null
+): (keyof T)[] {
+  if (!modules) return [];
+  
+  return (Object.keys(modules) as (keyof T)[]).filter(
+    moduleId => canUseModule(userLevel, modules[moduleId])
+  );
 }

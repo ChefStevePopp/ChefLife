@@ -1,0 +1,376 @@
+import React, { useState } from "react";
+import { 
+  Package, 
+  Calendar, 
+  LibraryBig,
+  UtensilsCrossed,
+  ThermometerSnowflake,
+  ClipboardCheck,
+  Cog,
+  Info,
+  ChevronUp,
+} from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/lib/supabase";
+import { nexus } from "@/lib/nexus";
+import toast from "react-hot-toast";
+import type { ModuleId } from "@/types/modules";
+import { 
+  SECURITY_LEVELS, 
+  canEnableModule,
+} from "@/config/security";
+import { LoadingLogo } from "@/features/shared/components";
+import { FeatureCard } from "@/shared/components";
+
+// Core features - always on, just configurable
+// Icons MUST match sidebar menuItems.ts for consistency
+const CORE_FEATURES = [
+  {
+    id: 'recipes',
+    label: 'Recipe Manager',
+    description: 'Recipe documentation, costing, and production notes',
+    icon: LibraryBig, // Matches sidebar
+    configPath: '/admin/recipes/settings',
+  },
+  {
+    id: 'tasks',
+    label: 'Task Manager',
+    description: 'Prep lists, checklists, and daily task management',
+    icon: UtensilsCrossed, // Matches sidebar
+    configPath: '/admin/tasks/settings',
+  },
+  {
+    id: 'scheduling',
+    label: 'The Schedule',
+    description: 'Team scheduling and shift management',
+    icon: Calendar, // Matches sidebar
+    configPath: '/admin/schedule/settings',
+  },
+  {
+    id: 'haccp',
+    label: 'HACCP',
+    description: 'Temperature monitoring and food safety compliance',
+    icon: ThermometerSnowflake, // Matches sidebar
+    configPath: '/admin/haccp/settings',
+  },
+];
+
+// Add-on features - can be toggled
+// Icons MUST match sidebar menuItems.ts for consistency
+const ADDON_FEATURES = [
+  {
+    id: 'attendance' as ModuleId,
+    label: 'Attendance',
+    description: 'Point-based attendance tracking with tiers and redemption opportunities',
+    icon: ClipboardCheck, // Matches sidebar
+    requiresCompliance: true,
+    complianceWarning: 'Point-based attendance systems may not be legal in all jurisdictions. Consult local labor laws before enabling. You are responsible for ensuring compliance.',
+    configPath: '/admin/modules/attendance',
+  },
+];
+
+export const ModulesManager: React.FC = () => {
+  const { organizationId, securityLevel, user, isLoading: authLoading } = useAuth();
+  const [organization, setOrganization] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [updatingModule, setUpdatingModule] = useState<ModuleId | null>(null);
+  const [coreInfoExpanded, setCoreInfoExpanded] = useState(false);
+  const [addonInfoExpanded, setAddonInfoExpanded] = useState(false);
+
+  // Fetch organization data
+  React.useEffect(() => {
+    const fetchOrganization = async () => {
+      if (!organizationId) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('organizations')
+          .select('*')
+          .eq('id', organizationId)
+          .single();
+        
+        if (error) throw error;
+        setOrganization(data);
+      } catch (error) {
+        console.error('Error fetching organization:', error);
+        toast.error('Failed to load organization data');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (!authLoading) {
+      fetchOrganization();
+    }
+  }, [organizationId, authLoading]);
+
+  const modules = organization?.modules || {};
+
+  // Toggle module enabled state
+  const toggleModule = async (moduleId: ModuleId) => {
+    if (!organizationId || !user) return;
+    
+    const currentModule = modules[moduleId];
+    if (!currentModule) return;
+
+    // Check permissions
+    if (!canEnableModule(securityLevel, currentModule)) {
+      toast.error("You don't have permission to change this module");
+      return;
+    }
+
+    // Check compliance acknowledgment for modules that require it
+    const moduleDef = ADDON_FEATURES.find(m => m.id === moduleId);
+    if (moduleDef?.requiresCompliance && !currentModule.enabled && !currentModule.compliance_acknowledged) {
+      toast.error("You must acknowledge compliance requirements first");
+      return;
+    }
+
+    setUpdatingModule(moduleId);
+    const newEnabled = !currentModule.enabled;
+
+    try {
+      const updatedModules = {
+        ...modules,
+        [moduleId]: {
+          ...currentModule,
+          enabled: newEnabled,
+          enabled_at: newEnabled ? new Date().toISOString() : currentModule.enabled_at,
+          enabled_by: newEnabled ? user.id : currentModule.enabled_by,
+        },
+      };
+
+      const { error } = await supabase
+        .from('organizations')
+        .update({ 
+          modules: updatedModules,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', organizationId);
+
+      if (error) throw error;
+
+      // Update local state
+      setOrganization((prev: any) => ({ ...prev, modules: updatedModules }));
+
+      // Log to nexus
+      await nexus({
+        organization_id: organizationId,
+        user_id: user.id,
+        activity_type: 'settings_changed',
+        details: {
+          module_id: moduleId,
+          module_name: moduleDef?.label,
+          action: newEnabled ? 'enabled' : 'disabled',
+        },
+      });
+
+      toast.success(`${moduleDef?.label} ${newEnabled ? 'enabled' : 'disabled'}`);
+    } catch (error) {
+      console.error('Error updating module:', error);
+      toast.error('Failed to update module');
+    } finally {
+      setUpdatingModule(null);
+    }
+  };
+
+  // Handle compliance acknowledgment
+  const handleComplianceAcknowledge = async (moduleId: ModuleId, acknowledged: boolean) => {
+    if (!organizationId || !user) return;
+    
+    const currentModule = modules[moduleId];
+    if (!currentModule) return;
+
+    try {
+      const updatedModules = {
+        ...modules,
+        [moduleId]: {
+          ...currentModule,
+          compliance_acknowledged: acknowledged,
+        },
+      };
+
+      const { error } = await supabase
+        .from('organizations')
+        .update({ 
+          modules: updatedModules,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', organizationId);
+
+      if (error) throw error;
+
+      setOrganization((prev: any) => ({ ...prev, modules: updatedModules }));
+    } catch (error) {
+      console.error('Error updating compliance:', error);
+      toast.error('Failed to save acknowledgment');
+    }
+  };
+
+  const handleConfigure = (configPath: string) => {
+    toast('Configuration coming soon', { icon: '⚙️' });
+    // TODO: navigate to config page or open modal
+    // navigate(configPath);
+  };
+
+  if (isLoading || authLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <LoadingLogo message="Loading modules..." />
+      </div>
+    );
+  }
+
+  const isOmega = securityLevel === SECURITY_LEVELS.OMEGA;
+
+  return (
+    <div className="space-y-6">
+      {/* Diagnostic Text - Omega only */}
+      {isOmega && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/admin/components/sections/ModulesManager/index.tsx
+        </div>
+      )}
+
+      {/* L5 Header */}
+      <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center flex-shrink-0">
+            <Package className="w-5 h-5 text-purple-400" />
+          </div>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-white">
+              Feature Modules
+            </h1>
+            <p className="text-gray-400 text-sm">
+              Configure core features and enable add-ons
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* CORE FEATURES SECTION */}
+      <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-6">
+        {/* Section Header */}
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center flex-shrink-0">
+            <Cog className="w-5 h-5 text-green-400" />
+          </div>
+          <div>
+            <h2 className="text-base font-semibold text-white">Core Features</h2>
+            <p className="text-sm text-gray-400">Always active — configure how they work</p>
+          </div>
+        </div>
+
+        {/* Expandable Info - Gray, just description */}
+        <div className={`expandable-info-section mb-4 ${coreInfoExpanded ? 'expanded' : ''}`}>
+          <button
+            onClick={() => setCoreInfoExpanded(!coreInfoExpanded)}
+            className="expandable-info-header"
+          >
+            <Info className="w-4 h-4 text-gray-400 flex-shrink-0" />
+            <span className="text-sm text-gray-400">What are core features?</span>
+            <ChevronUp className="w-4 h-4 text-gray-500 ml-auto" />
+          </button>
+          <div className="expandable-info-content">
+            <div className="px-4 pb-4 pt-2">
+              <p className="text-sm text-gray-400">
+                Core features are the backbone of ChefLife and cannot be disabled. 
+                They're always available to your team. Use the <strong className="text-gray-300">Configure</strong> option 
+                on each card to customize settings like default values, display preferences, and workflow options.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Cards Grid - Always Visible */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {CORE_FEATURES.map((feature) => (
+            <FeatureCard
+              key={feature.id}
+              id={feature.id}
+              label={feature.label}
+              description={feature.description}
+              icon={feature.icon}
+              variant="core"
+              onConfigure={() => handleConfigure(feature.configPath)}
+              configureLabel="Configure"
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* ADD-ON FEATURES SECTION */}
+      <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-6">
+        {/* Section Header */}
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+            <Package className="w-5 h-5 text-amber-400" />
+          </div>
+          <div>
+            <h2 className="text-base font-semibold text-white">Add-On Features</h2>
+            <p className="text-sm text-gray-400">Optional features you can enable</p>
+          </div>
+        </div>
+
+        {/* Expandable Info - Gray, just description */}
+        <div className={`expandable-info-section mb-4 ${addonInfoExpanded ? 'expanded' : ''}`}>
+          <button
+            onClick={() => setAddonInfoExpanded(!addonInfoExpanded)}
+            className="expandable-info-header"
+          >
+            <Info className="w-4 h-4 text-gray-400 flex-shrink-0" />
+            <span className="text-sm text-gray-400">How do add-ons work?</span>
+            <ChevronUp className="w-4 h-4 text-gray-500 ml-auto" />
+          </button>
+          <div className="expandable-info-content">
+            <div className="px-4 pb-4 pt-2">
+              <p className="text-sm text-gray-400">
+                Add-on features extend ChefLife with optional functionality. 
+                <strong className="text-gray-300"> Click a card</strong> to enable or disable it. 
+                Some add-ons require compliance acknowledgment before activation due to legal considerations. 
+                Disabling an add-on hides it from navigation but preserves all your data.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Cards Grid - Always Visible */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {ADDON_FEATURES.map((feature) => {
+            const moduleConfig = modules[feature.id];
+            const isEnabled = moduleConfig?.enabled ?? false;
+            const canToggle = canEnableModule(securityLevel, moduleConfig);
+            
+            return (
+              <FeatureCard
+                key={feature.id}
+                id={feature.id}
+                label={feature.label}
+                description={feature.description}
+                icon={feature.icon}
+                variant="addon"
+                isEnabled={isEnabled}
+                onToggle={(id) => toggleModule(id as ModuleId)}
+                canToggle={canToggle}
+                isUpdating={updatingModule === feature.id}
+                complianceWarning={feature.requiresCompliance ? feature.complianceWarning : undefined}
+                complianceAcknowledged={moduleConfig?.compliance_acknowledged ?? false}
+                onComplianceChange={(acknowledged) => handleComplianceAcknowledge(feature.id, acknowledged)}
+                onConfigure={isEnabled ? () => handleConfigure(feature.configPath) : undefined}
+                configureLabel="Configure"
+              />
+            );
+          })}
+        </div>
+
+        {/* Footer Note */}
+        <div className="mt-4 pt-4 border-t border-gray-700/30">
+          <p className="text-xs text-gray-500">
+            Need a feature you don't see? <a href="/admin/help" className="text-primary-400 hover:text-primary-300">Contact support</a> to request new add-ons.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};

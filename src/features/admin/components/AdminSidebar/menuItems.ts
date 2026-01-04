@@ -164,13 +164,29 @@ export const menuItems = (isDev: boolean, securityLevel: SecurityLevel = SECURIT
       items: [
         {
           icon: Building2,
-          label: "Organization",
+          label: "Settings",
           path: "/admin/organizations",
+          tooltip: "Organization profile & preferences",
+        },
+        {
+          icon: Package,
+          label: "Modules",
+          path: "/admin/modules",
+          tooltip: "Enable/disable feature packs",
+          minSecurityLevel: SECURITY_LEVELS.ALPHA, // Ω and α only
+        },
+        {
+          icon: Globe,
+          label: "Integrations",
+          path: "/admin/integrations",
+          tooltip: "Connect external services",
+          minSecurityLevel: SECURITY_LEVELS.ALPHA, // Ω and α only
         },
         {
           icon: History,
           label: "Activity Log",
           path: "/admin/activity",
+          tooltip: "Audit trail of all actions",
         },
       ],
     },

@@ -1,0 +1,1 @@
+export { SevenShiftsConfigPanel } from './SevenShiftsConfigPanel';

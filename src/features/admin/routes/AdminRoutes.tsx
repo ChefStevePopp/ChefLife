@@ -11,6 +11,8 @@ import { ExcelImports } from "../components/sections/ExcelImports";
 import { RecipeManager } from "@/features/recipes/components/RecipeManager";
 import { DevManagement } from "../components/sections/DevManagement";
 import { OrganizationSettings } from "../components/settings/OrganizationSettings";
+import { ModulesManager } from "../components/sections/ModulesManager";
+import { IntegrationsManager } from "../components/sections/IntegrationsManager";
 import { ActivityLogList } from "../components/ActivityLogList";
 import { ScheduleManager } from "../components/sections/ScheduleManager";
 import { TaskManager } from "../components/sections/TaskManager";
@@ -34,6 +36,8 @@ export const AdminRoutes: React.FC = () => {
         <Route path="vendor-invoices" element={<VendorInvoiceManager />} />
         <Route path="dev-management" element={<DevManagement />} />
         <Route path="organizations" element={<OrganizationSettings />} />
+        <Route path="modules" element={<ModulesManager />} />
+        <Route path="integrations" element={<IntegrationsManager />} />
         <Route path="activity" element={<ActivityLogList />} />
         <Route path="tasks" element={<TaskManager />} />
         <Route path="haccp" element={<HACCPManager />} />

@@ -142,7 +142,12 @@ select::-ms-expand {
 
   .btn-ghost-amber {
     @apply btn-ghost text-amber-400 hover:text-amber-300
-           hover:bg-blue-amber/10 focus:ring-amber-500/50;
+           hover:bg-amber-500/10 focus:ring-amber-500/50;
+  }
+
+  .btn-ghost-primary {
+    @apply btn-ghost text-primary-400 hover:text-primary-300
+           hover:bg-primary-500/10 focus:ring-primary-500/50;
   }
 
   /* Input */

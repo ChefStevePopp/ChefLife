@@ -17,8 +17,12 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
+  Check,
+  ExternalLink,
+  Plug,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { useNavigate } from "react-router-dom";
 import { useScheduleStore } from "@/stores/scheduleStore";
 import { ScheduleShift } from "@/types/schedule";
 import {
@@ -37,7 +41,7 @@ import { useScheduleExport } from "./hooks/useScheduleExport";
 import { useScheduleData } from "./hooks/useScheduleData";
 import { useScheduleUpload } from "./hooks/useScheduleUpload";
 import { useScheduleUI } from "./hooks/useScheduleUI";
-import { use7shiftsIntegration } from "./hooks/use7shiftsIntegration";
+import { use7ShiftsSync } from "./hooks/use7ShiftsSync";
 
 // Helper function to format time based on user preference
 const formatTime = (timeStr: string, format: "12h" | "24h"): string => {
@@ -92,6 +96,8 @@ const convertTo24Hour = (time12: string): string => {
 };
 
 export const ScheduleManager: React.FC = () => {
+  const navigate = useNavigate();
+  
   // UI state hook for tabs, modals, and preferences
   const {
     activeTab,
@@ -107,27 +113,20 @@ export const ScheduleManager: React.FC = () => {
     selectedScheduleId,
   } = useScheduleUI();
 
-  // 7shifts integration hook
+  // 7shifts sync hook (simplified - uses centralized integration)
   const {
-    apiKey: sevenShiftsApiKey,
-    setApiKey: setSevenShiftsApiKey,
+    isConnected: is7shiftsConnected,
+    isLoading: is7shiftsLoading,
+    lastSyncAt,
     locationId: sevenShiftsLocationId,
-    setLocationId: setSevenShiftsLocationId,
-    isConnecting,
-    isConnected,
-    autoSync,
-    setAutoSync,
-    notifyChanges,
-    setNotifyChanges,
+    isSyncing,
     syncStartDate,
     setSyncStartDate,
     syncEndDate,
     setSyncEndDate,
-    testConnection: handleTestConnection,
     syncSchedule: handleSync7shifts,
-    saveSettings: handleSaveSettings,
-    hasCredentials,
-  } = use7shiftsIntegration();
+    canSync,
+  } = use7ShiftsSync();
 
   // Use the export hook
   const { exportScheduleToCSV } = useScheduleExport();
@@ -374,7 +373,7 @@ export const ScheduleManager: React.FC = () => {
           <Link
             className={`w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2 flex-shrink-0 ${activeTab === "integration" ? "text-rose-400" : ""}`}
           />
-          <span className="text-sm sm:text-base hidden sm:inline">7shifts Integration</span>
+          <span className="text-sm sm:text-base hidden sm:inline">7shifts Sync</span>
           <span className="text-sm sm:text-base sm:hidden">7shifts</span>
         </button>
         <button
@@ -618,10 +617,10 @@ export const ScheduleManager: React.FC = () => {
         </div>
       )}
 
-      {/* 7shifts Integration Tab */}
+      {/* 7shifts Sync Tab - SIMPLIFIED */}
       {activeTab === "integration" && (
         <div className="card p-6">
-          {/* Header Section - Matching Design */}
+          {/* Header Section */}
           <div className="flex items-center justify-between mb-6 bg-[#262d3c] p-2 rounded-lg shadow-lg">
             <div className="flex items-center gap-3 p-4 rounded-lg bg-[#262d3c]">
               <div className="w-10 h-10 rounded-lg bg-rose-500/20 flex items-center justify-center">
@@ -629,177 +628,143 @@ export const ScheduleManager: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-lg font-medium text-white">
-                  7shifts Integration
+                  7shifts Sync
                 </h3>
                 <p className="text-sm text-gray-400">
-                  Connect your 7shifts account to automatically sync schedules
+                  Import schedules from your 7shifts account
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Connection Status */}
-          <div className="bg-gray-800/50 rounded-lg p-6 mb-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center">
-                  <img
-                    src="https://framerusercontent.com/images/GTwNANjmDcbIsFhKyhhH32pNv4.png?scale-down-to=512"
-                    alt="7shifts logo"
-                    className="w-8 h-8 object-contain"
-                  />
+          {is7shiftsLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin h-8 w-8 border-4 border-rose-500 border-t-transparent rounded-full"></div>
+            </div>
+          ) : is7shiftsConnected ? (
+            /* Connected State - Show Sync Controls */
+            <div className="space-y-6">
+              {/* Connection Status */}
+              <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center">
+                      <img
+                        src="https://framerusercontent.com/images/GTwNANjmDcbIsFhKyhhH32pNv4.png?scale-down-to=512"
+                        alt="7shifts logo"
+                        className="w-8 h-8 object-contain"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-white font-medium">7shifts</h3>
+                        <span className="px-2 py-0.5 text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/30 rounded-full flex items-center gap-1">
+                          <Check className="w-3 h-3" />
+                          Connected
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-400">
+                        Location ID: {sevenShiftsLocationId}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => navigate('/admin/integrations')}
+                    className="btn-ghost text-sm"
+                  >
+                    <Settings className="w-4 h-4 mr-1" />
+                    Configure
+                  </button>
                 </div>
-                <div>
-                  <h3 className="text-white font-medium">7shifts</h3>
-                  <p className="text-sm text-gray-400">
-                    {isConnected ? (
-                      <span className="text-green-400">Connected</span>
-                    ) : (
-                      "Not connected"
-                    )}
+                {lastSyncAt && (
+                  <p className="text-xs text-gray-500 mt-3 pt-3 border-t border-green-500/20">
+                    Last synced: {new Date(lastSyncAt).toLocaleString()}
                   </p>
-                </div>
-              </div>
-              <button
-                onClick={handleTestConnection}
-                disabled={isConnecting || !hasCredentials}
-                className="btn-primary bg-green-500 hover:bg-green-600 disabled:bg-gray-700 disabled:text-gray-500"
-              >
-                {isConnecting
-                  ? "Connecting..."
-                  : isConnected
-                    ? "Test Connection"
-                    : "Connect Account"}
-              </button>
-            </div>
-          </div>
-
-          {/* Integration Settings */}
-          <div className="space-y-6">
-            <h3 className="text-lg font-medium text-white">
-              Integration Settings
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">
-                  API Key
-                </label>
-                <input
-                  type="password"
-                  className="input w-full"
-                  placeholder="Enter your 7shifts API key"
-                  value={sevenShiftsApiKey}
-                  onChange={(e) => setSevenShiftsApiKey(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">
-                  Location ID
-                </label>
-                <input
-                  type="text"
-                  className="input w-full"
-                  placeholder="Enter your location ID"
-                  value={sevenShiftsLocationId}
-                  onChange={(e) => setSevenShiftsLocationId(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-400 mb-2">
-                Sync Settings
-              </label>
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  id="autoSync"
-                  className="mr-2"
-                  checked={autoSync}
-                  onChange={(e) => setAutoSync(e.target.checked)}
-                />
-                <label htmlFor="autoSync" className="text-gray-300">
-                  Automatically sync schedules daily
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  id="notifyChanges"
-                  className="mr-2"
-                  checked={notifyChanges}
-                  onChange={(e) => setNotifyChanges(e.target.checked)}
-                />
-                <label htmlFor="notifyChanges" className="text-gray-300">
-                  Notify me when schedule changes
-                </label>
-              </div>
-            </div>
-
-            {/* Manual Sync Section */}
-            <div className="bg-gray-700/50 rounded-lg p-4 mt-6">
-              <h4 className="text-white font-medium mb-3">Manual Sync</h4>
-              <p className="text-sm text-gray-400 mb-4">
-                Import schedule data from 7shifts for a specific date range
-              </p>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-2">
-                    Start Date
-                  </label>
-                  <input
-                    type="date"
-                    className="input w-full"
-                    value={syncStartDate}
-                    onChange={(e) => setSyncStartDate(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-2">
-                    End Date
-                  </label>
-                  <input
-                    type="date"
-                    className="input w-full"
-                    value={syncEndDate}
-                    onChange={(e) => setSyncEndDate(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <button
-                onClick={handleSync7shifts}
-                disabled={isConnecting || !isConnected}
-                className="btn-primary w-full mt-2"
-              >
-                {isConnecting ? (
-                  <>
-                    <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
-                    Syncing...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Sync Now
-                  </>
                 )}
-              </button>
-            </div>
+              </div>
 
-            <div className="pt-4 border-t border-gray-700">
-              <p className="text-sm text-gray-400 mb-4">
-                {isConnected
-                  ? "Your 7shifts account is connected. You can configure how schedules are synced between platforms."
-                  : "Connect your 7shifts account to enable these settings. Once connected, you can configure how schedules are synced between platforms."}
-              </p>
-              <div className="flex justify-end">
-                <button onClick={handleSaveSettings} className="btn-primary">
-                  Save Settings
+              {/* Sync Controls */}
+              <div className="bg-gray-800/50 rounded-lg p-6">
+                <h4 className="text-white font-medium mb-4">Import Schedule</h4>
+                <p className="text-sm text-gray-400 mb-4">
+                  Select a date range to import shifts from 7shifts into ChefLife.
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-2">
+                      Start Date
+                    </label>
+                    <input
+                      type="date"
+                      className="input w-full"
+                      value={syncStartDate}
+                      onChange={(e) => setSyncStartDate(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-2">
+                      End Date
+                    </label>
+                    <input
+                      type="date"
+                      className="input w-full"
+                      value={syncEndDate}
+                      onChange={(e) => setSyncEndDate(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleSync7shifts}
+                  disabled={!canSync}
+                  className="btn-primary w-full"
+                >
+                  {isSyncing ? (
+                    <>
+                      <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
+                      Syncing...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Sync Now
+                    </>
+                  )}
                 </button>
               </div>
             </div>
-          </div>
+          ) : (
+            /* Not Connected State - Prompt to Connect */
+            <div className="text-center py-12">
+              <div className="w-16 h-16 bg-gray-800 rounded-xl flex items-center justify-center mx-auto mb-4">
+                <Plug className="w-8 h-8 text-gray-500" />
+              </div>
+              <h3 className="text-lg font-medium text-white mb-2">
+                7shifts Not Connected
+              </h3>
+              <p className="text-gray-400 mb-6 max-w-md mx-auto">
+                Connect your 7shifts account in the Integrations hub to enable automatic schedule imports.
+              </p>
+              <button
+                onClick={() => navigate('/admin/integrations')}
+                className="btn-primary"
+              >
+                <Plug className="w-4 h-4 mr-2" />
+                Go to Integrations
+              </button>
+              <p className="text-xs text-gray-500 mt-4">
+                <a 
+                  href="https://www.7shifts.com" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="hover:text-gray-400 inline-flex items-center gap-1"
+                >
+                  Don't have 7shifts? Learn more <ExternalLink className="w-3 h-3" />
+                </a>
+              </p>
+            </div>
+          )}
         </div>
       )}
 

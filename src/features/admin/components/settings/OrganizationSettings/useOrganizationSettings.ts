@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import type { Organization } from "@/types/organization";
@@ -13,6 +13,9 @@ export function useOrganizationSettings() {
   const [localOrganization, setLocalOrganization] =
     useState<Organization | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  
+  // Track original state for unsaved changes detection
+  const originalOrganization = useRef<Organization | null>(null);
 
   // Use organization from auth if available, otherwise use local state
   const organization = useMemo(() => {
@@ -37,6 +40,7 @@ export function useOrganizationSettings() {
         },
       };
       setLocalOrganization(orgWithSettings);
+      originalOrganization.current = JSON.parse(JSON.stringify(orgWithSettings));
     }
   }, [authLoading, organizationId, authOrganization, localOrganization]);
 
@@ -63,17 +67,18 @@ export function useOrganizationSettings() {
       }
 
       setLocalOrganization(data);
+      originalOrganization.current = JSON.parse(JSON.stringify(data));
     } catch (error) {
       console.error("Error loading organization:", error);
       toast.error("Failed to load organization settings");
     }
   };
 
-  const updateOrganization = (updates: Partial<Organization>) => {
+  const updateOrganization = useCallback((updates: Partial<Organization>) => {
     if (!organization) return;
     const updatedOrg = { ...organization, ...updates };
     setLocalOrganization(updatedOrg);
-  };
+  }, [organization]);
 
   const handleSave = async () => {
     if (!organization) return;
@@ -91,6 +96,9 @@ export function useOrganizationSettings() {
       if (error) throw error;
       toast.success("Settings saved successfully");
 
+      // Update the original reference after successful save
+      originalOrganization.current = JSON.parse(JSON.stringify(organization));
+
       // Only reload if we don't have auth organization (to avoid unnecessary fetches)
       if (!authOrganization && organizationId) {
         await loadOrganization(organizationId);
@@ -103,11 +111,26 @@ export function useOrganizationSettings() {
     }
   };
 
+  // Check if there are unsaved changes
+  const hasUnsavedChanges = useMemo(() => {
+    if (!organization || !originalOrganization.current) return false;
+    return JSON.stringify(organization) !== JSON.stringify(originalOrganization.current);
+  }, [organization]);
+
+  // Reset to original state
+  const resetChanges = useCallback(() => {
+    if (originalOrganization.current) {
+      setLocalOrganization(JSON.parse(JSON.stringify(originalOrganization.current)));
+    }
+  }, []);
+
   return {
     organization,
     isLoading: authLoading && !organization,
     isSaving,
     updateOrganization,
     handleSave,
+    hasUnsavedChanges,
+    resetChanges,
   };
 }

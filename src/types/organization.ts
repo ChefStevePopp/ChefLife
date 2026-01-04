@@ -1,3 +1,6 @@
+import { OrganizationModules } from './modules';
+import { OrganizationIntegrations } from './integrations';
+
 export interface OperatingHours {
   open: string;
   close: string;
@@ -26,6 +29,22 @@ export interface OrganizationSettings {
   weekStartsOn?: 0 | 1 | 6; // 0 = Sunday, 1 = Monday, 6 = Saturday
 }
 
+export interface HealthInspections {
+  certificate?: {
+    number?: string | null;
+    expiry_date?: string | null;
+    image_url?: string | null;
+    last_updated?: string | null;
+  };
+  visits?: Array<{
+    date: string;
+    inspector: string;
+    score?: number;
+    notes?: string;
+  }>;
+  notifications?: string[];
+}
+
 export interface Organization {
   id: string;
   name: string;
@@ -34,9 +53,25 @@ export interface Organization {
   website?: string;
   contact_email?: string;
   contact_phone?: string;
+  owner_id?: string;
   settings: OrganizationSettings;
+  health_inspections?: HealthInspections;
+  /** Feature modules with security permissions */
+  modules?: OrganizationModules;
+  /** External service integrations */
+  integrations?: OrganizationIntegrations;
   created_at: string;
   updated_at: string;
+}
+
+export interface LocationModuleOverrides {
+  /** Module-specific overrides for this location */
+  [moduleId: string]: {
+    /** Override enabled state (null = use org default) */
+    enabled?: boolean | null;
+    /** Override config (merged with org default) */
+    config?: Record<string, unknown>;
+  };
 }
 
 export interface Location {
@@ -60,6 +95,8 @@ export interface Location {
     operating_schedule?: DailySchedule;
     [key: string]: any;
   };
+  /** Module overrides for multi-unit flexibility */
+  module_overrides?: LocationModuleOverrides;
   created_at: string;
   updated_at: string;
 }
