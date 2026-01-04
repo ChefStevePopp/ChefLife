@@ -327,13 +327,38 @@ export const ScheduleManager: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header - Responsive */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1 sm:mb-2">
-            Schedule Manager
-          </h1>
-          <p className="text-sm sm:text-base text-gray-400">Upload and manage employee schedules</p>
+      {/* L5 Header */}
+      <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-primary-500/20 flex items-center justify-center flex-shrink-0">
+              <Calendar className="w-5 h-5 text-primary-400" />
+            </div>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-white">
+                Schedule Manager
+              </h1>
+              <p className="text-gray-400 text-sm">
+                Upload and manage employee schedules
+              </p>
+            </div>
+          </div>
+          
+          {/* Quick stats */}
+          {currentSchedule && (
+            <div className="hidden sm:flex items-center gap-4 text-right">
+              <div>
+                <div className="text-lg font-bold text-white">{scheduleShifts.length}</div>
+                <div className="text-xs text-gray-400">Shifts</div>
+              </div>
+              <div>
+                <div className="text-lg font-bold text-white">
+                  {new Set(scheduleShifts.map((s) => s.employee_name)).size}
+                </div>
+                <div className="text-xs text-gray-400">Team Members</div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -367,24 +392,24 @@ export const ScheduleManager: React.FC = () => {
           <span className="text-sm sm:text-base">Previous</span>
         </button>
         <button
+          onClick={() => setActiveTab("config")}
+          className={`tab purple whitespace-nowrap flex-shrink-0 snap-start ${activeTab === "config" ? "active" : ""}`}
+        >
+          <FileSpreadsheet
+            className={`w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2 flex-shrink-0 ${activeTab === "config" ? "text-purple-400" : ""}`}
+          />
+          <span className="text-sm sm:text-base hidden sm:inline">Import Settings</span>
+          <span className="text-sm sm:text-base sm:hidden">Import</span>
+        </button>
+        <button
           onClick={() => setActiveTab("integration")}
           className={`tab rose whitespace-nowrap flex-shrink-0 snap-start ${activeTab === "integration" ? "active" : ""}`}
         >
           <Link
             className={`w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2 flex-shrink-0 ${activeTab === "integration" ? "text-rose-400" : ""}`}
           />
-          <span className="text-sm sm:text-base hidden sm:inline">7shifts Sync</span>
-          <span className="text-sm sm:text-base sm:hidden">7shifts</span>
-        </button>
-        <button
-          onClick={() => setActiveTab("config")}
-          className={`tab purple whitespace-nowrap flex-shrink-0 snap-start ${activeTab === "config" ? "active" : ""}`}
-        >
-          <Settings
-            className={`w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2 flex-shrink-0 ${activeTab === "config" ? "text-purple-400" : ""}`}
-          />
-          <span className="text-sm sm:text-base hidden sm:inline">CSV Configuration</span>
-          <span className="text-sm sm:text-base sm:hidden">CSV</span>
+          <span className="text-sm sm:text-base hidden sm:inline">7shifts API</span>
+          <span className="text-sm sm:text-base sm:hidden">API</span>
         </button>
       </div>
 
@@ -617,7 +642,7 @@ export const ScheduleManager: React.FC = () => {
         </div>
       )}
 
-      {/* 7shifts Sync Tab - SIMPLIFIED */}
+      {/* 7shifts API Tab */}
       {activeTab === "integration" && (
         <div className="card p-6">
           {/* Header Section */}
@@ -627,11 +652,14 @@ export const ScheduleManager: React.FC = () => {
                 <Link className="w-5 h-5 text-rose-400" />
               </div>
               <div>
-                <h3 className="text-lg font-medium text-white">
-                  7shifts Sync
-                </h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-medium text-white">7shifts API</h3>
+                  <span className="px-2 py-0.5 text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full">
+                    Premium
+                  </span>
+                </div>
                 <p className="text-sm text-gray-400">
-                  Import schedules from your 7shifts account
+                  Direct API sync (requires 7shifts Works plan or higher)
                 </p>
               </div>
             </div>
@@ -735,32 +763,42 @@ export const ScheduleManager: React.FC = () => {
               </div>
             </div>
           ) : (
-            /* Not Connected State - Prompt to Connect */
+            /* Not Connected State - Explain options */
             <div className="text-center py-12">
               <div className="w-16 h-16 bg-gray-800 rounded-xl flex items-center justify-center mx-auto mb-4">
                 <Plug className="w-8 h-8 text-gray-500" />
               </div>
               <h3 className="text-lg font-medium text-white mb-2">
-                7shifts Not Connected
+                7shifts API Not Connected
               </h3>
               <p className="text-gray-400 mb-6 max-w-md mx-auto">
-                Connect your 7shifts account in the Integrations hub to enable automatic schedule imports.
+                Direct API sync requires 7shifts Works plan or higher. 
+                <strong className="text-gray-300"> Most users should use Import Settings</strong> to upload CSV exports instead.
               </p>
-              <button
-                onClick={() => navigate('/admin/integrations')}
-                className="btn-primary"
-              >
-                <Plug className="w-4 h-4 mr-2" />
-                Go to Integrations
-              </button>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <button
+                  onClick={() => setActiveTab('config')}
+                  className="btn-secondary"
+                >
+                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  Use Import Settings
+                </button>
+                <button
+                  onClick={() => navigate('/admin/integrations')}
+                  className="btn-primary"
+                >
+                  <Plug className="w-4 h-4 mr-2" />
+                  Configure API Access
+                </button>
+              </div>
               <p className="text-xs text-gray-500 mt-4">
                 <a 
-                  href="https://www.7shifts.com" 
+                  href="https://www.7shifts.com/pricing" 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="hover:text-gray-400 inline-flex items-center gap-1"
                 >
-                  Don't have 7shifts? Learn more <ExternalLink className="w-3 h-3" />
+                  Check 7shifts pricing for API access <ExternalLink className="w-3 h-3" />
                 </a>
               </p>
             </div>
@@ -768,23 +806,34 @@ export const ScheduleManager: React.FC = () => {
         </div>
       )}
 
-      {/* CSV Configuration Tab */}
+      {/* Import Settings Tab */}
       {activeTab === "config" && (
         <div className="card p-6">
-          {/* Header Section - Matching Vendor Invoice Manager Style */}
+          {/* Header Section */}
           <div className="flex items-center justify-between mb-6 bg-[#262d3c] p-2 rounded-lg shadow-lg">
             <div className="flex items-center gap-3 p-4 rounded-lg bg-[#262d3c]">
               <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                <Settings className="w-5 h-5 text-purple-400" />
+                <FileSpreadsheet className="w-5 h-5 text-purple-400" />
               </div>
               <div>
                 <h3 className="text-lg font-medium text-white">
-                  CSV Configuration
+                  Import Settings
                 </h3>
                 <p className="text-sm text-gray-400">
-                  Manage CSV import mappings for different schedule formats
+                  Configure mappings for Excel and CSV schedule imports
                 </p>
               </div>
+            </div>
+          </div>
+
+          {/* Info callout */}
+          <div className="flex items-start gap-3 p-4 mb-6 bg-purple-500/10 border border-purple-500/30 rounded-lg">
+            <FileSpreadsheet className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm text-gray-300">
+                <strong className="text-white">Most common method:</strong> Export schedules from 7shifts, HotSchedules, or Excel, then upload the CSV file here. 
+                This works with any 7shifts plan — no premium API access required.
+              </p>
             </div>
           </div>
 
@@ -803,7 +852,7 @@ export const ScheduleManager: React.FC = () => {
                   <path d="M12 16v-4"></path>
                   <path d="M12 8h.01"></path>
                 </svg>
-                <h3 className="text-lg font-medium text-white">What are CSV Mappings?</h3>
+                <h3 className="text-lg font-medium text-white">What are Import Mappings?</h3>
               </div>
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-chevron-up w-5 h-5 text-gray-400">
                 <path d="m18 15-6-6-6 6"></path>
@@ -811,9 +860,9 @@ export const ScheduleManager: React.FC = () => {
             </button>
             <div className="expandable-info-content">
               <p className="text-sm text-gray-300 p-4">
-                CSV Mappings tell ChefLife how to read your schedule files. Different scheduling systems (7shifts, HotSchedules, Excel) export data with different column names and formats. 
-                For example, one system might use "Employee Name" while another uses "Staff Member" or "Team Member". 
-                Mappings let you save these configurations so you don't have to set them up every time you upload a schedule.
+                Import mappings tell ChefLife how to read your schedule files. Different scheduling systems export data with different column names — 
+                one might use "Employee Name" while another uses "Staff Member" or "Team Member". 
+                Save a mapping once for each format you use, then select it whenever you upload that type of file.
               </p>
             </div>
           </div>

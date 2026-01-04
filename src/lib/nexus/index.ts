@@ -79,7 +79,16 @@ export type ActivityType =
   | "security_protocol_demoted"
   // System activities
   | "maintenance_due"
-  | "system_error";
+  | "system_error"
+  // Performance activities
+  | "performance_point_added"
+  | "performance_reduction_added"
+  | "performance_coaching_triggered"
+  | "performance_coaching_completed"
+  | "performance_pip_created"
+  | "performance_pip_updated"
+  | "performance_pip_completed"
+  | "performance_tier_changed";
 
 export interface NexusEvent {
   organization_id: string;
@@ -152,6 +161,16 @@ const ACTIVITY_TYPE_TO_CATEGORY: Record<ActivityType, ActivityCategory> = {
   security_protocol_changed: 'security',
   security_protocol_promoted: 'security',
   security_protocol_demoted: 'security',
+  
+  // Performance
+  performance_point_added: 'team',
+  performance_reduction_added: 'team',
+  performance_coaching_triggered: 'team',
+  performance_coaching_completed: 'team',
+  performance_pip_created: 'team',
+  performance_pip_updated: 'team',
+  performance_pip_completed: 'team',
+  performance_tier_changed: 'team',
 };
 
 // =============================================================================
@@ -290,7 +309,37 @@ const ACTIVITY_TOAST_CONFIG: Partial<Record<ActivityType, ToastConfig | null>> =
   },
   security_protocol_demoted: {
     message: (d) => `${d.member_name || 'Team member'} demoted to ${d.new_protocol || 'new protocol'}`,
-    severity: 'warning', // Important change, should be noticed
+    severity: 'warning',
+  },
+  
+  // Performance
+  performance_point_added: {
+    message: (d) => `${d.name || 'Team member'}: +${d.points} points (${d.event_type || 'event'})`,
+    severity: 'warning',
+  },
+  performance_reduction_added: {
+    message: (d) => `${d.name || 'Team member'}: ${d.points} point reduction`,
+  },
+  performance_coaching_triggered: {
+    message: (d) => `${d.name || 'Team member'} reached Stage ${d.stage} coaching`,
+    severity: 'warning',
+  },
+  performance_coaching_completed: {
+    message: (d) => `Coaching completed for ${d.name || 'team member'}`,
+  },
+  performance_pip_created: {
+    message: (d) => `PIP created for ${d.name || 'team member'}`,
+    severity: 'warning',
+  },
+  performance_pip_updated: {
+    message: (d) => `PIP updated for ${d.name || 'team member'}`,
+  },
+  performance_pip_completed: {
+    message: (d) => `PIP ${d.outcome || 'completed'} for ${d.name || 'team member'}`,
+  },
+  performance_tier_changed: {
+    message: (d) => `${d.name || 'Team member'} moved to Tier ${d.new_tier}`,
+    severity: d => d.new_tier === 3 ? 'warning' : 'info',
   },
 };
 

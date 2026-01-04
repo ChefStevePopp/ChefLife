@@ -43,41 +43,41 @@ export interface BaseModuleConfig {
 }
 
 // =============================================================================
-// ATTENDANCE MODULE
+// TEAM PERFORMANCE MODULE
 // =============================================================================
 
-export interface AttendanceDemerit {
+export interface PerformanceDemerit {
   id: string;
   label: string;
   points: number;
   enabled: boolean;
 }
 
-export interface AttendanceRedemption {
+export interface PerformanceRedemption {
   id: string;
   label: string;
   points: number;  // Negative value
   enabled: boolean;
 }
 
-export interface AttendanceTier {
+export interface PerformanceTier {
   level: number;
   label: string;
   maxPoints: number | null;  // null = unlimited (highest tier)
   description?: string;
 }
 
-export interface AttendanceConfig {
+export interface TeamPerformanceConfig {
   /** Cycle type: quadmester (Jan-Apr, May-Aug, Sep-Dec) or custom */
   cycleType: 'quadmester' | 'trimester' | 'custom';
   /** Custom cycle boundaries (MM-DD format) if cycleType is 'custom' */
   cycleBoundaries?: string[];
   /** Point events (demerits) */
-  demerits: AttendanceDemerit[];
+  demerits: PerformanceDemerit[];
   /** Point reduction opportunities */
-  redemptions: AttendanceRedemption[];
+  redemptions: PerformanceRedemption[];
   /** Tier definitions */
-  tiers: AttendanceTier[];
+  tiers: PerformanceTier[];
   /** Detection thresholds */
   thresholds: {
     /** Minutes after shift start before considered late */
@@ -89,8 +89,8 @@ export interface AttendanceConfig {
   maxRedemptionPer30Days: number;
 }
 
-export interface AttendanceModuleConfig extends BaseModuleConfig {
-  config: AttendanceConfig | null;
+export interface TeamPerformanceModuleConfig extends BaseModuleConfig {
+  config: TeamPerformanceConfig | null;
 }
 
 // =============================================================================
@@ -191,7 +191,7 @@ export interface TasksModuleConfig extends BaseModuleConfig {
 // =============================================================================
 
 export interface OrganizationModules {
-  attendance: AttendanceModuleConfig;
+  team_performance: TeamPerformanceModuleConfig;
   scheduling: SchedulingModuleConfig;
   inventory: InventoryModuleConfig;
   recipes: RecipesModuleConfig;
@@ -228,10 +228,10 @@ export const MODULE_REGISTRY: ModuleDefinition[] = [
     defaultEnabled: true,
   },
   {
-    id: 'attendance',
-    label: 'Attendance Tracker',
-    description: 'Point-based attendance tracking with tiers and redemption opportunities',
-    icon: 'Clock',
+    id: 'team_performance',
+    label: 'Team Performance',
+    description: 'Point-based attendance & conduct tracking with tiers, coaching, and PIPs',
+    icon: 'ClipboardCheck',
     color: 'amber',
     requiresCompliance: true,
     complianceWarning: 'Point-based attendance systems may not be legal in all jurisdictions. Consult local labor laws before enabling. You are responsible for ensuring compliance with applicable regulations.',
@@ -279,7 +279,7 @@ export const MODULE_REGISTRY: ModuleDefinition[] = [
 // DEFAULT CONFIGS
 // =============================================================================
 
-export const DEFAULT_ATTENDANCE_CONFIG: AttendanceConfig = {
+export const DEFAULT_TEAM_PERFORMANCE_CONFIG: TeamPerformanceConfig = {
   cycleType: 'quadmester',
   demerits: [
     { id: 'no_show', label: 'No-Show', points: 6, enabled: true },
@@ -311,7 +311,7 @@ export const DEFAULT_ATTENDANCE_CONFIG: AttendanceConfig = {
 };
 
 export const DEFAULT_MODULE_PERMISSIONS: Record<ModuleId, ModulePermissions> = {
-  attendance: { view: 5, enable: 1, configure: 2, use: 4 },
+  team_performance: { view: 5, enable: 1, configure: 2, use: 4 },
   scheduling: { view: 5, enable: 1, configure: 2, use: 3 },
   inventory: { view: 5, enable: 1, configure: 2, use: 3 },
   recipes: { view: 5, enable: 1, configure: 3, use: 4 },

@@ -37,7 +37,7 @@ export const CreateTeamMemberModal: React.FC<CreateTeamMemberModalProps> = ({
     station: "",
     punch_id: "",
     status: "active",
-    start_date: new Date().toISOString().split("T")[0],
+    hire_date: new Date().toISOString().split("T")[0],
     certifications: [],
     allergies: [],
     emergency_contact: {
@@ -146,13 +146,13 @@ export const CreateTeamMemberModal: React.FC<CreateTeamMemberModalProps> = ({
 
             <div>
               <label className="block text-sm font-medium text-gray-400 mb-1">
-                Start Date
+                Hire Date
               </label>
               <input
                 type="date"
-                value={formData.start_date?.split("T")[0]}
+                value={formData.hire_date?.split("T")[0]}
                 onChange={(e) =>
-                  setFormData({ ...formData, start_date: e.target.value })
+                  setFormData({ ...formData, hire_date: e.target.value })
                 }
                 className="input w-full"
               />

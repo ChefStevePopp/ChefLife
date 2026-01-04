@@ -121,10 +121,9 @@ export const menuItems = (isDev: boolean, securityLevel: SecurityLevel = SECURIT
         },
         {
           icon: ClipboardCheck,
-          label: "Attendance",
-          path: "/admin/attendance",
-          tooltip: "Are they here? Points & tracking",
-          comingSoon: true,
+          label: "Team Performance",
+          path: "/admin/team/performance",
+          tooltip: "Points, tiers & coaching",
         },
         {
           icon: Briefcase,

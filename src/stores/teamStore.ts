@@ -73,6 +73,7 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
       if (updates.kitchen_role) updateData.kitchen_role = updates.kitchen_role;
       if (updates.kitchen_stations) updateData.kitchen_stations = updates.kitchen_stations;
       if (updates.security_level !== undefined) updateData.security_level = updates.security_level;
+      if (updates.hire_date !== undefined) updateData.hire_date = updates.hire_date;
 
       const { error: updateError } = await supabase
         .from("organization_team_members")
@@ -132,6 +133,7 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
           kitchen_role: member.kitchen_role || "team_member",
           kitchen_stations: member.kitchen_stations || [],
           security_level: member.security_level ?? 5, // Default to Team Member
+          hire_date: member.hire_date || null,
           is_active: member.is_active !== undefined ? member.is_active : true,
           organization_id: user.user_metadata.organizationId,
           created_at: new Date().toISOString(),

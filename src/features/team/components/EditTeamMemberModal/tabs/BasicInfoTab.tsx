@@ -1,5 +1,5 @@
 import React from "react";
-import { User, Mail, Phone, Hash, AlertCircle, Users, Fingerprint } from "lucide-react";
+import { User, Mail, Phone, Hash, AlertCircle, Users, Fingerprint, Calendar } from "lucide-react";
 import type { TeamMember } from "../../../types";
 import { ImportedBadge } from "@/shared/components/ImportedBadge";
 
@@ -216,6 +216,25 @@ export const BasicInfoTab: React.FC<BasicInfoTabProps> = ({
           />
 
           <div className="space-y-4">
+            {/* Hire Date */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                Hire Date
+              </label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                <input
+                  type="date"
+                  value={formData.hire_date?.split('T')[0] || ""}
+                  onChange={(e) => updateField('hire_date', e.target.value)}
+                  className="input w-full pl-10"
+                />
+              </div>
+              <p className="mt-1.5 text-xs text-gray-500">
+                Used to calculate tenure, vacation entitlement, and probationary status
+              </p>
+            </div>
+
             {/* Employee ID */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1.5">

@@ -90,7 +90,8 @@ const hasChanges = (original: TeamMember, current: TeamMember): boolean => {
   const fieldsToCompare: (keyof TeamMember)[] = [
     'first_name', 'last_name', 'display_name', 'email', 'phone', 'punch_id',
     'avatar_url', 'kitchen_role', 'roles', 'departments', 'locations',
-    'kitchen_stations', 'notification_preferences', 'security_level', 'certifications'
+    'kitchen_stations', 'notification_preferences', 'security_level', 'certifications',
+    'hire_date'
   ];
 
   for (const field of fieldsToCompare) {
@@ -206,6 +207,7 @@ export const EditTeamMemberModal: React.FC<EditTeamMemberModalProps> = ({
       // Only include admin-editable fields if not self-edit
       if (!isSelfEdit) {
         updates.punch_id = formData.punch_id || null;
+        updates.hire_date = formData.hire_date || null;
         updates.roles = formData.roles || [];
         updates.departments = formData.departments || [];
         updates.locations = formData.locations || [];

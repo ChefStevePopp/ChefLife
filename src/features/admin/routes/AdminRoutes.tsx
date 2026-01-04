@@ -19,6 +19,8 @@ import { TaskManager } from "../components/sections/TaskManager";
 import { HACCPManager } from "../components/sections/HACCPManager";
 import { ChecklistsManager } from "../components/sections/ChecklistsManager";
 import { MyProfile } from "@/features/team/components/MyProfile";
+import { TeamPerformance } from "@/features/team/components/TeamPerformance";
+import { TeamPerformanceConfig } from "../components/sections/TeamPerformanceConfig";
 
 export const AdminRoutes: React.FC = () => {
   return (
@@ -28,6 +30,7 @@ export const AdminRoutes: React.FC = () => {
         <Route path="recipes" element={<RecipeManager />} />
         <Route path="team" element={<TeamManagement />} />
         <Route path="team/my-profile" element={<MyProfile />} />
+        <Route path="team/performance" element={<TeamPerformance />} />
         <Route path="schedule/*" element={<ScheduleManager />} />
         <Route path="app-access" element={<PermissionsManager />} />
         <Route path="nexus" element={<Nexus />} />
@@ -37,6 +40,7 @@ export const AdminRoutes: React.FC = () => {
         <Route path="dev-management" element={<DevManagement />} />
         <Route path="organizations" element={<OrganizationSettings />} />
         <Route path="modules" element={<ModulesManager />} />
+        <Route path="modules/team-performance" element={<TeamPerformanceConfig />} />
         <Route path="integrations" element={<IntegrationsManager />} />
         <Route path="activity" element={<ActivityLogList />} />
         <Route path="tasks" element={<TaskManager />} />

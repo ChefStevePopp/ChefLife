@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { 
   Package, 
   Calendar, 
@@ -59,17 +60,18 @@ const CORE_FEATURES = [
 // Icons MUST match sidebar menuItems.ts for consistency
 const ADDON_FEATURES = [
   {
-    id: 'attendance' as ModuleId,
-    label: 'Attendance',
-    description: 'Point-based attendance tracking with tiers and redemption opportunities',
+    id: 'team_performance' as ModuleId,
+    label: 'Team Performance',
+    description: 'Point-based attendance & conduct tracking with tiers, coaching stages, and PIPs',
     icon: ClipboardCheck, // Matches sidebar
     requiresCompliance: true,
     complianceWarning: 'Point-based attendance systems may not be legal in all jurisdictions. Consult local labor laws before enabling. You are responsible for ensuring compliance.',
-    configPath: '/admin/modules/attendance',
+    configPath: '/admin/modules/team-performance',
   },
 ];
 
 export const ModulesManager: React.FC = () => {
+  const navigate = useNavigate();
   const { organizationId, securityLevel, user, isLoading: authLoading } = useAuth();
   const [organization, setOrganization] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -208,9 +210,7 @@ export const ModulesManager: React.FC = () => {
   };
 
   const handleConfigure = (configPath: string) => {
-    toast('Configuration coming soon', { icon: '⚙️' });
-    // TODO: navigate to config page or open modal
-    // navigate(configPath);
+    navigate(configPath);
   };
 
   if (isLoading || authLoading) {
