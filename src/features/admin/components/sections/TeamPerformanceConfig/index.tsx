@@ -1261,6 +1261,126 @@ export const TeamPerformanceConfig: React.FC = () => {
           </div>
         </div>
 
+        {/* TRACKING RULES */}
+        <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-5">
+          <SectionHeader
+            icon={Shield}
+            iconColor="text-amber-400"
+            bgColor="bg-amber-500/20"
+            title="Tracking Rules"
+            subtitle="Who gets tracked and when"
+          />
+
+          {/* Expandable Info */}
+          <div className={`expandable-info-section mb-4 ${expandedInfo === 'tracking' ? 'expanded' : ''}`}>
+            <button
+              onClick={() => setExpandedInfo(expandedInfo === 'tracking' ? null : 'tracking')}
+              className="expandable-info-header"
+            >
+              <Info className="w-4 h-4 text-gray-400 flex-shrink-0" />
+              <span className="text-sm text-gray-400">Why exempt certain roles?</span>
+              <ChevronUp className="w-4 h-4 text-gray-500 ml-auto" />
+            </button>
+            <div className="expandable-info-content">
+              <div className="px-4 pb-4 pt-2 text-sm text-gray-400">
+                Owners, executive chefs, and managers often work irregular hours, come in 
+                without being scheduled, or stay late by choice. Tracking their "attendance" 
+                against a schedule doesn't make sense — they ARE the schedule. Similarly, 
+                salaried leadership working unscheduled shifts shouldn't trigger no-show alerts.
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {/* Exempt from tracking entirely */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                Exempt from attendance tracking
+              </label>
+              <p className="text-xs text-gray-500 mb-2">
+                These security levels won't generate attendance events at all
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { level: 0, name: 'Ω Omega (System)' },
+                  { level: 1, name: 'α Alpha (Owner)' },
+                  { level: 2, name: 'β Bravo (Manager)' },
+                  { level: 3, name: 'γ Charlie (Asst Mgr)' },
+                  { level: 4, name: 'δ Delta (Supervisor)' },
+                  { level: 5, name: 'ε Echo (Team Member)' },
+                ].map(({ level, name }) => (
+                  <label key={level} className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-700/30 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={config.tracking_rules.exempt_security_levels.includes(level)}
+                      onChange={(e) => {
+                        const current = config.tracking_rules.exempt_security_levels;
+                        const updated = e.target.checked
+                          ? [...current, level].sort()
+                          : current.filter(l => l !== level);
+                        updateTrackingRules({ exempt_security_levels: updated });
+                      }}
+                      className="rounded border-gray-600 bg-gray-700 text-primary-500 focus:ring-primary-500/30"
+                    />
+                    <span className="text-sm text-gray-300">{name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Unscheduled work handling */}
+            <div className="pt-4 border-t border-gray-700/30">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <span className="text-sm text-gray-300">Flag unscheduled work?</span>
+                  <p className="text-xs text-gray-500">When someone clocks in but wasn't scheduled</p>
+                </div>
+                <Toggle
+                  checked={config.tracking_rules.track_unscheduled_shifts}
+                  onChange={(checked) => updateTrackingRules({ track_unscheduled_shifts: checked })}
+                />
+              </div>
+
+              {config.tracking_rules.track_unscheduled_shifts && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                    Exempt from unscheduled flags
+                  </label>
+                  <p className="text-xs text-gray-500 mb-2">
+                    These roles can work without being scheduled (owners, chefs who come in to prep)
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { level: 0, name: 'Ω Omega (System)' },
+                      { level: 1, name: 'α Alpha (Owner)' },
+                      { level: 2, name: 'β Bravo (Manager)' },
+                      { level: 3, name: 'γ Charlie (Asst Mgr)' },
+                      { level: 4, name: 'δ Delta (Supervisor)' },
+                      { level: 5, name: 'ε Echo (Team Member)' },
+                    ].map(({ level, name }) => (
+                      <label key={level} className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-700/30 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={config.tracking_rules.unscheduled_exempt_levels.includes(level)}
+                          onChange={(e) => {
+                            const current = config.tracking_rules.unscheduled_exempt_levels;
+                            const updated = e.target.checked
+                              ? [...current, level].sort()
+                              : current.filter(l => l !== level);
+                            updateTrackingRules({ unscheduled_exempt_levels: updated });
+                          }}
+                          className="rounded border-gray-600 bg-gray-700 text-primary-500 focus:ring-primary-500/30"
+                        />
+                        <span className="text-sm text-gray-300">{name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* POINT REDUCTIONS */}
         <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-5">
           <SectionHeader

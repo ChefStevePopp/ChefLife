@@ -88,6 +88,7 @@ export interface ImportResult {
   matchedCount: number;
   noShowCount: number;
   unscheduledCount: number;
+  exemptCount: number;       // Skipped due to tracking rules
   deltas: ShiftDelta[];
   errors: string[];
   dateRange: { start: string; end: string };
@@ -110,6 +111,21 @@ export const DEFAULT_THRESHOLDS: PointThresholds = {
   stayedLateMin: 60,
   arrivedEarlyMin: 30,
 };
+
+export interface TrackingRules {
+  exempt_security_levels: number[];      // Levels completely exempt from tracking
+  track_unscheduled_shifts: boolean;     // Whether to flag unscheduled work
+  unscheduled_exempt_levels: number[];   // Levels that can work unscheduled without flag
+}
+
+export const DEFAULT_TRACKING_RULES: TrackingRules = {
+  exempt_security_levels: [0, 1],        // Owner, System exempt
+  track_unscheduled_shifts: true,
+  unscheduled_exempt_levels: [0, 1, 2],  // Owner, System, Manager can work unscheduled
+};
+
+// Map of employeeId (punch_id) to security level
+export type EmployeeSecurityMap = Map<string, number>;
 
 /**
  * Convert from config format to Delta Engine format
@@ -313,11 +329,21 @@ function processShifts(rows: RawShiftRow[]): ParsedShift[] {
 
 /**
  * Calculate deltas between scheduled and worked shifts
+ * 
+ * @param scheduledCSV - Raw CSV content of scheduled shifts
+ * @param workedCSV - Raw CSV content of worked shifts  
+ * @param thresholds - Detection thresholds (when events trigger)
+ * @param trackingRules - Who gets tracked
+ * @param employeeSecurityMap - Map of employeeId -> securityLevel for filtering
+ * @param dateFilter - Optional date range to filter results (inclusive)
  */
 export function calculateDeltas(
   scheduledCSV: string,
   workedCSV: string,
-  thresholds: PointThresholds = DEFAULT_THRESHOLDS
+  thresholds: PointThresholds = DEFAULT_THRESHOLDS,
+  trackingRules: TrackingRules = DEFAULT_TRACKING_RULES,
+  employeeSecurityMap?: EmployeeSecurityMap,
+  dateFilter?: { start: string; end: string }
 ): ImportResult {
   const errors: string[] = [];
   
@@ -344,6 +370,7 @@ export function calculateDeltas(
       matchedCount: 0,
       noShowCount: 0,
       unscheduledCount: 0,
+      exemptCount: 0,
       deltas: [],
       errors,
       dateRange: { start: '', end: '' },
@@ -351,8 +378,32 @@ export function calculateDeltas(
   }
   
   // Process into ParsedShifts with match keys
-  const scheduled = processShifts(scheduledRaw);
-  const worked = processShifts(workedRaw);
+  let scheduled = processShifts(scheduledRaw);
+  let worked = processShifts(workedRaw);
+  
+  // Apply date filter if provided
+  if (dateFilter) {
+    const { start, end } = dateFilter;
+    scheduled = scheduled.filter(s => s.date >= start && s.date <= end);
+    worked = worked.filter(w => w.date >= start && w.date <= end);
+  }
+  
+  // Helper: Check if employee is exempt from tracking
+  const isExemptFromTracking = (employeeId: string): boolean => {
+    if (!employeeSecurityMap) return false;
+    const level = employeeSecurityMap.get(employeeId);
+    if (level === undefined) return false; // Unknown employee, track them
+    return trackingRules.exempt_security_levels.includes(level);
+  };
+  
+  // Helper: Check if employee is exempt from unscheduled flags
+  const isExemptFromUnscheduledFlag = (employeeId: string): boolean => {
+    if (!trackingRules.track_unscheduled_shifts) return true; // Not tracking unscheduled at all
+    if (!employeeSecurityMap) return false;
+    const level = employeeSecurityMap.get(employeeId);
+    if (level === undefined) return false;
+    return trackingRules.unscheduled_exempt_levels.includes(level);
+  };
   
   // Build lookup maps
   const scheduledMap = new Map<string, ParsedShift>();
@@ -377,9 +428,18 @@ export function calculateDeltas(
     end: allDates[allDates.length - 1] || '',
   };
   
+  let exemptCount = 0;
+  
   for (const key of allKeys) {
     const sched = scheduledMap.get(key);
     const work = workedMap.get(key);
+    const employeeId = sched?.employeeId || work?.employeeId || '';
+    
+    // Skip entirely if employee is exempt from tracking
+    if (isExemptFromTracking(employeeId)) {
+      exemptCount++;
+      continue;
+    }
     
     const delta: ShiftDelta = {
       matchKey: key,
@@ -426,6 +486,12 @@ export function calculateDeltas(
       
     } else if (!sched && work) {
       // UNSCHEDULED: Worked without being scheduled
+      // Skip if employee is exempt from unscheduled flags (owners, managers coming in to prep)
+      if (isExemptFromUnscheduledFlag(employeeId)) {
+        exemptCount++;
+        continue;
+      }
+      
       unscheduledCount++;
       delta.status = 'unscheduled';
       delta.events = [{
@@ -451,6 +517,7 @@ export function calculateDeltas(
     matchedCount,
     noShowCount,
     unscheduledCount,
+    exemptCount,
     deltas,
     errors,
     dateRange,

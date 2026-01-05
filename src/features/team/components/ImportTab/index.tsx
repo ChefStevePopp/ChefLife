@@ -39,6 +39,9 @@ import {
   type ImportResult,
   type ShiftDelta,
   type DetectedEvent,
+  type TrackingRules,
+  type EmployeeSecurityMap,
+  DEFAULT_TRACKING_RULES,
 } from '../../services/deltaEngine';
 
 // =============================================================================
@@ -49,6 +52,15 @@ interface CSVFile {
   name: string;
   content: string;
   rowCount: number;
+  dateRange?: { start: string; end: string };
+}
+
+interface DateRangeMismatch {
+  scheduled: { start: string; end: string };
+  worked: { start: string; end: string };
+  overlap: { start: string; end: string };
+  scheduledOnly: number; // days only in scheduled
+  workedOnly: number;    // days only in worked
 }
 
 type ReviewStatus = 'pending' | 'approved' | 'rejected' | 'excused';
@@ -82,6 +94,10 @@ export const ImportTab: React.FC = () => {
   const [scheduledFile, setScheduledFile] = useState<CSVFile | null>(null);
   const [workedFile, setWorkedFile] = useState<CSVFile | null>(null);
   
+  // Date range mismatch state
+  const [dateRangeMismatch, setDateRangeMismatch] = useState<DateRangeMismatch | null>(null);
+  const [trimToOverlap, setTrimToOverlap] = useState<boolean>(true);
+  
   // Import state
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [reviewedDeltas, setReviewedDeltas] = useState<ReviewedDelta[]>([]);
@@ -97,6 +113,94 @@ export const ImportTab: React.FC = () => {
   const workedInputRef = useRef<HTMLInputElement>(null);
 
   // =============================================================================
+  // DATE RANGE HELPERS
+  // =============================================================================
+
+  /**
+   * Extract date range from CSV content
+   * Looks for 'date' column and finds min/max dates
+   */
+  const extractDateRange = (csvContent: string): { start: string; end: string } | null => {
+    try {
+      const lines = csvContent.trim().split('\n');
+      if (lines.length < 2) return null;
+      
+      // Find date column index
+      const header = lines[0].toLowerCase();
+      const cols = header.split(',').map(c => c.replace(/["']/g, '').trim());
+      const dateIndex = cols.findIndex(c => c === 'date');
+      if (dateIndex === -1) return null;
+      
+      // Extract all dates
+      const dates: string[] = [];
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        // Simple CSV parse (handles quoted fields)
+        const values = line.split(',').map(v => v.replace(/["']/g, '').trim());
+        const dateStr = values[dateIndex];
+        if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+          dates.push(dateStr);
+        }
+      }
+      
+      if (dates.length === 0) return null;
+      
+      dates.sort();
+      return { start: dates[0], end: dates[dates.length - 1] };
+    } catch (e) {
+      console.error('Error extracting date range:', e);
+      return null;
+    }
+  };
+
+  /**
+   * Detect date range mismatch between two files
+   */
+  const detectMismatch = useCallback(() => {
+    if (!scheduledFile?.dateRange || !workedFile?.dateRange) {
+      setDateRangeMismatch(null);
+      return;
+    }
+    
+    const sched = scheduledFile.dateRange;
+    const work = workedFile.dateRange;
+    
+    // Check if ranges are identical
+    if (sched.start === work.start && sched.end === work.end) {
+      setDateRangeMismatch(null);
+      return;
+    }
+    
+    // Calculate overlap
+    const overlapStart = sched.start > work.start ? sched.start : work.start;
+    const overlapEnd = sched.end < work.end ? sched.end : work.end;
+    
+    // Count days outside overlap (rough estimate)
+    const daysDiff = (a: string, b: string) => {
+      const msPerDay = 24 * 60 * 60 * 1000;
+      return Math.round((new Date(b).getTime() - new Date(a).getTime()) / msPerDay);
+    };
+    
+    const scheduledOnly = Math.max(0, daysDiff(work.end, sched.end)) + Math.max(0, daysDiff(sched.start, work.start));
+    const workedOnly = Math.max(0, daysDiff(sched.end, work.end)) + Math.max(0, daysDiff(work.start, sched.start));
+    
+    setDateRangeMismatch({
+      scheduled: sched,
+      worked: work,
+      overlap: { start: overlapStart, end: overlapEnd },
+      scheduledOnly,
+      workedOnly,
+    });
+  }, [scheduledFile?.dateRange, workedFile?.dateRange]);
+
+  // Check for mismatch when both files are loaded
+  useEffect(() => {
+    detectMismatch();
+  }, [detectMismatch]);
+
+  // =============================================================================
   // FILE HANDLING
   // =============================================================================
 
@@ -106,11 +210,13 @@ export const ImportTab: React.FC = () => {
   ) => {
     const content = await file.text();
     const rowCount = content.split('\n').filter(line => line.trim()).length - 1; // -1 for header
+    const dateRange = extractDateRange(content);
     
     setFile({
       name: file.name,
       content,
       rowCount,
+      dateRange: dateRange || undefined,
     });
   }, []);
 
@@ -141,9 +247,39 @@ export const ImportTab: React.FC = () => {
     // Convert config thresholds to Delta Engine format
     const thresholds = configToThresholds(config.detection_thresholds);
     
+    // Get tracking rules from config (or use defaults)
+    const trackingRules: TrackingRules = config.tracking_rules ?? DEFAULT_TRACKING_RULES;
+    
+    // Build employee security map (punch_id -> security_level)
+    const employeeSecurityMap: EmployeeSecurityMap = new Map();
+    members.forEach(m => {
+      if (m.punch_id && m.security_level !== undefined) {
+        employeeSecurityMap.set(m.punch_id, m.security_level);
+      }
+    });
+    
+    console.log('Tracking rules:', trackingRules);
+    console.log('Employee security map:', Object.fromEntries(employeeSecurityMap));
+    
+    // Determine date filter
+    const dateFilter = (trimToOverlap && dateRangeMismatch) 
+      ? dateRangeMismatch.overlap 
+      : undefined;
+    
+    if (dateFilter) {
+      console.log('Filtering to date range:', dateFilter);
+    }
+    
     // Small delay to show processing state
     setTimeout(async () => {
-      const result = calculateDeltas(scheduledFile.content, workedFile.content, thresholds);
+      const result = calculateDeltas(
+        scheduledFile.content, 
+        workedFile.content, 
+        thresholds,
+        trackingRules,
+        employeeSecurityMap,
+        dateFilter
+      );
       setImportResult(result);
       
       // Initialize reviewed deltas
@@ -171,19 +307,27 @@ export const ImportTab: React.FC = () => {
             worked_count: result.workedCount,
             matched_count: result.matchedCount,
             no_show_count: result.noShowCount,
+            exempt_count: result.exemptCount,
             events_detected: totalEvents,
             date_range: result.dateRange,
           },
         });
       }
+      
+      // Log exempt count if any
+      if (result.exemptCount > 0) {
+        console.log(`Skipped ${result.exemptCount} shifts (exempt employees)`);
+      }
     }, 500);
-  }, [scheduledFile, workedFile, config.detection_thresholds, organizationId, user]);
+  }, [scheduledFile, workedFile, config.detection_thresholds, config.tracking_rules, members, organizationId, user, trimToOverlap, dateRangeMismatch]);
 
   const resetImport = () => {
     setScheduledFile(null);
     setWorkedFile(null);
     setImportResult(null);
     setReviewedDeltas([]);
+    setDateRangeMismatch(null);
+    setTrimToOverlap(true);
   };
 
   // =============================================================================
@@ -436,6 +580,11 @@ export const ImportTab: React.FC = () => {
                   <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-2" />
                   <p className="text-sm font-medium text-white">{scheduledFile.name}</p>
                   <p className="text-xs text-gray-400 mt-1">{scheduledFile.rowCount} shifts</p>
+                  {scheduledFile.dateRange && (
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {scheduledFile.dateRange.start} → {scheduledFile.dateRange.end}
+                    </p>
+                  )}
                 </>
               ) : (
                 <>
@@ -475,6 +624,11 @@ export const ImportTab: React.FC = () => {
                   <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-2" />
                   <p className="text-sm font-medium text-white">{workedFile.name}</p>
                   <p className="text-xs text-gray-400 mt-1">{workedFile.rowCount} shifts</p>
+                  {workedFile.dateRange && (
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {workedFile.dateRange.start} → {workedFile.dateRange.end}
+                    </p>
+                  )}
                 </>
               ) : (
                 <>
@@ -483,6 +637,61 @@ export const ImportTab: React.FC = () => {
                   <p className="text-xs text-gray-500 mt-1">Drop file or click to browse</p>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Date Range Mismatch Warning */}
+      {!importResult && dateRangeMismatch && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h4 className="text-sm font-medium text-amber-400 mb-2">Date Range Mismatch Detected</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs mb-3">
+                <div className="bg-gray-800/50 rounded p-2">
+                  <p className="text-gray-500 mb-0.5">Scheduled</p>
+                  <p className="text-gray-300">{dateRangeMismatch.scheduled.start} → {dateRangeMismatch.scheduled.end}</p>
+                </div>
+                <div className="bg-gray-800/50 rounded p-2">
+                  <p className="text-gray-500 mb-0.5">Worked</p>
+                  <p className="text-gray-300">{dateRangeMismatch.worked.start} → {dateRangeMismatch.worked.end}</p>
+                </div>
+                <div className="bg-gray-800/50 rounded p-2">
+                  <p className="text-gray-500 mb-0.5">Overlap</p>
+                  <p className="text-emerald-400">{dateRangeMismatch.overlap.start} → {dateRangeMismatch.overlap.end}</p>
+                </div>
+              </div>
+              
+              {dateRangeMismatch.workedOnly > 0 && (
+                <p className="text-xs text-gray-400 mb-3">
+                  <span className="text-amber-400">{dateRangeMismatch.workedOnly} extra days</span> in Worked file will appear as "unscheduled work" if not trimmed.
+                </p>
+              )}
+              
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="trimOption"
+                    checked={trimToOverlap}
+                    onChange={() => setTrimToOverlap(true)}
+                    className="w-4 h-4 text-primary-500 bg-gray-800 border-gray-600 focus:ring-primary-500"
+                  />
+                  <span className="text-sm text-gray-300">Trim to overlap <span className="text-gray-500">(recommended)</span></span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="trimOption"
+                    checked={!trimToOverlap}
+                    onChange={() => setTrimToOverlap(false)}
+                    className="w-4 h-4 text-primary-500 bg-gray-800 border-gray-600 focus:ring-primary-500"
+                  />
+                  <span className="text-sm text-gray-300">Process all dates</span>
+                </label>
+              </div>
             </div>
           </div>
         </div>
@@ -515,7 +724,7 @@ export const ImportTab: React.FC = () => {
       {importResult && (
         <>
           {/* Summary Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
             <SummaryCard
               icon={Calendar}
               label="Date Range"
@@ -533,6 +742,13 @@ export const ImportTab: React.FC = () => {
               value={importResult.noShowCount}
               highlight={importResult.noShowCount > 0 ? 'rose' : undefined}
             />
+            {importResult.exemptCount > 0 && (
+              <SummaryCard
+                icon={Users}
+                label="Exempt"
+                value={importResult.exemptCount}
+              />
+            )}
             <SummaryCard
               icon={Clock}
               label="Pending"

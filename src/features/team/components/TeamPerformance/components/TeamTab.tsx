@@ -165,27 +165,96 @@ export const TeamTab: React.FC = () => {
         .eq('is_current', true)
         .single();
 
-      if (cycleError || !cycle) {
-        toast.error('No active performance cycle found');
+      if (cycleError) {
+        console.error('Cycle query error:', cycleError);
+        toast.error(`No active performance cycle: ${cycleError.message || cycleError.code || 'Unknown error'}`);
         setProcessingEventId(null);
         return;
       }
+      
+      if (!cycle) {
+        toast.error('No active performance cycle found. Create one in Settings.');
+        setProcessingEventId(null);
+        return;
+      }
+      
+      console.log('Using cycle:', cycle.id);
+      console.log('Event type:', event.event_type, 'Points:', event.suggested_points);
 
-      // Create point_event record
-      const { error: insertError } = await supabase
-        .from('point_events')
-        .insert({
-          organization_id: organizationId,
-          team_member_id: event.team_member_id,
-          cycle_id: cycle.id,
-          event_type: event.event_type,
-          points: event.suggested_points,
-          event_date: event.event_date,
-          notes: event.description,
-          created_by: user.id,
-        });
+      // Determine which table to use based on event type
+      const isReduction = event.suggested_points < 0;
+      const isInformational = event.event_type === 'unscheduled_worked';
+      
+      // Map Delta Engine event types to database event types
+      const reductionTypeMap: Record<string, string> = {
+        'stayed_late': 'stay_late',
+        'arrived_early': 'arrive_early',
+      };
+      
+      if (isInformational) {
+        // Unscheduled work is informational - just remove from staged
+        const { error: deleteError } = await supabase
+          .from('staged_events')
+          .delete()
+          .eq('id', event.id);
 
-      if (insertError) throw insertError;
+        if (deleteError) throw new Error(deleteError.message || 'Delete failed');
+        
+        await fetchStagedEvents();
+        toast.success('Unscheduled shift noted (no points)');
+        setProcessingEventId(null);
+        return;
+      }
+      
+      if (isReduction) {
+        // Insert into performance_point_reductions
+        const reductionType = reductionTypeMap[event.event_type] || event.event_type;
+        
+        const { data: insertedReduction, error: insertError } = await supabase
+          .from('performance_point_reductions')
+          .insert({
+            organization_id: organizationId,
+            team_member_id: event.team_member_id,
+            cycle_id: cycle.id,
+            reduction_type: reductionType,
+            points: event.suggested_points, // Already negative
+            event_date: event.event_date,
+            notes: event.description,
+            created_by: user.id,
+          })
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error('Insert reduction error:', insertError);
+          throw new Error(insertError.message || insertError.code || 'Insert failed');
+        }
+        
+        console.log('Inserted reduction:', insertedReduction);
+      } else {
+        // Insert into performance_point_events (demerits)
+        const { data: insertedEvent, error: insertError } = await supabase
+          .from('performance_point_events')
+          .insert({
+            organization_id: organizationId,
+            team_member_id: event.team_member_id,
+            cycle_id: cycle.id,
+            event_type: event.event_type,
+            points: event.suggested_points,
+            event_date: event.event_date,
+            notes: event.description,
+            created_by: user.id,
+          })
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error('Insert event error:', insertError);
+          throw new Error(insertError.message || insertError.code || 'Insert failed');
+        }
+        
+        console.log('Inserted event:', insertedEvent);
+      }
 
       // Delete from staged_events
       const { error: deleteError } = await supabase
@@ -193,7 +262,11 @@ export const TeamTab: React.FC = () => {
         .delete()
         .eq('id', event.id);
 
-      if (deleteError) throw deleteError;
+      if (deleteError) {
+        console.error('Delete error:', deleteError);
+        // Event was created but staged wasn't deleted - not critical
+        toast.error('Event saved but cleanup failed');
+      }
 
       // Get member name for logging
       const member = combinedMembers.find(m => m.team_member_id === event.team_member_id);
@@ -219,7 +292,8 @@ export const TeamTab: React.FC = () => {
       toast.success(`Event approved: ${event.suggested_points > 0 ? '+' : ''}${event.suggested_points} pts`);
     } catch (err: any) {
       console.error('Error approving event:', err);
-      toast.error(`Failed to approve: ${err.message}`);
+      const message = err?.message || err?.code || (typeof err === 'string' ? err : 'Unknown error');
+      toast.error(`Failed to approve: ${message}`);
     } finally {
       setProcessingEventId(null);
     }
@@ -260,7 +334,8 @@ export const TeamTab: React.FC = () => {
       toast('Event rejected', { icon: '🗑️' });
     } catch (err: any) {
       console.error('Error rejecting event:', err);
-      toast.error(`Failed to reject: ${err.message}`);
+      const message = err?.message || err?.code || (typeof err === 'string' ? err : 'Unknown error');
+      toast.error(`Failed to reject: ${message}`);
     } finally {
       setProcessingEventId(null);
     }
@@ -302,7 +377,8 @@ export const TeamTab: React.FC = () => {
       toast.success(`Event excused: ${reason}`);
     } catch (err: any) {
       console.error('Error excusing event:', err);
-      toast.error(`Failed to excuse: ${err.message}`);
+      const message = err?.message || err?.code || (typeof err === 'string' ? err : 'Unknown error');
+      toast.error(`Failed to excuse: ${message}`);
     } finally {
       setProcessingEventId(null);
     }
@@ -685,7 +761,10 @@ const StagedEventRow: React.FC<{
         {!showExcuseInput ? (
           <>
             <button
-              onClick={onApprove}
+              onClick={(e) => {
+                e.stopPropagation();
+                onApprove();
+              }}
               disabled={isProcessing}
               className="p-1.5 rounded hover:bg-gray-600/50 text-gray-400 hover:text-emerald-400 transition-colors disabled:opacity-50"
               title="Approve - add points"
@@ -693,7 +772,10 @@ const StagedEventRow: React.FC<{
               {isProcessing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
             </button>
             <button
-              onClick={() => setShowExcuseInput(true)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowExcuseInput(true);
+              }}
               disabled={isProcessing}
               className="p-1.5 rounded hover:bg-gray-600/50 text-gray-400 hover:text-primary-400 transition-colors disabled:opacity-50"
               title="Excuse - no points"
@@ -701,7 +783,10 @@ const StagedEventRow: React.FC<{
               <AlertTriangle className="w-4 h-4" />
             </button>
             <button
-              onClick={onReject}
+              onClick={(e) => {
+                e.stopPropagation();
+                onReject();
+              }}
               disabled={isProcessing}
               className="p-1.5 rounded hover:bg-gray-600/50 text-gray-400 hover:text-rose-400 transition-colors disabled:opacity-50"
               title="Reject - discard"
@@ -710,7 +795,7 @@ const StagedEventRow: React.FC<{
             </button>
           </>
         ) : (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
             <select
               value={excuseReason}
               onChange={(e) => setExcuseReason(e.target.value)}
@@ -725,7 +810,8 @@ const StagedEventRow: React.FC<{
               <option value="OTHER">Other</option>
             </select>
             <button
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 if (excuseReason) {
                   onExcuse(excuseReason);
                   setShowExcuseInput(false);
@@ -737,7 +823,10 @@ const StagedEventRow: React.FC<{
               <Check className="w-4 h-4" />
             </button>
             <button
-              onClick={() => setShowExcuseInput(false)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowExcuseInput(false);
+              }}
               className="p-1.5 rounded hover:bg-gray-600/50 text-gray-400"
             >
               <X className="w-4 h-4" />
