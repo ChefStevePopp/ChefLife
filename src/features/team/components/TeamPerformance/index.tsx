@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePerformanceStore } from "@/stores/performanceStore";
 import { useTeamStore } from "@/stores/teamStore";
@@ -12,6 +12,7 @@ import {
   ClipboardCheck,
   Info,
   ChevronUp,
+  ChevronDown,
   Calendar,
   AlertTriangle,
   Package,
@@ -20,6 +21,8 @@ import {
   Database,
   ArrowRight,
   Upload,
+  FileText,
+  History,
 } from "lucide-react";
 
 // Tab Components
@@ -29,8 +32,9 @@ import { TeamTab } from "./components/TeamTab";
 import { CoachingTab } from "./components/CoachingTab";
 import { PIPsTab } from "./components/PIPsTab";
 import { ImportTab } from "../ImportTab";
+import { ReportsTab } from "./components/ReportsTab";
 
-type TabType = "overview" | "team" | "points" | "coaching" | "pips" | "import";
+type TabType = "overview" | "team" | "points" | "coaching" | "pips" | "reports" | "import";
 
 interface TabConfig {
   id: TabType;
@@ -48,13 +52,17 @@ export const TeamPerformance: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>("overview");
   const [moduleState, setModuleState] = useState<ModuleState>('loading');
   const [moduleEnabled, setModuleEnabled] = useState<boolean | null>(null);
+  const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
+  const [showCycleDropdown, setShowCycleDropdown] = useState(false);
   
   const {
     isLoading,
     error,
     currentCycle,
+    cycles,
     teamPerformance,
     fetchCurrentCycle,
+    fetchAllCycles,
     fetchTeamPerformance,
     fetchConfig,
   } = usePerformanceStore();
@@ -96,6 +104,7 @@ export const TeamPerformance: React.FC = () => {
       try {
         await fetchConfig();
         await fetchCurrentCycle();
+        await fetchAllCycles();
         await fetchTeamMembers();
         await fetchTeamPerformance();
         
@@ -120,19 +129,46 @@ export const TeamPerformance: React.FC = () => {
     };
 
     checkModuleStatus();
-  }, [organizationId, fetchConfig, fetchCurrentCycle, fetchTeamMembers, fetchTeamPerformance]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [organizationId]);
 
-  // Re-check state when data changes
+  // Set selected cycle to current when loaded
   useEffect(() => {
-    if (moduleState === 'ready' || moduleState === 'no_data') {
+    if (currentCycle && !selectedCycleId) {
+      setSelectedCycleId(currentCycle.id);
+    }
+  }, [currentCycle, selectedCycleId]);
+
+  // Re-fetch team performance when selected cycle changes
+  useEffect(() => {
+    if (selectedCycleId && moduleState === 'ready') {
+      console.log('Fetching performance for cycle:', selectedCycleId);
+      fetchTeamPerformance(selectedCycleId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCycleId, moduleState]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (showCycleDropdown && !(e.target as Element).closest('.cycle-dropdown-container')) {
+        setShowCycleDropdown(false);
+      }
+    };
+    
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showCycleDropdown]);
+
+  // Re-check state when data changes - only check for no_data condition
+  useEffect(() => {
+    if (moduleState === 'no_data') {
       const performanceArray = Array.from(teamPerformance.values());
       if (performanceArray.length > 0) {
         setModuleState('ready');
-      } else if (members.length === 0) {
-        setModuleState('no_data');
       }
     }
-  }, [teamPerformance, members, moduleState]);
+  }, [teamPerformance, moduleState]);
 
   // Calculate badge counts
   const performanceArray = Array.from(teamPerformance.values());
@@ -141,6 +177,25 @@ export const TeamPerformance: React.FC = () => {
   const activePIPCount = performanceArray.filter(p => p.active_pip).length;
   // TODO: pendingEventsCount will come from staged_events table
   const pendingEventsCount = 0;
+
+  // Selected cycle info
+  const selectedCycle = useMemo(() => {
+    if (!selectedCycleId) return currentCycle;
+    return cycles.find(c => c.id === selectedCycleId) || currentCycle;
+  }, [selectedCycleId, cycles, currentCycle]);
+
+  const isViewingCurrent = selectedCycleId === currentCycle?.id;
+
+  // Format cycle for display (handle timezone correctly)
+  const formatCycleName = (cycle: { start_date: string; end_date: string }) => {
+    // Parse as local date by appending time component
+    const start = new Date(cycle.start_date + 'T00:00:00');
+    const end = new Date(cycle.end_date + 'T00:00:00');
+    const startMonth = start.toLocaleDateString('en-US', { month: 'short' });
+    const endMonth = end.toLocaleDateString('en-US', { month: 'short' });
+    const year = start.getFullYear();
+    return `${startMonth}-${endMonth} ${year}`;
+  };
 
   const tabs: TabConfig[] = [
     { id: "overview", label: "Overview", icon: TrendingUp, color: "primary" },
@@ -166,28 +221,31 @@ export const TeamPerformance: React.FC = () => {
       color: "purple",
       badge: activePIPCount > 0 ? activePIPCount : undefined,
     },
+    { id: "reports", label: "Reports", icon: FileText, color: "lime" },
     { id: "import", label: "Import", icon: Upload, color: "cyan" },
   ];
 
   // Calculate cycle progress
   const getCycleProgress = () => {
-    if (!currentCycle) return { dayNumber: 0, totalDays: 120, percentage: 0 };
+    if (!selectedCycle) return { dayNumber: 0, totalDays: 120, percentage: 0 };
     
-    const start = new Date(currentCycle.start_date);
-    const end = new Date(currentCycle.end_date);
+    // Parse as local dates
+    const start = new Date(selectedCycle.start_date + 'T00:00:00');
+    const end = new Date(selectedCycle.end_date + 'T00:00:00');
     const now = new Date();
     
-    const totalDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-    const dayNumber = Math.ceil((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    const totalDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const dayNumber = Math.ceil((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
     const percentage = Math.min(100, Math.max(0, (dayNumber / totalDays) * 100));
     
-    return { dayNumber, totalDays, percentage };
+    return { dayNumber: Math.max(0, dayNumber), totalDays, percentage };
   };
 
   const cycleProgress = getCycleProgress();
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+    // Parse as local date by appending time component
+    return new Date(dateString + 'T00:00:00').toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -495,28 +553,127 @@ export const TeamPerformance: React.FC = () => {
             </div>
           </div>
 
-          {/* Cycle Progress */}
-          {currentCycle && (
-            <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-primary-400" />
-                  <span className="text-sm font-medium text-gray-300">Current Cycle</span>
+          {/* Cycle Selector */}
+          {selectedCycle && (
+            <div className="space-y-2">
+              {/* Historical Banner - show when not viewing current */}
+              {!isViewingCurrent && (
+                <div className="flex items-center justify-between p-2 bg-amber-500/10 rounded-lg border border-amber-500/30">
+                  <div className="flex items-center gap-2">
+                    <History className="w-4 h-4 text-amber-400" />
+                    <span className="text-sm text-amber-200">
+                      Viewing historical cycle: {formatCycleName(selectedCycle)}
+                    </span>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      if (currentCycle?.id) {
+                        setSelectedCycleId(currentCycle.id);
+                        await fetchTeamPerformance(currentCycle.id);
+                      }
+                    }}
+                    className="text-xs text-amber-400 hover:text-amber-300 font-medium"
+                  >
+                    View Current
+                  </button>
                 </div>
-                <span className="text-xs text-gray-500">
-                  Day {cycleProgress.dayNumber} of {cycleProgress.totalDays}
-                </span>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-2 bg-gray-700 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-primary-500 transition-all duration-500"
-                    style={{ width: `${cycleProgress.percentage}%` }}
-                  />
+              )}
+              
+              <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
+                <div className="flex items-center justify-between mb-2">
+                  {/* Cycle Dropdown */}
+                  <div className="relative cycle-dropdown-container">
+                    <button
+                      onClick={() => setShowCycleDropdown(!showCycleDropdown)}
+                      className="flex items-center gap-2 hover:bg-gray-700/30 rounded-lg px-2 py-1 -ml-2 transition-colors"
+                    >
+                      <Calendar className="w-4 h-4 text-primary-400" />
+                      <span className="text-sm font-medium text-gray-300">
+                        {formatCycleName(selectedCycle)}
+                      </span>
+                      {isViewingCurrent && (
+                        <span className="px-1.5 py-0.5 text-xs font-medium bg-primary-500/20 text-primary-400 rounded">
+                          Current
+                        </span>
+                      )}
+                      <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${showCycleDropdown ? 'rotate-180' : ''}`} />
+                    </button>
+                    
+                    {/* Dropdown Menu */}
+                    {showCycleDropdown && (
+                      <div className="absolute top-full left-0 mt-1 w-64 bg-gray-800 rounded-lg border border-gray-700 shadow-xl z-50">
+                        <div className="p-2 border-b border-gray-700">
+                          <span className="text-xs text-gray-500 uppercase tracking-wide">Select Cycle</span>
+                        </div>
+                        <div className="max-h-64 overflow-y-auto p-1">
+                          {cycles.length === 0 ? (
+                            <div className="p-3 text-sm text-gray-500 text-center">
+                              No cycles available
+                            </div>
+                          ) : (
+                            cycles.map((cycle) => {
+                              const isCurrent = cycle.id === currentCycle?.id;
+                              const isSelected = cycle.id === selectedCycleId;
+                              
+                              return (
+                                <button
+                                  key={cycle.id}
+                                  onClick={async () => {
+                                    console.log('Dropdown click - fetching cycle:', cycle.id);
+                                    setSelectedCycleId(cycle.id);
+                                    setShowCycleDropdown(false);
+                                    // Fetch directly instead of relying on effect
+                                    await fetchTeamPerformance(cycle.id);
+                                    console.log('Fetch complete for:', cycle.id);
+                                  }}
+                                  className={`w-full flex items-center justify-between p-2 rounded-lg text-left transition-colors ${
+                                    isSelected 
+                                      ? 'bg-primary-500/20 text-white' 
+                                      : 'hover:bg-gray-700/50 text-gray-300'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm">{formatCycleName(cycle)}</span>
+                                    {isCurrent && (
+                                      <span className="px-1.5 py-0.5 text-xs font-medium bg-primary-500/20 text-primary-400 rounded">
+                                        Current
+                                      </span>
+                                    )}
+                                  </div>
+                                  {isSelected && (
+                                    <div className="w-2 h-2 rounded-full bg-primary-400" />
+                                  )}
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Day counter - only show for current cycle */}
+                  {isViewingCurrent && (
+                    <span className="text-xs text-gray-500">
+                      Day {cycleProgress.dayNumber} of {cycleProgress.totalDays}
+                    </span>
+                  )}
                 </div>
-                <span className="text-xs text-gray-400">
-                  {formatDate(currentCycle.start_date)} — {formatDate(currentCycle.end_date)}
-                </span>
+                
+                {/* Progress bar */}
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all duration-500 ${
+                        isViewingCurrent ? 'bg-primary-500' : 'bg-gray-500'
+                      }`}
+                      style={{ width: isViewingCurrent ? `${cycleProgress.percentage}%` : '100%' }}
+                    />
+                  </div>
+                  <span className="text-xs text-gray-400">
+                    {formatDate(selectedCycle.start_date)} — {formatDate(selectedCycle.end_date)}
+                  </span>
+                </div>
               </div>
             </div>
           )}
@@ -628,6 +785,7 @@ export const TeamPerformance: React.FC = () => {
           {activeTab === "points" && <PointsTab />}
           {activeTab === "coaching" && <CoachingTab />}
           {activeTab === "pips" && <PIPsTab />}
+          {activeTab === "reports" && <ReportsTab selectedCycleId={selectedCycleId} />}
           {activeTab === "import" && <ImportTab />}
         </div>
       </div>

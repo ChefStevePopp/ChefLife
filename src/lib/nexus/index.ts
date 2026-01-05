@@ -92,9 +92,14 @@ export type ActivityType =
   // Performance Import activities
   | "performance_import_processed"
   | "performance_events_staged"
+  | "performance_staged_cleared"
   | "performance_event_approved"
   | "performance_event_excused"
-  | "performance_event_rejected";
+  | "performance_event_rejected"
+  // Performance Ledger Management activities
+  | "performance_event_modified"
+  | "performance_event_removed"
+  | "performance_reduction_limit_override";
 
 export interface NexusEvent {
   organization_id: string;
@@ -180,9 +185,14 @@ const ACTIVITY_TYPE_TO_CATEGORY: Record<ActivityType, ActivityCategory> = {
   // Performance Import
   performance_import_processed: 'team',
   performance_events_staged: 'team',
+  performance_staged_cleared: 'team',
   performance_event_approved: 'team',
   performance_event_excused: 'team',
   performance_event_rejected: 'team',
+  // Performance Ledger Management
+  performance_event_modified: 'team',
+  performance_event_removed: 'team',
+  performance_reduction_limit_override: 'team',
 };
 
 // =============================================================================
@@ -358,7 +368,11 @@ const ACTIVITY_TOAST_CONFIG: Partial<Record<ActivityType, ToastConfig | null>> =
     message: (d) => `Attendance import: ${d.scheduled_count || 0} scheduled, ${d.worked_count || 0} worked shifts analyzed`,
   },
   performance_events_staged: {
-    message: (d) => `${d.event_count || 0} attendance events staged for review`,
+    message: (d) => `${d.event_count || 0} attendance events staged for review${d.skipped_duplicates ? ` (${d.skipped_duplicates} duplicates skipped)` : ''}`,
+  },
+  performance_staged_cleared: {
+    message: (d) => `Cleared ${d.cleared_count || 0} staged events`,
+    severity: 'warning',
   },
   performance_event_approved: {
     message: (d) => `Event approved: ${d.name || 'Team member'} - ${d.event_type || 'event'}`,
@@ -368,6 +382,18 @@ const ACTIVITY_TOAST_CONFIG: Partial<Record<ActivityType, ToastConfig | null>> =
   },
   performance_event_rejected: {
     message: (d) => `Event rejected: ${d.name || 'Team member'} - ${d.event_type || 'event'}`,
+  },
+  // Performance Ledger Management
+  performance_event_modified: {
+    message: (d) => `Event reclassified: ${d.name || 'Team member'} - ${d.original_type || 'event'} → ${d.new_type || 'new type'}`,
+  },
+  performance_event_removed: {
+    message: (d) => `Event removed: ${d.name || 'Team member'} - ${d.event_type || 'event'}`,
+    severity: 'warning',
+  },
+  performance_reduction_limit_override: {
+    message: (d) => `Reduction limit override: ${d.name || 'Team member'} (${d.current_usage || 0}/${d.configured_limit || 0} used)`,
+    severity: 'warning',
   },
 };
 

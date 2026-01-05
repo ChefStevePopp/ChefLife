@@ -5,11 +5,12 @@
  * to detect attendance events (tardiness, early departure, no-shows)
  * and suggest point events for review.
  * 
- * Multi-shift alignment solved via sequence numbering:
- * - Sort by Date → Employee ID → In Time
- * - Group by Employee ID + Date
- * - Assign sequence numbers (1, 2, 3...) within each group
- * - Match scheduled[n] to worked[n] for each employee/day
+ * Multi-shift alignment solved via TIME-PROXIMITY MATCHING:
+ * - Group shifts by Employee ID + Date
+ * - Match each worked shift to the closest scheduled shift (by start time)
+ * - Handle mismatched shift counts gracefully:
+ *   - Unmatched scheduled shifts = No-shows
+ *   - Unmatched worked shifts = Unscheduled work
  */
 
 // =============================================================================
@@ -37,7 +38,7 @@ export interface ParsedShift {
   outTime: Date;
   role: string;
   scheduledMinutes: number;
-  // Matching key
+  // Internal tracking (no longer used for matching, but kept for reference)
   matchKey: string;       // "0625-20250105-1" (employeeId-yyyyMMdd-sequence)
   sequence: number;       // 1, 2, 3... for multi-shift days
 }
@@ -89,6 +90,7 @@ export interface ImportResult {
   noShowCount: number;
   unscheduledCount: number;
   exemptCount: number;       // Skipped due to tracking rules
+  filteredCount: number;     // Zero-duration clock errors filtered out
   deltas: ShiftDelta[];
   errors: string[];
   dateRange: { start: string; end: string };
@@ -268,16 +270,33 @@ function parseCSVLine(line: string): string[] {
 }
 
 // =============================================================================
-// SHIFT ALIGNMENT & MATCHING
+// SHIFT PROCESSING
 // =============================================================================
 
 /**
- * Convert raw rows to parsed shifts with match keys
- * Handles multi-shift alignment via sequence numbering
+ * Convert raw rows to parsed shifts
+ * Groups by employee + date for proximity matching
+ * Filters out zero-duration shifts (clock errors)
+ * Returns { shifts, filteredCount }
  */
-function processShifts(rows: RawShiftRow[]): ParsedShift[] {
+function processShifts(rows: RawShiftRow[]): { shifts: ParsedShift[]; filteredCount: number } {
+  // Filter out zero-duration shifts (clock errors where In Time == Out Time)
+  let filteredCount = 0;
+  const validRows = rows.filter(row => {
+    const inTime = parseTime(row.inTime, row.date);
+    const outTime = parseTime(row.outTime, row.date);
+    const durationMinutes = (outTime.getTime() - inTime.getTime()) / 60000;
+    
+    if (durationMinutes <= 0) {
+      console.log(`Filtering zero-duration shift: ${row.firstName} ${row.lastName} on ${row.date} (${row.inTime} - ${row.outTime})`);
+      filteredCount++;
+      return false;
+    }
+    return true;
+  });
+  
   // Sort by date, then employee, then in time
-  const sorted = [...rows].sort((a, b) => {
+  const sorted = [...validRows].sort((a, b) => {
     if (a.date !== b.date) return a.date.localeCompare(b.date);
     if (a.employeeId !== b.employeeId) return a.employeeId.localeCompare(b.employeeId);
     // Sort by in time
@@ -286,7 +305,7 @@ function processShifts(rows: RawShiftRow[]): ParsedShift[] {
     return aTime.getTime() - bTime.getTime();
   });
   
-  // Group by employee + date and assign sequence numbers
+  // Group by employee + date and assign sequence numbers (for reference only)
   const groups = new Map<string, RawShiftRow[]>();
   for (const row of sorted) {
     const groupKey = `${row.employeeId}-${row.date}`;
@@ -320,7 +339,112 @@ function processShifts(rows: RawShiftRow[]): ParsedShift[] {
     });
   }
   
-  return result;
+  return { shifts: result, filteredCount };
+}
+
+// =============================================================================
+// TIME-PROXIMITY MATCHING
+// =============================================================================
+
+interface MatchedPair {
+  scheduled: ParsedShift;
+  worked: ParsedShift;
+  startTimeDiff: number; // minutes between scheduled start and worked start
+}
+
+/**
+ * Match worked shifts to scheduled shifts using time proximity.
+ * 
+ * For each employee/day:
+ * 1. Find all scheduled and worked shifts
+ * 2. For each worked shift, find the best matching scheduled shift (closest start time)
+ * 3. A match is valid if start times are within 4 hours (configurable)
+ * 4. Each scheduled shift can only match once
+ * 
+ * Returns: { matched pairs, unmatched scheduled (no-shows), unmatched worked (unscheduled) }
+ */
+function matchShiftsByProximity(
+  scheduledShifts: ParsedShift[],
+  workedShifts: ParsedShift[],
+  maxMatchWindow: number = 240 // 4 hours in minutes
+): {
+  matched: MatchedPair[];
+  noShows: ParsedShift[];
+  unscheduled: ParsedShift[];
+} {
+  // Group by employee + date
+  const schedByGroup = new Map<string, ParsedShift[]>();
+  const workByGroup = new Map<string, ParsedShift[]>();
+  
+  for (const s of scheduledShifts) {
+    const key = `${s.employeeId}-${s.date}`;
+    if (!schedByGroup.has(key)) schedByGroup.set(key, []);
+    schedByGroup.get(key)!.push(s);
+  }
+  
+  for (const w of workedShifts) {
+    const key = `${w.employeeId}-${w.date}`;
+    if (!workByGroup.has(key)) workByGroup.set(key, []);
+    workByGroup.get(key)!.push(w);
+  }
+  
+  // All unique employee-date keys
+  const allGroups = new Set([...schedByGroup.keys(), ...workByGroup.keys()]);
+  
+  const matched: MatchedPair[] = [];
+  const noShows: ParsedShift[] = [];
+  const unscheduled: ParsedShift[] = [];
+  
+  for (const groupKey of allGroups) {
+    const schedList = schedByGroup.get(groupKey) || [];
+    const workList = workByGroup.get(groupKey) || [];
+    
+    // Track which scheduled shifts have been claimed
+    const usedScheduled = new Set<ParsedShift>();
+    
+    // Sort worked shifts by start time to process in order
+    const sortedWork = [...workList].sort((a, b) => a.inTime.getTime() - b.inTime.getTime());
+    
+    for (const work of sortedWork) {
+      // Find the best matching scheduled shift (not already used)
+      let bestMatch: ParsedShift | null = null;
+      let bestDiff = Infinity;
+      
+      for (const sched of schedList) {
+        if (usedScheduled.has(sched)) continue;
+        
+        // Calculate time difference between start times (in minutes)
+        const diff = Math.abs(work.inTime.getTime() - sched.inTime.getTime()) / 60000;
+        
+        // Must be within the match window
+        if (diff <= maxMatchWindow && diff < bestDiff) {
+          bestDiff = diff;
+          bestMatch = sched;
+        }
+      }
+      
+      if (bestMatch) {
+        matched.push({
+          scheduled: bestMatch,
+          worked: work,
+          startTimeDiff: bestDiff,
+        });
+        usedScheduled.add(bestMatch);
+      } else {
+        // No matching schedule found - this is unscheduled work
+        unscheduled.push(work);
+      }
+    }
+    
+    // Any scheduled shifts not matched are no-shows
+    for (const sched of schedList) {
+      if (!usedScheduled.has(sched)) {
+        noShows.push(sched);
+      }
+    }
+  }
+  
+  return { matched, noShows, unscheduled };
 }
 
 // =============================================================================
@@ -371,15 +495,19 @@ export function calculateDeltas(
       noShowCount: 0,
       unscheduledCount: 0,
       exemptCount: 0,
+      filteredCount: 0,
       deltas: [],
       errors,
       dateRange: { start: '', end: '' },
     };
   }
   
-  // Process into ParsedShifts with match keys
-  let scheduled = processShifts(scheduledRaw);
-  let worked = processShifts(workedRaw);
+  // Process into ParsedShifts
+  const scheduledResult = processShifts(scheduledRaw);
+  const workedResult = processShifts(workedRaw);
+  let scheduled = scheduledResult.shifts;
+  let worked = workedResult.shifts;
+  const totalFilteredCount = scheduledResult.filteredCount + workedResult.filteredCount;
   
   // Apply date filter if provided
   if (dateFilter) {
@@ -405,20 +533,16 @@ export function calculateDeltas(
     return trackingRules.unscheduled_exempt_levels.includes(level);
   };
   
-  // Build lookup maps
-  const scheduledMap = new Map<string, ParsedShift>();
-  scheduled.forEach(s => scheduledMap.set(s.matchKey, s));
+  // Filter out exempt employees before matching
+  const trackedScheduled = scheduled.filter(s => !isExemptFromTracking(s.employeeId));
+  const trackedWorked = worked.filter(w => !isExemptFromTracking(w.employeeId));
+  const exemptCount = (scheduled.length - trackedScheduled.length) + (worked.length - trackedWorked.length);
   
-  const workedMap = new Map<string, ParsedShift>();
-  worked.forEach(w => workedMap.set(w.matchKey, w));
-  
-  // Get all unique match keys
-  const allKeys = new Set([...scheduledMap.keys(), ...workedMap.keys()]);
-  
-  const deltas: ShiftDelta[] = [];
-  let matchedCount = 0;
-  let noShowCount = 0;
-  let unscheduledCount = 0;
+  // Use time-proximity matching
+  const { matched, noShows, unscheduled: unschedList } = matchShiftsByProximity(
+    trackedScheduled,
+    trackedWorked
+  );
   
   // Calculate date range
   const allDates = [...scheduled.map(s => s.date), ...worked.map(w => w.date)];
@@ -428,82 +552,100 @@ export function calculateDeltas(
     end: allDates[allDates.length - 1] || '',
   };
   
-  let exemptCount = 0;
+  const deltas: ShiftDelta[] = [];
+  let deltaIndex = 0;
   
-  for (const key of allKeys) {
-    const sched = scheduledMap.get(key);
-    const work = workedMap.get(key);
-    const employeeId = sched?.employeeId || work?.employeeId || '';
-    
-    // Skip entirely if employee is exempt from tracking
-    if (isExemptFromTracking(employeeId)) {
-      exemptCount++;
-      continue;
-    }
+  // Process matched pairs
+  for (const pair of matched) {
+    const { scheduled: sched, worked: work } = pair;
+    deltaIndex++;
+    const dateCompact = sched.date.replace(/-/g, '');
     
     const delta: ShiftDelta = {
-      matchKey: key,
-      employeeId: sched?.employeeId || work?.employeeId || '',
-      employeeName: sched?.employeeName || work?.employeeName || '',
-      date: sched?.date || work?.date || '',
-      role: sched?.role || work?.role || '',
-      scheduledIn: sched?.inTime,
-      scheduledOut: sched?.outTime,
-      scheduledMinutes: sched?.scheduledMinutes,
-      workedIn: work?.inTime,
-      workedOut: work?.outTime,
-      workedMinutes: work?.scheduledMinutes, // reusing field, it's calculated the same way
-      startVariance: 0,
-      endVariance: 0,
+      matchKey: `${sched.employeeId}-${dateCompact}-M${deltaIndex}`,
+      employeeId: sched.employeeId,
+      employeeName: sched.employeeName || work.employeeName,
+      date: sched.date,
+      role: sched.role || work.role,
+      scheduledIn: sched.inTime,
+      scheduledOut: sched.outTime,
+      scheduledMinutes: sched.scheduledMinutes,
+      workedIn: work.inTime,
+      workedOut: work.outTime,
+      workedMinutes: work.scheduledMinutes,
+      startVariance: (work.inTime.getTime() - sched.inTime.getTime()) / 60000,
+      endVariance: (work.outTime.getTime() - sched.outTime.getTime()) / 60000,
       status: 'matched',
       events: [],
     };
     
-    if (sched && work) {
-      // MATCHED: Calculate variances
-      matchedCount++;
-      delta.status = 'matched';
-      
-      // Start variance: positive = late, negative = early
-      delta.startVariance = (work.inTime.getTime() - sched.inTime.getTime()) / 60000;
-      
-      // End variance: negative = left early, positive = stayed late
-      delta.endVariance = (work.outTime.getTime() - sched.outTime.getTime()) / 60000;
-      
-      // Detect events
-      delta.events = detectEvents(delta, thresholds);
-      
-    } else if (sched && !work) {
-      // NO SHOW: Scheduled but didn't work
-      noShowCount++;
-      delta.status = 'no_show';
-      delta.events = [{
-        type: 'no_call_no_show',
-        description: `Scheduled ${formatTime(sched.inTime)} - ${formatTime(sched.outTime)}, did not clock in`,
-        suggestedPoints: 6, // Will be configurable
-        autoDetected: true,
-      }];
-      
-    } else if (!sched && work) {
-      // UNSCHEDULED: Worked without being scheduled
-      // Skip if employee is exempt from unscheduled flags (owners, managers coming in to prep)
-      if (isExemptFromUnscheduledFlag(employeeId)) {
-        exemptCount++;
-        continue;
-      }
-      
-      unscheduledCount++;
-      delta.status = 'unscheduled';
-      delta.events = [{
-        type: 'unscheduled_worked',
-        description: `Worked ${formatTime(work.inTime)} - ${formatTime(work.outTime)} without being scheduled`,
-        suggestedPoints: 0, // Informational, not a demerit
-        autoDetected: true,
-      }];
-    }
-    
+    // Detect events for matched shifts
+    delta.events = detectEvents(delta, thresholds);
     deltas.push(delta);
   }
+  
+  // Process no-shows (scheduled but didn't work)
+  for (const sched of noShows) {
+    deltaIndex++;
+    const dateCompact = sched.date.replace(/-/g, '');
+    
+    deltas.push({
+      matchKey: `${sched.employeeId}-${dateCompact}-NS${deltaIndex}`,
+      employeeId: sched.employeeId,
+      employeeName: sched.employeeName,
+      date: sched.date,
+      role: sched.role,
+      scheduledIn: sched.inTime,
+      scheduledOut: sched.outTime,
+      scheduledMinutes: sched.scheduledMinutes,
+      workedIn: undefined,
+      workedOut: undefined,
+      workedMinutes: undefined,
+      startVariance: 0,
+      endVariance: 0,
+      status: 'no_show',
+      events: [{
+        type: 'no_call_no_show',
+        description: `Scheduled ${formatTime(sched.inTime)} - ${formatTime(sched.outTime)}, did not clock in`,
+        suggestedPoints: 6,
+        autoDetected: true,
+      }],
+    });
+  }
+  
+  // Process unscheduled work (worked but wasn't scheduled)
+  const filteredUnscheduled = unschedList.filter(w => !isExemptFromUnscheduledFlag(w.employeeId));
+  
+  for (const work of filteredUnscheduled) {
+    deltaIndex++;
+    const dateCompact = work.date.replace(/-/g, '');
+    
+    deltas.push({
+      matchKey: `${work.employeeId}-${dateCompact}-UN${deltaIndex}`,
+      employeeId: work.employeeId,
+      employeeName: work.employeeName,
+      date: work.date,
+      role: work.role,
+      scheduledIn: undefined,
+      scheduledOut: undefined,
+      scheduledMinutes: undefined,
+      workedIn: work.inTime,
+      workedOut: work.outTime,
+      workedMinutes: work.scheduledMinutes,
+      startVariance: 0,
+      endVariance: 0,
+      status: 'unscheduled',
+      events: [{
+        type: 'unscheduled_worked',
+        description: `Worked ${formatTime(work.inTime)} - ${formatTime(work.outTime)} without being scheduled`,
+        suggestedPoints: 0,
+        autoDetected: true,
+      }],
+    });
+  }
+  
+  // Update exempt count for filtered unscheduled
+  const finalExemptCount = exemptCount + (unschedList.length - filteredUnscheduled.length);
   
   // Sort by date, then employee name
   deltas.sort((a, b) => {
@@ -512,12 +654,13 @@ export function calculateDeltas(
   });
   
   return {
-    scheduledCount: scheduled.length,
-    workedCount: worked.length,
-    matchedCount,
-    noShowCount,
-    unscheduledCount,
-    exemptCount,
+    scheduledCount: scheduledResult.shifts.length,
+    workedCount: workedResult.shifts.length,
+    matchedCount: matched.length,
+    noShowCount: noShows.length,
+    unscheduledCount: filteredUnscheduled.length,
+    exemptCount: finalExemptCount,
+    filteredCount: totalFilteredCount,
     deltas,
     errors,
     dateRange,

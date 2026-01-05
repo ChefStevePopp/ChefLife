@@ -11,6 +11,7 @@ import {
   AlertCircle,
   Settings,
   Calendar,
+  TrendingUp,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
@@ -55,6 +56,8 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
     const lowerType = type.toLowerCase();
     if (lowerType.includes("recipe"))
       return <FileText className="w-10 h-10 text-blue-400" />;
+    if (lowerType.includes("performance"))
+      return <TrendingUp className="w-10 h-10 text-amber-400" />;
     if (lowerType.includes("team") || lowerType.includes("user"))
       return <Users className="w-10 h-10 text-green-400" />;
     if (lowerType.includes("inventory"))
@@ -74,6 +77,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
   const getActivityBgGradient = (type: string) => {
     const lowerType = type.toLowerCase();
     if (lowerType.includes("recipe")) return "from-blue-900 to-gray-900";
+    if (lowerType.includes("performance")) return "from-amber-900 to-gray-900";
     if (lowerType.includes("team") || lowerType.includes("user"))
       return "from-green-900 to-gray-900";
     if (lowerType.includes("inventory")) return "from-yellow-900 to-gray-900";

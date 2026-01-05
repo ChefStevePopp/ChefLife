@@ -6,3 +6,4 @@ export { CoachingTab } from './CoachingTab';
 export { PIPsTab } from './PIPsTab';
 export { AddPointEventModal } from './AddPointEventModal';
 export { AddPointReductionModal } from './AddPointReductionModal';
+export { ReportsTab } from './ReportsTab';
