@@ -102,7 +102,7 @@ export interface PointThresholds {
   arrivedEarlyMin: number;     // 30 min (reduction)
 }
 
-const DEFAULT_THRESHOLDS: PointThresholds = {
+export const DEFAULT_THRESHOLDS: PointThresholds = {
   tardinessMinorMin: 5,
   tardinessMinorMax: 15,
   tardinessMajorMin: 15,
@@ -110,6 +110,27 @@ const DEFAULT_THRESHOLDS: PointThresholds = {
   stayedLateMin: 60,
   arrivedEarlyMin: 30,
 };
+
+/**
+ * Convert from config format to Delta Engine format
+ */
+export function configToThresholds(config?: {
+  tardiness_minor_min?: number;
+  tardiness_major_min?: number;
+  early_departure_min?: number;
+  arrived_early_min?: number;
+  stayed_late_min?: number;
+}): PointThresholds {
+  if (!config) return DEFAULT_THRESHOLDS;
+  return {
+    tardinessMinorMin: config.tardiness_minor_min ?? DEFAULT_THRESHOLDS.tardinessMinorMin,
+    tardinessMinorMax: config.tardiness_major_min ?? DEFAULT_THRESHOLDS.tardinessMinorMax,
+    tardinessMajorMin: config.tardiness_major_min ?? DEFAULT_THRESHOLDS.tardinessMajorMin,
+    earlyDepartureMin: config.early_departure_min ?? DEFAULT_THRESHOLDS.earlyDepartureMin,
+    stayedLateMin: config.stayed_late_min ?? DEFAULT_THRESHOLDS.stayedLateMin,
+    arrivedEarlyMin: config.arrived_early_min ?? DEFAULT_THRESHOLDS.arrivedEarlyMin,
+  };
+}
 
 // =============================================================================
 // CSV PARSING

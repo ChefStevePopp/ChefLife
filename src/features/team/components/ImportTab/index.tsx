@@ -5,7 +5,7 @@
  * calculates variances, and presents detected events for review.
  */
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Upload,
   FileSpreadsheet,
@@ -24,12 +24,18 @@ import {
   Calendar,
   Users,
   Filter,
+  Send,
 } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/hooks/useAuth';
+import { useTeamStore } from '@/stores/teamStore';
+import { usePerformanceStore } from '@/stores/performanceStore';
+import { nexus } from '@/lib/nexus';
+import toast from 'react-hot-toast';
 import {
   calculateDeltas,
+  configToThresholds,
   formatVariance,
-  getEventColor,
-  getStatusColor,
   type ImportResult,
   type ShiftDelta,
   type DetectedEvent,
@@ -62,6 +68,16 @@ interface ReviewedDelta extends ShiftDelta {
 // =============================================================================
 
 export const ImportTab: React.FC = () => {
+  // Auth & data context
+  const { organizationId, user } = useAuth();
+  const { members } = useTeamStore();
+  const { config, fetchConfig } = usePerformanceStore();
+  
+  // Fetch config on mount
+  useEffect(() => {
+    fetchConfig();
+  }, [fetchConfig]);
+  
   // File state
   const [scheduledFile, setScheduledFile] = useState<CSVFile | null>(null);
   const [workedFile, setWorkedFile] = useState<CSVFile | null>(null);
@@ -70,6 +86,7 @@ export const ImportTab: React.FC = () => {
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [reviewedDeltas, setReviewedDeltas] = useState<ReviewedDelta[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   
   // Filter state
   const [filterStatus, setFilterStatus] = useState<'all' | 'events_only' | 'no_show'>('events_only');
@@ -121,9 +138,12 @@ export const ImportTab: React.FC = () => {
     
     setIsProcessing(true);
     
+    // Convert config thresholds to Delta Engine format
+    const thresholds = configToThresholds(config.detection_thresholds);
+    
     // Small delay to show processing state
-    setTimeout(() => {
-      const result = calculateDeltas(scheduledFile.content, workedFile.content);
+    setTimeout(async () => {
+      const result = calculateDeltas(scheduledFile.content, workedFile.content, thresholds);
       setImportResult(result);
       
       // Initialize reviewed deltas
@@ -138,8 +158,26 @@ export const ImportTab: React.FC = () => {
       
       setReviewedDeltas(reviewed);
       setIsProcessing(false);
+
+      // Log to NEXUS
+      if (organizationId && user) {
+        const totalEvents = result.deltas.reduce((acc, d) => acc + d.events.length, 0);
+        await nexus({
+          organization_id: organizationId,
+          user_id: user.id,
+          activity_type: 'performance_import_processed',
+          details: {
+            scheduled_count: result.scheduledCount,
+            worked_count: result.workedCount,
+            matched_count: result.matchedCount,
+            no_show_count: result.noShowCount,
+            events_detected: totalEvents,
+            date_range: result.dateRange,
+          },
+        });
+      }
     }, 500);
-  }, [scheduledFile, workedFile]);
+  }, [scheduledFile, workedFile, config.detection_thresholds, organizationId, user]);
 
   const resetImport = () => {
     setScheduledFile(null);
@@ -184,6 +222,136 @@ export const ImportTab: React.FC = () => {
         reviewStatus: event.reviewStatus === 'pending' ? 'approved' : event.reviewStatus,
       })),
     })));
+  };
+
+  // =============================================================================
+  // SAVE TO DATABASE
+  // =============================================================================
+
+  const sendToTeamForApproval = async () => {
+    if (!organizationId || !user) {
+      toast.error('Not authenticated');
+      return;
+    }
+
+    setIsSaving(true);
+    const batchId = crypto.randomUUID();
+    const errors: string[] = [];
+    let savedCount = 0;
+
+    try {
+      // Build a map of punch_id (7shifts Employee ID) -> team_member_id for quick lookup
+      const employeeIdMap = new Map<string, string>();
+      members.forEach(m => {
+        if (m.punch_id) {
+          employeeIdMap.set(m.punch_id, m.id);
+        }
+      });
+
+      // Debug: Log the mapping
+      console.log('Employee ID mapping:', Object.fromEntries(employeeIdMap));
+      console.log('Total members with punch_id:', employeeIdMap.size);
+
+      // Collect all approved events
+      const stagedEvents: any[] = [];
+
+      for (const delta of reviewedDeltas) {
+        const approvedEvents = delta.reviewedEvents.filter(e => e.reviewStatus === 'approved');
+        if (approvedEvents.length === 0) continue;
+
+        // Debug: Log each delta's employeeId
+        console.log(`Looking up: ${delta.employeeName} (ID: ${delta.employeeId})`);
+
+        // Look up team member by employee_id (from CSV) -> punch_id (in DB)
+        const teamMemberId = employeeIdMap.get(delta.employeeId);
+        if (!teamMemberId) {
+          errors.push(`${delta.employeeName}: No matching employee ID (${delta.employeeId})`);
+          continue;
+        }
+
+        // Create staged event records
+        for (const event of approvedEvents) {
+          stagedEvents.push({
+            organization_id: organizationId,
+            team_member_id: teamMemberId,
+            event_type: event.type,
+            suggested_points: event.suggestedPoints,
+            description: event.description,
+            event_date: delta.date,
+            role: delta.role,
+            scheduled_in: delta.scheduledIn?.toISOString() || null,
+            scheduled_out: delta.scheduledOut?.toISOString() || null,
+            worked_in: delta.workedIn?.toISOString() || null,
+            worked_out: delta.workedOut?.toISOString() || null,
+            start_variance: delta.startVariance,
+            end_variance: delta.endVariance,
+            source: 'import',
+            import_batch_id: batchId,
+            external_employee_id: delta.employeeId,
+            created_by: user.id,
+          });
+        }
+      }
+
+      if (stagedEvents.length === 0) {
+        toast.error('No events to save. Check employee ID mappings.');
+        console.log('Errors (unmatched):', errors);
+        setIsSaving(false);
+        return;
+      }
+
+      // Debug: Log what we're about to insert
+      console.log('Inserting staged events:', stagedEvents.length);
+      console.log('Sample event:', stagedEvents[0]);
+
+      // Insert all staged events
+      const { data, error } = await supabase
+        .from('staged_events')
+        .insert(stagedEvents)
+        .select();
+
+      if (error) {
+        console.error('Supabase insert error:', error);
+        throw error;
+      }
+
+      console.log('Insert successful, returned:', data);
+
+      savedCount = stagedEvents.length;
+
+      // Log to NEXUS
+      await nexus({
+        organization_id: organizationId,
+        user_id: user.id,
+        activity_type: 'performance_events_staged',
+        details: {
+          event_count: savedCount,
+          batch_id: batchId,
+          date_range: importResult?.dateRange,
+          skipped_count: errors.length,
+        },
+      });
+
+      // Show results
+      if (errors.length > 0) {
+        toast(
+          `Saved ${savedCount} events. ${errors.length} skipped (unmatched employees).`,
+          { icon: '⚠️', duration: 5000 }
+        );
+        console.warn('Unmatched employees:', errors);
+      } else {
+        toast.success(`${savedCount} events sent to Team for approval! 🎉`);
+      }
+
+      // Reset import after successful save
+      resetImport();
+
+    } catch (err: any) {
+      console.error('Error saving staged events:', err);
+      toast.error(`Failed to save: ${err.message}`);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // =============================================================================
@@ -352,32 +520,30 @@ export const ImportTab: React.FC = () => {
               icon={Calendar}
               label="Date Range"
               value={`${importResult.dateRange.start} → ${importResult.dateRange.end}`}
-              color="primary"
               small
             />
             <SummaryCard
               icon={CheckCircle2}
               label="Matched"
               value={importResult.matchedCount}
-              color="emerald"
             />
             <SummaryCard
               icon={XCircle}
               label="No Shows"
               value={importResult.noShowCount}
-              color="rose"
+              highlight={importResult.noShowCount > 0 ? 'rose' : undefined}
             />
             <SummaryCard
               icon={Clock}
-              label="Pending Review"
+              label="Pending"
               value={pendingCount}
-              color="amber"
+              highlight={pendingCount > 0 ? 'amber' : undefined}
             />
             <SummaryCard
               icon={Check}
-              label="Approved"
+              label="Staged"
               value={approvedCount}
-              color="green"
+              highlight={approvedCount > 0 ? 'emerald' : undefined}
             />
           </div>
 
@@ -416,10 +582,10 @@ export const ImportTab: React.FC = () => {
               {pendingCount > 0 && (
                 <button
                   onClick={approveAllPending}
-                  className="btn-ghost text-sm flex items-center gap-1.5 text-emerald-400"
+                  className="btn-ghost text-sm flex items-center gap-1.5"
                 >
                   <Check className="w-4 h-4" />
-                  Approve All ({pendingCount})
+                  Stage All ({pendingCount})
                 </button>
               )}
               <button
@@ -454,15 +620,28 @@ export const ImportTab: React.FC = () => {
 
           {/* Bottom Action Bar */}
           {approvedCount > 0 && (
-            <div className="floating-action-bar success">
+            <div className="floating-action-bar">
               <div className="floating-action-bar-inner">
                 <div className="floating-action-bar-content">
                   <span className="text-sm text-gray-300">
-                    {approvedCount} event{approvedCount !== 1 ? 's' : ''} approved
+                    {approvedCount} event{approvedCount !== 1 ? 's' : ''} staged
                   </span>
-                  <button className="btn-primary text-sm flex items-center gap-1.5 px-3 py-1.5">
-                    <Check className="w-3.5 h-3.5" />
-                    Save to Point Ledger
+                  <button 
+                    onClick={sendToTeamForApproval}
+                    disabled={isSaving}
+                    className="btn-primary text-sm flex items-center gap-1.5 px-3 py-1.5"
+                  >
+                    {isSaving ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5" />
+                        Send to Team for Approval
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
@@ -482,15 +661,20 @@ const SummaryCard: React.FC<{
   icon: React.ElementType;
   label: string;
   value: string | number;
-  color: string;
   small?: boolean;
-}> = ({ icon: Icon, label, value, color, small }) => (
+  highlight?: 'rose' | 'amber' | 'emerald';
+}> = ({ icon: Icon, label, value, small, highlight }) => (
   <div className="bg-gray-800/40 rounded-lg p-3 border border-gray-700/30">
     <div className="flex items-center gap-2 mb-1">
-      <Icon className={`w-4 h-4 text-${color}-400`} />
+      <Icon className="w-4 h-4 text-gray-500" />
       <span className="text-xs text-gray-500">{label}</span>
     </div>
-    <p className={`${small ? 'text-xs' : 'text-lg'} font-semibold text-white`}>{value}</p>
+    <p className={`${small ? 'text-xs' : 'text-lg'} font-semibold ${
+      highlight === 'rose' ? 'text-rose-400' :
+      highlight === 'amber' ? 'text-amber-400' :
+      highlight === 'emerald' ? 'text-emerald-400' :
+      'text-white'
+    }`}>{value}</p>
   </div>
 );
 
@@ -502,11 +686,7 @@ const DeltaRow: React.FC<{
   const hasEvents = delta.reviewedEvents.length > 0;
   
   return (
-    <div className={`
-      bg-gray-800/40 rounded-lg border border-gray-700/30 overflow-hidden
-      ${delta.status === 'no_show' ? 'border-l-2 border-l-rose-500' : ''}
-      ${hasEvents && delta.status === 'matched' ? 'border-l-2 border-l-amber-500' : ''}
-    `}>
+    <div className="bg-gray-800/40 rounded-lg border border-gray-700/30 overflow-hidden">
       {/* Header Row */}
       <button
         onClick={onToggle}
@@ -535,40 +715,46 @@ const DeltaRow: React.FC<{
         </div>
 
         <div className="flex items-center gap-4">
-          {/* Time Display */}
+          {/* Time Display with In/Out labels */}
           {delta.status === 'matched' && (
             <div className="text-right text-xs">
               <div className="text-gray-400">
-                {delta.scheduledIn && formatTimeShort(delta.scheduledIn)} → {delta.workedIn && formatTimeShort(delta.workedIn)}
-                {delta.startVariance !== 0 && (
-                  <span className={`ml-1 ${delta.startVariance > 0 ? 'text-amber-400' : 'text-green-400'}`}>
-                    ({formatVariance(delta.startVariance)})
-                  </span>
+                <span className="text-gray-500 mr-1">In:</span>
+                {delta.startVariance === 0 ? (
+                  <>{delta.scheduledIn && formatTimeShort(delta.scheduledIn)} <Check className="w-3 h-3 inline text-emerald-400" /></>
+                ) : (
+                  <>
+                    {delta.scheduledIn && formatTimeShort(delta.scheduledIn)} → {delta.workedIn && formatTimeShort(delta.workedIn)}
+                    <span className={`ml-1 ${delta.startVariance > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                      ({formatVariance(delta.startVariance)})
+                    </span>
+                  </>
                 )}
               </div>
               <div className="text-gray-400">
-                {delta.scheduledOut && formatTimeShort(delta.scheduledOut)} → {delta.workedOut && formatTimeShort(delta.workedOut)}
-                {delta.endVariance !== 0 && (
-                  <span className={`ml-1 ${delta.endVariance < 0 ? 'text-amber-400' : 'text-green-400'}`}>
-                    ({formatVariance(delta.endVariance)})
-                  </span>
+                <span className="text-gray-500 mr-1">Out:</span>
+                {delta.endVariance === 0 ? (
+                  <>{delta.scheduledOut && formatTimeShort(delta.scheduledOut)} <Check className="w-3 h-3 inline text-emerald-400" /></>
+                ) : (
+                  <>
+                    {delta.scheduledOut && formatTimeShort(delta.scheduledOut)} → {delta.workedOut && formatTimeShort(delta.workedOut)}
+                    <span className={`ml-1 ${delta.endVariance < 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                      ({formatVariance(delta.endVariance)})
+                    </span>
+                  </>
                 )}
               </div>
             </div>
           )}
           
-          {/* Status Badge */}
-          <span className={`
-            px-2 py-0.5 rounded text-xs font-medium
-            ${delta.status === 'no_show' ? 'bg-rose-500/20 text-rose-400' : ''}
-            ${delta.status === 'matched' && hasEvents ? 'bg-amber-500/20 text-amber-400' : ''}
-            ${delta.status === 'matched' && !hasEvents ? 'bg-emerald-500/20 text-emerald-400' : ''}
-            ${delta.status === 'unscheduled' ? 'bg-gray-500/20 text-gray-400' : ''}
-          `}>
-            {delta.status === 'no_show' && 'No Show'}
-            {delta.status === 'matched' && hasEvents && `${delta.reviewedEvents.length} Event${delta.reviewedEvents.length > 1 ? 's' : ''}`}
-            {delta.status === 'matched' && !hasEvents && 'OK'}
-            {delta.status === 'unscheduled' && 'Unscheduled'}
+          {/* Status Badge - TEXT COLOR ONLY */}
+          <span className="text-xs font-medium">
+            {delta.status === 'no_show' && <span className="text-rose-400">No Show</span>}
+            {delta.status === 'matched' && hasEvents && (
+              <span className="text-amber-400">{delta.reviewedEvents.length} Event{delta.reviewedEvents.length > 1 ? 's' : ''}</span>
+            )}
+            {delta.status === 'matched' && !hasEvents && <span className="text-emerald-400">OK</span>}
+            {delta.status === 'unscheduled' && <span className="text-gray-400">Unscheduled</span>}
           </span>
         </div>
       </button>
@@ -601,33 +787,32 @@ const EventRow: React.FC<{
   const [excuseReason, setExcuseReason] = useState('');
   
   const isReduction = event.suggestedPoints < 0;
+  const isProcessed = event.reviewStatus !== 'pending';
   
   return (
     <div className={`
-      flex items-center justify-between p-2 rounded-lg
-      ${event.reviewStatus === 'pending' ? 'bg-gray-700/30' : ''}
-      ${event.reviewStatus === 'approved' ? 'bg-emerald-500/10' : ''}
-      ${event.reviewStatus === 'rejected' ? 'bg-gray-800/50 opacity-50' : ''}
-      ${event.reviewStatus === 'excused' ? 'bg-primary-500/10' : ''}
+      flex items-center justify-between p-2 rounded-lg bg-gray-700/20
+      ${isProcessed ? 'opacity-60' : ''}
     `}>
       <div className="flex items-center gap-3">
         {isReduction ? (
-          <TrendingDown className="w-4 h-4 text-green-400" />
+          <TrendingDown className="w-4 h-4 text-emerald-400" />
         ) : (
-          <TrendingUp className="w-4 h-4 text-amber-400" />
+          <TrendingUp className="w-4 h-4 text-gray-400" />
         )}
         <div>
           <p className="text-sm text-gray-300">{event.description}</p>
           {event.reviewStatus === 'excused' && event.excuseReason && (
-            <p className="text-xs text-primary-400">Excused: {event.excuseReason}</p>
+            <p className="text-xs text-gray-500">Excused: {event.excuseReason}</p>
           )}
         </div>
       </div>
 
       <div className="flex items-center gap-2">
+        {/* Points - colored text only */}
         <span className={`
           text-sm font-medium
-          ${isReduction ? 'text-green-400' : 'text-amber-400'}
+          ${isReduction ? 'text-emerald-400' : 'text-amber-400'}
         `}>
           {event.suggestedPoints > 0 ? '+' : ''}{event.suggestedPoints} pts
         </span>
@@ -636,21 +821,21 @@ const EventRow: React.FC<{
           <>
             <button
               onClick={onApprove}
-              className="p-1.5 rounded hover:bg-emerald-500/20 text-emerald-400 transition-colors"
+              className="p-1.5 rounded hover:bg-gray-600/50 text-gray-400 hover:text-emerald-400 transition-colors"
               title="Approve"
             >
               <Check className="w-4 h-4" />
             </button>
             <button
               onClick={() => setShowExcuseInput(true)}
-              className="p-1.5 rounded hover:bg-primary-500/20 text-primary-400 transition-colors"
+              className="p-1.5 rounded hover:bg-gray-600/50 text-gray-400 hover:text-primary-400 transition-colors"
               title="Excuse (no points)"
             >
               <AlertTriangle className="w-4 h-4" />
             </button>
             <button
               onClick={onReject}
-              className="p-1.5 rounded hover:bg-rose-500/20 text-rose-400 transition-colors"
+              className="p-1.5 rounded hover:bg-gray-600/50 text-gray-400 hover:text-rose-400 transition-colors"
               title="Reject"
             >
               <X className="w-4 h-4" />
@@ -680,28 +865,28 @@ const EventRow: React.FC<{
                 }
               }}
               disabled={!excuseReason}
-              className="p-1.5 rounded bg-primary-500/20 text-primary-400"
+              className="p-1.5 rounded hover:bg-gray-600/50 text-primary-400"
             >
               <Check className="w-4 h-4" />
             </button>
             <button
               onClick={() => setShowExcuseInput(false)}
-              className="p-1.5 rounded hover:bg-gray-700/50 text-gray-400"
+              className="p-1.5 rounded hover:bg-gray-600/50 text-gray-400"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
         )}
         
+        {/* Status text - colored text only, no background */}
         {event.reviewStatus !== 'pending' && (
-          <span className={`
-            text-xs px-2 py-0.5 rounded
-            ${event.reviewStatus === 'approved' ? 'bg-emerald-500/20 text-emerald-400' : ''}
-            ${event.reviewStatus === 'rejected' ? 'bg-gray-600/20 text-gray-400' : ''}
-            ${event.reviewStatus === 'excused' ? 'bg-primary-500/20 text-primary-400' : ''}
+          <span className={`text-xs font-medium
+            ${event.reviewStatus === 'approved' ? 'text-emerald-400' : ''}
+            ${event.reviewStatus === 'rejected' ? 'text-gray-500' : ''}
+            ${event.reviewStatus === 'excused' ? 'text-primary-400' : ''}
           `}>
-            {event.reviewStatus === 'approved' && 'Approved'}
-            {event.reviewStatus === 'rejected' && 'Rejected'}
+            {event.reviewStatus === 'approved' && 'Staged'}
+            {event.reviewStatus === 'rejected' && 'Skipped'}
             {event.reviewStatus === 'excused' && 'Excused'}
           </span>
         )}

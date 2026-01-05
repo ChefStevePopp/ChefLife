@@ -19,16 +19,18 @@ import {
   Settings,
   Database,
   ArrowRight,
+  Upload,
 } from "lucide-react";
 
 // Tab Components
 import { OverviewTab } from "./components/OverviewTab";
 import { PointsTab } from "./components/PointsTab";
-import { TiersTab } from "./components/TiersTab";
+import { TeamTab } from "./components/TeamTab";
 import { CoachingTab } from "./components/CoachingTab";
 import { PIPsTab } from "./components/PIPsTab";
+import { ImportTab } from "../ImportTab";
 
-type TabType = "overview" | "points" | "tiers" | "coaching" | "pips";
+type TabType = "overview" | "team" | "points" | "coaching" | "pips" | "import";
 
 interface TabConfig {
   id: TabType;
@@ -137,11 +139,19 @@ export const TeamPerformance: React.FC = () => {
   const tier3Count = performanceArray.filter(p => p.tier === 3).length;
   const coachingCount = performanceArray.filter(p => p.coaching_stage && p.coaching_stage >= 1).length;
   const activePIPCount = performanceArray.filter(p => p.active_pip).length;
+  // TODO: pendingEventsCount will come from staged_events table
+  const pendingEventsCount = 0;
 
   const tabs: TabConfig[] = [
     { id: "overview", label: "Overview", icon: TrendingUp, color: "primary" },
-    { id: "points", label: "Points", icon: Award, color: "green" },
-    { id: "tiers", label: "Tiers", icon: Users, color: "amber" },
+    { 
+      id: "team", 
+      label: "Team", 
+      icon: Users, 
+      color: "green",
+      badge: pendingEventsCount > 0 ? pendingEventsCount : undefined,
+    },
+    { id: "points", label: "Points", icon: Award, color: "amber" },
     { 
       id: "coaching", 
       label: "Coaching", 
@@ -156,6 +166,7 @@ export const TeamPerformance: React.FC = () => {
       color: "purple",
       badge: activePIPCount > 0 ? activePIPCount : undefined,
     },
+    { id: "import", label: "Import", icon: Upload, color: "cyan" },
   ];
 
   // Calculate cycle progress
@@ -613,10 +624,11 @@ export const TeamPerformance: React.FC = () => {
         {/* Tab Content */}
         <div className="p-4">
           {activeTab === "overview" && <OverviewTab />}
+          {activeTab === "team" && <TeamTab />}
           {activeTab === "points" && <PointsTab />}
-          {activeTab === "tiers" && <TiersTab />}
           {activeTab === "coaching" && <CoachingTab />}
           {activeTab === "pips" && <PIPsTab />}
+          {activeTab === "import" && <ImportTab />}
         </div>
       </div>
     </div>

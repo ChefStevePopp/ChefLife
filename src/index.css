@@ -195,85 +195,46 @@ select::-ms-expand {
     &.active::before {
       @apply opacity-100;
     }
-    /* Tab colors - active state */
-    &.primary::before {
-      @apply bg-primary-500;
-    }
-    &.cyan::before {
-      @apply bg-cyan-500;
-    }
-    &.green::before {
-      @apply bg-green-500;
-    }
-    &.amber::before {
-      @apply bg-amber-500;
-    }
-    &.rose::before {
-      @apply bg-rose-500;
-    }
-    &.purple::before {
-      @apply bg-purple-500;
-    }
-    &.lime::before {
-      @apply bg-lime-500;
-    }
-    &.red::before {
-      @apply bg-red-500;
-    }
-    /* Tab colors - inactive state */
-    &:not(.active).primary svg {
-      @apply text-primary-500/60;
-    }
-    &:not(.active).cyan svg {
-      @apply text-cyan-500/60;
-    }
-    &:not(.active).green svg {
-      @apply text-green-500/60;
-    }
-    &:not(.active).amber svg {
-      @apply text-amber-500/60;
-    }
-    &:not(.active).rose svg {
-      @apply text-rose-500/60;
-    }
-    &:not(.active).purple svg {
-      @apply text-purple-500/60;
-    }
-    &:not(.active).lime svg {
-      @apply text-lime-500/60;
-    }
-    &:not(.active).red svg {
-      @apply text-red-500/60;
-    }
+    
+    /* ==========================================================================
+     * TAB COLOR PROGRESSION - L5 Design System
+     * Order: primary (blue) → green → amber → rose → purple → lime → red → cyan
+     * Blues bookend the row for visual balance
+     * ==========================================================================
+     */
+    
+    /* Tab colors - active state (top bar) */
+    &.primary::before { @apply bg-primary-500; }
+    &.green::before { @apply bg-green-500; }
+    &.amber::before { @apply bg-amber-500; }
+    &.rose::before { @apply bg-rose-500; }
+    &.purple::before { @apply bg-purple-500; }
+    &.lime::before { @apply bg-lime-500; }
+    &.red::before { @apply bg-red-500; }
+    &.cyan::before { @apply bg-cyan-500; }
+    
+    /* Tab icon colors - inactive state */
+    &:not(.active).primary svg { @apply text-primary-500/60; }
+    &:not(.active).green svg { @apply text-green-500/60; }
+    &:not(.active).amber svg { @apply text-amber-500/60; }
+    &:not(.active).rose svg { @apply text-rose-500/60; }
+    &:not(.active).purple svg { @apply text-purple-500/60; }
+    &:not(.active).lime svg { @apply text-lime-500/60; }
+    &:not(.active).red svg { @apply text-red-500/60; }
+    &:not(.active).cyan svg { @apply text-cyan-500/60; }
+    
     /* Tab icon colors - active state */
-    &.active.primary svg {
-      @apply text-primary-500;
-    }
-    &.active.cyan svg {
-      @apply text-cyan-500;
-    }
-    &.active.green svg {
-      @apply text-green-500;
-    }
-    &.active.amber svg {
-      @apply text-amber-500;
-    }
-    &.active.rose svg {
-      @apply text-rose-500;
-    }
-    &.active.purple svg {
-      @apply text-purple-500;
-    }
-    &.active.lime svg {
-      @apply text-lime-500;
-    }
-    &.active.red svg {
-      @apply text-red-500;
-    }
+    &.active.primary svg { @apply text-primary-500; }
+    &.active.green svg { @apply text-green-500; }
+    &.active.amber svg { @apply text-amber-500; }
+    &.active.rose svg { @apply text-rose-500; }
+    &.active.purple svg { @apply text-purple-500; }
+    &.active.lime svg { @apply text-lime-500; }
+    &.active.red svg { @apply text-red-500; }
+    &.active.cyan svg { @apply text-cyan-500; }
+    
     /* Tab text color - active state */
-    &.active {
-      @apply text-white;
-    }
+    &.active { @apply text-white; }
   }
 
   /* Expandable info section */

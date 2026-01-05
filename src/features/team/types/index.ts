@@ -155,6 +155,20 @@ export interface PerformanceConfig {
     training_mentoring: number;
     special_event: number;
   };
+  // Detection thresholds (in minutes) - when events trigger
+  detection_thresholds: {
+    tardiness_minor_min: number;    // Start of minor tardiness (default 5)
+    tardiness_major_min: number;    // Start of major tardiness (default 15)
+    early_departure_min: number;    // Left X+ min early (default 30)
+    arrived_early_min: number;      // Arrived X+ min early for reduction (default 30)
+    stayed_late_min: number;        // Stayed X+ min late for reduction (default 60)
+  };
+  // Tracking rules - who gets tracked
+  tracking_rules: {
+    exempt_security_levels: number[];  // Security levels exempt from tracking (e.g., [0, 1] for Owner, Exec Chef)
+    track_unscheduled_shifts: boolean; // Whether to flag people who work without being scheduled
+    unscheduled_exempt_levels: number[]; // Levels where unscheduled work is expected (e.g., owners)
+  };
   tier_thresholds: {
     tier1_max: number;  // 0 to this = Tier 1
     tier2_max: number;  // tier1_max+1 to this = Tier 2
@@ -190,6 +204,18 @@ export const DEFAULT_PERFORMANCE_CONFIG: PerformanceConfig = {
     arrive_early: -1,
     training_mentoring: -1,
     special_event: -1,
+  },
+  detection_thresholds: {
+    tardiness_minor_min: 5,     // 5-14 min = minor
+    tardiness_major_min: 15,    // 15+ min = major
+    early_departure_min: 30,    // left 30+ min early
+    arrived_early_min: 30,      // arrived 30+ min early (reduction)
+    stayed_late_min: 60,        // stayed 60+ min late (reduction)
+  },
+  tracking_rules: {
+    exempt_security_levels: [0, 1],  // Owner (0) and Executive Chef (1) exempt from attendance tracking
+    track_unscheduled_shifts: true,  // Flag unscheduled work for review
+    unscheduled_exempt_levels: [0, 1, 2], // Owner, Exec Chef, Sous Chef can work unscheduled without flag
   },
   tier_thresholds: {
     tier1_max: 2,

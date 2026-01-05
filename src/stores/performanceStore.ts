@@ -116,6 +116,18 @@ export const usePerformanceStore = create<PerformanceStore>((set, get) => ({
       training_mentoring: -1,
       special_event: -1,
     },
+    detection_thresholds: {
+      tardiness_minor_min: 5,
+      tardiness_major_min: 15,
+      early_departure_min: 30,
+      arrived_early_min: 30,
+      stayed_late_min: 60,
+    },
+    tracking_rules: {
+      exempt_security_levels: [0, 1],
+      track_unscheduled_shifts: true,
+      unscheduled_exempt_levels: [0, 1, 2],
+    },
     tier_thresholds: {
       tier1_max: 2,
       tier2_max: 5,
@@ -206,17 +218,31 @@ export const usePerformanceStore = create<PerformanceStore>((set, get) => ({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user?.user_metadata?.organizationId) throw new Error("No organization ID");
 
-      // Fetch performance_config from organizations table
+      // Fetch config from organizations.modules.team_performance.config
       const { data, error } = await supabase
         .from("organizations")
-        .select("performance_config")
+        .select("modules")
         .eq("id", user.user_metadata.organizationId)
         .single();
 
       if (error && error.code !== 'PGRST116') throw error;
 
-      if (data?.performance_config) {
-        set({ config: data.performance_config });
+      const moduleConfig = data?.modules?.team_performance?.config;
+      if (moduleConfig) {
+        // Deep merge with defaults to handle missing nested objects
+        const currentDefaults = get().config;
+        set({ 
+          config: {
+            ...currentDefaults,
+            ...moduleConfig,
+            detection_thresholds: { ...currentDefaults.detection_thresholds, ...moduleConfig.detection_thresholds },
+            tracking_rules: { ...currentDefaults.tracking_rules, ...moduleConfig.tracking_rules },
+            point_values: { ...currentDefaults.point_values, ...moduleConfig.point_values },
+            reduction_values: { ...currentDefaults.reduction_values, ...moduleConfig.reduction_values },
+            tier_thresholds: { ...currentDefaults.tier_thresholds, ...moduleConfig.tier_thresholds },
+            coaching_thresholds: { ...currentDefaults.coaching_thresholds, ...moduleConfig.coaching_thresholds },
+          }
+        });
       }
     } catch (error) {
       console.error("Error fetching performance config:", error);

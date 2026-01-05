@@ -88,7 +88,13 @@ export type ActivityType =
   | "performance_pip_created"
   | "performance_pip_updated"
   | "performance_pip_completed"
-  | "performance_tier_changed";
+  | "performance_tier_changed"
+  // Performance Import activities
+  | "performance_import_processed"
+  | "performance_events_staged"
+  | "performance_event_approved"
+  | "performance_event_excused"
+  | "performance_event_rejected";
 
 export interface NexusEvent {
   organization_id: string;
@@ -171,6 +177,12 @@ const ACTIVITY_TYPE_TO_CATEGORY: Record<ActivityType, ActivityCategory> = {
   performance_pip_updated: 'team',
   performance_pip_completed: 'team',
   performance_tier_changed: 'team',
+  // Performance Import
+  performance_import_processed: 'team',
+  performance_events_staged: 'team',
+  performance_event_approved: 'team',
+  performance_event_excused: 'team',
+  performance_event_rejected: 'team',
 };
 
 // =============================================================================
@@ -340,6 +352,22 @@ const ACTIVITY_TOAST_CONFIG: Partial<Record<ActivityType, ToastConfig | null>> =
   performance_tier_changed: {
     message: (d) => `${d.name || 'Team member'} moved to Tier ${d.new_tier}`,
     severity: d => d.new_tier === 3 ? 'warning' : 'info',
+  },
+  // Performance Import
+  performance_import_processed: {
+    message: (d) => `Attendance import: ${d.scheduled_count || 0} scheduled, ${d.worked_count || 0} worked shifts analyzed`,
+  },
+  performance_events_staged: {
+    message: (d) => `${d.event_count || 0} attendance events staged for review`,
+  },
+  performance_event_approved: {
+    message: (d) => `Event approved: ${d.name || 'Team member'} - ${d.event_type || 'event'}`,
+  },
+  performance_event_excused: {
+    message: (d) => `Event excused: ${d.name || 'Team member'} - ${d.reason || 'no reason'}`,
+  },
+  performance_event_rejected: {
+    message: (d) => `Event rejected: ${d.name || 'Team member'} - ${d.event_type || 'event'}`,
   },
 };
 

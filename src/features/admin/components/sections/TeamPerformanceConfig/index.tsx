@@ -15,6 +15,10 @@ import {
   ChevronUp,
   Loader2,
   RotateCcw,
+  Database,
+  FileSpreadsheet,
+  Timer,
+  Shield,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
@@ -73,11 +77,45 @@ interface TimeOffConfig {
   sick_reset_period: 'calendar_year' | 'anniversary' | 'fiscal_year';
 }
 
+// Column mapping for CSV imports
+interface ColumnMapping {
+  employee_id: string;
+  date: string;
+  first_name: string;
+  last_name: string;
+  in_time: string;
+  out_time: string;
+  role: string;
+  location?: string;
+}
+
+// Known scheduling services with preset mappings
+type SchedulingService = 
+  | '7shifts' 
+  | 'hotschedules' 
+  | 'deputy' 
+  | 'wheniwork' 
+  | 'homebase'
+  | 'sling'
+  | 'custom';
+
+interface DataSourceConfig {
+  service: SchedulingService;
+  // Column mappings (auto-set for known services, manual for custom)
+  scheduled_columns: ColumnMapping;
+  worked_columns: ColumnMapping;
+  // Service-specific settings
+  time_format: '12h' | '24h';           // "10:00AM" vs "10:00"
+  date_format: 'yyyy-mm-dd' | 'mm/dd/yyyy' | 'dd/mm/yyyy';
+  has_header_row: boolean;
+}
+
 interface FullPerformanceConfig extends PerformanceConfig {
   probation: ProbationConfig;
   cycle_start: 'calendar_year' | 'custom';
   cycle_start_date?: string;
   time_off: TimeOffConfig;
+  data_source: DataSourceConfig;
 }
 
 const DEFAULT_PROBATION: ProbationConfig = {
@@ -126,11 +164,123 @@ const DEFAULT_TIME_OFF: TimeOffConfig = {
   sick_reset_period: 'calendar_year',
 };
 
+// Preset column mappings for known services
+const SERVICE_PRESETS: Record<SchedulingService, { columns: ColumnMapping; time_format: '12h' | '24h'; date_format: DataSourceConfig['date_format'] }> = {
+  '7shifts': {
+    columns: {
+      employee_id: 'Employee ID',
+      date: 'Date',
+      first_name: 'First',
+      last_name: 'Last',
+      in_time: 'In Time',
+      out_time: 'Out Time',
+      role: 'Role',
+      location: 'Location',
+    },
+    time_format: '12h',
+    date_format: 'yyyy-mm-dd',
+  },
+  'hotschedules': {
+    columns: {
+      employee_id: 'EmployeeId',
+      date: 'ShiftDate',
+      first_name: 'FirstName',
+      last_name: 'LastName',
+      in_time: 'StartTime',
+      out_time: 'EndTime',
+      role: 'JobCode',
+      location: 'Location',
+    },
+    time_format: '24h',
+    date_format: 'mm/dd/yyyy',
+  },
+  'deputy': {
+    columns: {
+      employee_id: 'Employee Id',
+      date: 'Date',
+      first_name: 'First Name',
+      last_name: 'Last Name',
+      in_time: 'Start',
+      out_time: 'End',
+      role: 'Area',
+      location: 'Location',
+    },
+    time_format: '24h',
+    date_format: 'yyyy-mm-dd',
+  },
+  'wheniwork': {
+    columns: {
+      employee_id: 'User ID',
+      date: 'Date',
+      first_name: 'First Name',
+      last_name: 'Last Name',
+      in_time: 'Start Time',
+      out_time: 'End Time',
+      role: 'Position',
+      location: 'Location',
+    },
+    time_format: '12h',
+    date_format: 'mm/dd/yyyy',
+  },
+  'homebase': {
+    columns: {
+      employee_id: 'employee_id',
+      date: 'date',
+      first_name: 'first_name',
+      last_name: 'last_name',
+      in_time: 'clock_in',
+      out_time: 'clock_out',
+      role: 'role',
+      location: 'location',
+    },
+    time_format: '12h',
+    date_format: 'yyyy-mm-dd',
+  },
+  'sling': {
+    columns: {
+      employee_id: 'Employee ID',
+      date: 'Date',
+      first_name: 'First name',
+      last_name: 'Last name',
+      in_time: 'Shift start',
+      out_time: 'Shift end',
+      role: 'Position',
+      location: 'Location',
+    },
+    time_format: '12h',
+    date_format: 'mm/dd/yyyy',
+  },
+  'custom': {
+    columns: {
+      employee_id: '',
+      date: '',
+      first_name: '',
+      last_name: '',
+      in_time: '',
+      out_time: '',
+      role: '',
+      location: '',
+    },
+    time_format: '12h',
+    date_format: 'yyyy-mm-dd',
+  },
+};
+
+const DEFAULT_DATA_SOURCE: DataSourceConfig = {
+  service: '7shifts',
+  scheduled_columns: SERVICE_PRESETS['7shifts'].columns,
+  worked_columns: SERVICE_PRESETS['7shifts'].columns,
+  time_format: '12h',
+  date_format: 'yyyy-mm-dd',
+  has_header_row: true,
+};
+
 const DEFAULT_FULL_CONFIG: FullPerformanceConfig = {
   ...DEFAULT_PERFORMANCE_CONFIG,
   probation: DEFAULT_PROBATION,
   cycle_start: 'calendar_year',
   time_off: DEFAULT_TIME_OFF,
+  data_source: DEFAULT_DATA_SOURCE,
 };
 
 // =============================================================================
@@ -255,8 +405,11 @@ export const TeamPerformanceConfig: React.FC = () => {
           const loadedConfig: FullPerformanceConfig = {
             ...DEFAULT_FULL_CONFIG,
             ...moduleConfig,
+            detection_thresholds: { ...DEFAULT_PERFORMANCE_CONFIG.detection_thresholds, ...moduleConfig.detection_thresholds },
+            tracking_rules: { ...DEFAULT_PERFORMANCE_CONFIG.tracking_rules, ...moduleConfig.tracking_rules },
             probation: { ...DEFAULT_PROBATION, ...moduleConfig.probation },
             time_off: { ...DEFAULT_TIME_OFF, ...moduleConfig.time_off },
+            data_source: { ...DEFAULT_DATA_SOURCE, ...moduleConfig.data_source },
           };
           setConfig(loadedConfig);
           setOriginalConfig(loadedConfig);
@@ -365,6 +518,20 @@ export const TeamPerformanceConfig: React.FC = () => {
     }));
   };
 
+  const updateDetectionThresholds = (key: keyof FullPerformanceConfig['detection_thresholds'], value: number) => {
+    setConfig(prev => ({
+      ...prev,
+      detection_thresholds: { ...prev.detection_thresholds, [key]: value },
+    }));
+  };
+
+  const updateTrackingRules = (updates: Partial<PerformanceConfig['tracking_rules']>) => {
+    setConfig(prev => ({
+      ...prev,
+      tracking_rules: { ...prev.tracking_rules, ...updates },
+    }));
+  };
+
   const updateTimeOff = (updates: Partial<TimeOffConfig>) => {
     setConfig(prev => ({
       ...prev,
@@ -377,6 +544,25 @@ export const TeamPerformanceConfig: React.FC = () => {
       ...prev,
       probation: { ...prev.probation, ...updates },
     }));
+  };
+
+  const updateDataSource = (updates: Partial<DataSourceConfig>) => {
+    setConfig(prev => ({
+      ...prev,
+      data_source: { ...prev.data_source, ...updates },
+    }));
+  };
+
+  // Handle service change - auto-apply presets
+  const handleServiceChange = (service: SchedulingService) => {
+    const preset = SERVICE_PRESETS[service];
+    updateDataSource({
+      service,
+      scheduled_columns: preset.columns,
+      worked_columns: preset.columns,
+      time_format: preset.time_format,
+      date_format: preset.date_format,
+    });
   };
 
   if (isLoading) {
@@ -454,6 +640,203 @@ export const TeamPerformanceConfig: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* DATA SOURCE */}
+        <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-5">
+          <SectionHeader
+            icon={Database}
+            iconColor="text-purple-400"
+            bgColor="bg-purple-500/20"
+            title="Data Source"
+            subtitle="Where your schedule data comes from"
+          />
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                Scheduling System
+              </label>
+              <select
+                value={config.data_source.service}
+                onChange={(e) => handleServiceChange(e.target.value as SchedulingService)}
+                className="input w-full"
+              >
+                <option value="7shifts">7shifts</option>
+                <option value="hotschedules">HotSchedules</option>
+                <option value="deputy">Deputy</option>
+                <option value="wheniwork">When I Work</option>
+                <option value="homebase">Homebase</option>
+                <option value="sling">Sling</option>
+                <option value="custom">Custom CSV (manual mapping)</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Column mappings are auto-configured for known services
+              </p>
+            </div>
+
+            {/* Show column preview for known services */}
+            {config.data_source.service !== 'custom' && (
+              <div className="p-3 bg-gray-800/40 rounded-lg border border-gray-700/30">
+                <div className="flex items-center gap-2 mb-2">
+                  <FileSpreadsheet className="w-4 h-4 text-gray-400" />
+                  <span className="text-xs text-gray-400 uppercase tracking-wide">Expected Columns</span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <div className="text-gray-500">Employee ID:</div>
+                  <div className="text-gray-300 font-mono">{config.data_source.scheduled_columns.employee_id}</div>
+                  <div className="text-gray-500">Date:</div>
+                  <div className="text-gray-300 font-mono">{config.data_source.scheduled_columns.date}</div>
+                  <div className="text-gray-500">In Time:</div>
+                  <div className="text-gray-300 font-mono">{config.data_source.scheduled_columns.in_time}</div>
+                  <div className="text-gray-500">Out Time:</div>
+                  <div className="text-gray-300 font-mono">{config.data_source.scheduled_columns.out_time}</div>
+                </div>
+              </div>
+            )}
+
+            {/* Custom mapping UI */}
+            {config.data_source.service === 'custom' && (
+              <div className="p-3 bg-gray-800/40 rounded-lg border border-gray-700/30 space-y-3">
+                <p className="text-xs text-gray-400 uppercase tracking-wide">Custom Column Mapping</p>
+                <p className="text-xs text-gray-500">Enter the exact column header names from your CSV</p>
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-500">Employee ID</label>
+                    <input
+                      type="text"
+                      value={config.data_source.scheduled_columns.employee_id}
+                      onChange={(e) => updateDataSource({
+                        scheduled_columns: { ...config.data_source.scheduled_columns, employee_id: e.target.value },
+                        worked_columns: { ...config.data_source.worked_columns, employee_id: e.target.value },
+                      })}
+                      placeholder="e.g., EmployeeID"
+                      className="input w-full text-sm mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">Date</label>
+                    <input
+                      type="text"
+                      value={config.data_source.scheduled_columns.date}
+                      onChange={(e) => updateDataSource({
+                        scheduled_columns: { ...config.data_source.scheduled_columns, date: e.target.value },
+                        worked_columns: { ...config.data_source.worked_columns, date: e.target.value },
+                      })}
+                      placeholder="e.g., ShiftDate"
+                      className="input w-full text-sm mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">First Name</label>
+                    <input
+                      type="text"
+                      value={config.data_source.scheduled_columns.first_name}
+                      onChange={(e) => updateDataSource({
+                        scheduled_columns: { ...config.data_source.scheduled_columns, first_name: e.target.value },
+                        worked_columns: { ...config.data_source.worked_columns, first_name: e.target.value },
+                      })}
+                      placeholder="e.g., FirstName"
+                      className="input w-full text-sm mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">Last Name</label>
+                    <input
+                      type="text"
+                      value={config.data_source.scheduled_columns.last_name}
+                      onChange={(e) => updateDataSource({
+                        scheduled_columns: { ...config.data_source.scheduled_columns, last_name: e.target.value },
+                        worked_columns: { ...config.data_source.worked_columns, last_name: e.target.value },
+                      })}
+                      placeholder="e.g., LastName"
+                      className="input w-full text-sm mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">In Time</label>
+                    <input
+                      type="text"
+                      value={config.data_source.scheduled_columns.in_time}
+                      onChange={(e) => updateDataSource({
+                        scheduled_columns: { ...config.data_source.scheduled_columns, in_time: e.target.value },
+                        worked_columns: { ...config.data_source.worked_columns, in_time: e.target.value },
+                      })}
+                      placeholder="e.g., StartTime"
+                      className="input w-full text-sm mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">Out Time</label>
+                    <input
+                      type="text"
+                      value={config.data_source.scheduled_columns.out_time}
+                      onChange={(e) => updateDataSource({
+                        scheduled_columns: { ...config.data_source.scheduled_columns, out_time: e.target.value },
+                        worked_columns: { ...config.data_source.worked_columns, out_time: e.target.value },
+                      })}
+                      placeholder="e.g., EndTime"
+                      className="input w-full text-sm mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">Role</label>
+                    <input
+                      type="text"
+                      value={config.data_source.scheduled_columns.role}
+                      onChange={(e) => updateDataSource({
+                        scheduled_columns: { ...config.data_source.scheduled_columns, role: e.target.value },
+                        worked_columns: { ...config.data_source.worked_columns, role: e.target.value },
+                      })}
+                      placeholder="e.g., Position"
+                      className="input w-full text-sm mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">Location (optional)</label>
+                    <input
+                      type="text"
+                      value={config.data_source.scheduled_columns.location || ''}
+                      onChange={(e) => updateDataSource({
+                        scheduled_columns: { ...config.data_source.scheduled_columns, location: e.target.value || undefined },
+                        worked_columns: { ...config.data_source.worked_columns, location: e.target.value || undefined },
+                      })}
+                      placeholder="e.g., Location"
+                      className="input w-full text-sm mt-1"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Format settings */}
+            <div className="grid grid-cols-2 gap-4 pt-3 border-t border-gray-700/30">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Time Format</label>
+                <select
+                  value={config.data_source.time_format}
+                  onChange={(e) => updateDataSource({ time_format: e.target.value as '12h' | '24h' })}
+                  className="input w-full text-sm"
+                >
+                  <option value="12h">12-hour (10:00AM)</option>
+                  <option value="24h">24-hour (10:00)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Date Format</label>
+                <select
+                  value={config.data_source.date_format}
+                  onChange={(e) => updateDataSource({ date_format: e.target.value as DataSourceConfig['date_format'] })}
+                  className="input w-full text-sm"
+                >
+                  <option value="yyyy-mm-dd">YYYY-MM-DD</option>
+                  <option value="mm/dd/yyyy">MM/DD/YYYY</option>
+                  <option value="dd/mm/yyyy">DD/MM/YYYY</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* PERFORMANCE CYCLE */}
         <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-5">
           <SectionHeader
@@ -790,6 +1173,90 @@ export const TeamPerformanceConfig: React.FC = () => {
               description="Refusing instructions, arguing with management"
               value={config.point_values.insubordination}
               onChange={(v) => updatePointValues('insubordination', v)}
+            />
+          </div>
+        </div>
+
+        {/* DETECTION THRESHOLDS */}
+        <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-5">
+          <SectionHeader
+            icon={Timer}
+            iconColor="text-cyan-400"
+            bgColor="bg-cyan-500/20"
+            title="Detection Thresholds"
+            subtitle="When attendance events are triggered (in minutes)"
+          />
+
+          {/* Expandable Info */}
+          <div className={`expandable-info-section mb-4 ${expandedInfo === 'detection' ? 'expanded' : ''}`}>
+            <button
+              onClick={() => setExpandedInfo(expandedInfo === 'detection' ? null : 'detection')}
+              className="expandable-info-header"
+            >
+              <Info className="w-4 h-4 text-gray-400 flex-shrink-0" />
+              <span className="text-sm text-gray-400">How detection works</span>
+              <ChevronUp className="w-4 h-4 text-gray-500 ml-auto" />
+            </button>
+            <div className="expandable-info-content">
+              <div className="px-4 pb-4 pt-2 text-sm text-gray-400">
+                These thresholds define when the Delta Engine flags events during CSV import. 
+                For example, if "Minor Tardiness" is set to 5 minutes, arriving 4 minutes late 
+                won't trigger an event, but 5+ minutes will. Adjust based on your operation's 
+                needs — a busy kitchen might need tighter thresholds than a casual cafe.
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Tardiness Detection</p>
+            <InputRow
+              label="Minor tardiness starts at"
+              description="5-14 min late (configurable upper bound)"
+              value={config.detection_thresholds.tardiness_minor_min}
+              onChange={(v) => updateDetectionThresholds('tardiness_minor_min', v)}
+              suffix="min"
+              min={1}
+              max={30}
+            />
+            <InputRow
+              label="Major tardiness starts at"
+              description="Triggers higher point value"
+              value={config.detection_thresholds.tardiness_major_min}
+              onChange={(v) => updateDetectionThresholds('tardiness_major_min', v)}
+              suffix="min"
+              min={5}
+              max={60}
+            />
+
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-2 mt-4">Departure Detection</p>
+            <InputRow
+              label="Early departure threshold"
+              description="Left X+ minutes before scheduled end"
+              value={config.detection_thresholds.early_departure_min}
+              onChange={(v) => updateDetectionThresholds('early_departure_min', v)}
+              suffix="min"
+              min={10}
+              max={120}
+            />
+
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-2 mt-4">Reduction Detection</p>
+            <InputRow
+              label="Arrived early threshold"
+              description="Arrived X+ min early (earns reduction)"
+              value={config.detection_thresholds.arrived_early_min}
+              onChange={(v) => updateDetectionThresholds('arrived_early_min', v)}
+              suffix="min"
+              min={15}
+              max={120}
+            />
+            <InputRow
+              label="Stayed late threshold"
+              description="Stayed X+ min late (earns reduction)"
+              value={config.detection_thresholds.stayed_late_min}
+              onChange={(v) => updateDetectionThresholds('stayed_late_min', v)}
+              suffix="min"
+              min={30}
+              max={180}
             />
           </div>
         </div>

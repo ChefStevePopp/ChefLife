@@ -5,3 +5,4 @@ export { CreateTeamMemberModal } from './CreateTeamMemberModal';
 export { MyProfile } from './MyProfile';
 export { TeamPerformance } from './TeamPerformance';
 export { TeamMemberCard } from './TeamMemberCard';
+export { ImportTab } from './ImportTab';
