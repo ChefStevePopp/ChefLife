@@ -12,6 +12,7 @@ import { create } from "zustand";
 import { supabase } from "@/lib/supabase";
 import { nexus } from "@/lib/nexus";
 import toast from "react-hot-toast";
+import { getLocalYear, getLocalDateString, getPeriodStart, getDaysAgo } from "@/utils/dateUtils";
 import type {
   PointEvent,
   PointReduction,
@@ -25,7 +26,24 @@ import type {
   PointEventType,
   PointReductionType,
   DEFAULT_PERFORMANCE_CONFIG,
+  TimeOffUsage,
 } from "@/features/team/types";
+
+// =============================================================================
+// TIME-OFF CONFIG (matches TeamPerformanceConfig)
+// =============================================================================
+
+interface TimeOffConfig {
+  enabled: boolean;
+  protected_sick_days: number;
+  sick_reset_period: 'calendar_year' | 'anniversary' | 'fiscal_year';
+  display_unit: 'hours' | 'days' | 'weeks';
+  hours_per_day: number;
+}
+
+interface ExtendedPerformanceConfig extends PerformanceConfig {
+  time_off?: TimeOffConfig;
+}
 
 // =============================================================================
 // STORE TYPES
@@ -37,7 +55,7 @@ interface PerformanceStore {
   error: string | null;
   currentCycle: PerformanceCycle | null;
   cycles: PerformanceCycle[];
-  config: PerformanceConfig;
+  config: ExtendedPerformanceConfig;
   
   // Team performance data
   teamPerformance: Map<string, TeamMemberPerformance>;
@@ -85,6 +103,17 @@ const calculateCoachingStageFromConfig = (points: number, config: PerformanceCon
   if (points >= coaching_thresholds.stage2) return 2;
   if (points >= coaching_thresholds.stage1) return 1;
   return null;
+};
+
+/**
+ * Calculate the start of the sick day reset period
+ * Uses local timezone via dateUtils
+ */
+const getSickPeriodStart = (
+  resetPeriod: 'calendar_year' | 'anniversary' | 'fiscal_year',
+  hireDate?: string | null
+): string => {
+  return getPeriodStart(resetPeriod, hireDate);
 };
 
 // =============================================================================
@@ -241,6 +270,8 @@ export const usePerformanceStore = create<PerformanceStore>((set, get) => ({
             reduction_values: { ...currentDefaults.reduction_values, ...moduleConfig.reduction_values },
             tier_thresholds: { ...currentDefaults.tier_thresholds, ...moduleConfig.tier_thresholds },
             coaching_thresholds: { ...currentDefaults.coaching_thresholds, ...moduleConfig.coaching_thresholds },
+            // Include time_off config if present
+            time_off: moduleConfig.time_off,
           }
         });
       }
@@ -256,6 +287,8 @@ export const usePerformanceStore = create<PerformanceStore>((set, get) => ({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user?.user_metadata?.organizationId) throw new Error("No organization ID");
 
+      const organizationId = user.user_metadata.organizationId;
+
       const targetCycleId = cycleId || get().currentCycle?.id;
       if (!targetCycleId) {
         await get().fetchCurrentCycle();
@@ -264,11 +297,31 @@ export const usePerformanceStore = create<PerformanceStore>((set, get) => ({
       const finalCycleId = cycleId || get().currentCycle?.id;
       if (!finalCycleId) throw new Error("No cycle available");
 
+      // Ensure config is loaded (fetch directly to avoid race conditions)
+      const { data: orgData } = await supabase
+        .from('organizations')
+        .select('modules')
+        .eq('id', organizationId)
+        .single();
+
+      const moduleConfig = orgData?.modules?.team_performance?.config;
+      const timeOffConfig = moduleConfig?.time_off || {
+        enabled: true,
+        protected_sick_days: 3,
+        sick_reset_period: 'calendar_year' as const,
+      };
+      
+      console.log('[TeamPerformance] Time-off config loaded:', {
+        enabled: timeOffConfig.enabled,
+        protected_sick_days: timeOffConfig.protected_sick_days,
+        sick_reset_period: timeOffConfig.sick_reset_period,
+      });
+
       // Fetch all team members
       const { data: members, error: membersError } = await supabase
         .from("organization_team_members")
         .select("*")
-        .eq("organization_id", user.user_metadata.organizationId)
+        .eq("organization_id", organizationId)
         .eq("is_active", true);
 
       if (membersError) throw membersError;
@@ -277,7 +330,7 @@ export const usePerformanceStore = create<PerformanceStore>((set, get) => ({
       const { data: events, error: eventsError } = await supabase
         .from("performance_point_events")
         .select("*")
-        .eq("organization_id", user.user_metadata.organizationId)
+        .eq("organization_id", organizationId)
         .eq("cycle_id", finalCycleId);
 
       if (eventsError) throw eventsError;
@@ -286,7 +339,7 @@ export const usePerformanceStore = create<PerformanceStore>((set, get) => ({
       const { data: reductions, error: reductionsError } = await supabase
         .from("performance_point_reductions")
         .select("*")
-        .eq("organization_id", user.user_metadata.organizationId)
+        .eq("organization_id", organizationId)
         .eq("cycle_id", finalCycleId);
 
       if (reductionsError) throw reductionsError;
@@ -295,7 +348,7 @@ export const usePerformanceStore = create<PerformanceStore>((set, get) => ({
       const { data: coaching, error: coachingError } = await supabase
         .from("performance_coaching_records")
         .select("*")
-        .eq("organization_id", user.user_metadata.organizationId);
+        .eq("organization_id", organizationId);
 
       if (coachingError) throw coachingError;
 
@@ -303,10 +356,44 @@ export const usePerformanceStore = create<PerformanceStore>((set, get) => ({
       const { data: pips, error: pipsError } = await supabase
         .from("performance_improvement_plans")
         .select("*")
-        .eq("organization_id", user.user_metadata.organizationId)
+        .eq("organization_id", organizationId)
         .eq("status", "active");
 
       if (pipsError) throw pipsError;
+
+      // Fetch sick day usage from activity_logs (NEXUS)
+      // Use local year for baseline - avoids timezone issues
+      const currentYear = getLocalYear();
+      const baselineDate = `${currentYear}-01-01T00:00:00.000Z`;
+      const todayLocal = getLocalDateString();
+      
+      console.log('[TeamPerformance] Local date:', todayLocal);
+      console.log('[TeamPerformance] Local year:', currentYear);
+      console.log('[TeamPerformance] Fetching sick logs since:', baselineDate);
+      
+      const { data: sickDayLogs, error: sickError } = await supabase
+        .from("activity_logs")
+        .select("created_at, details")
+        .eq("organization_id", organizationId)
+        .eq("activity_type", "performance_event_excused")
+        .gte("created_at", baselineDate);
+
+      if (sickError) {
+        console.warn("Could not fetch sick day logs:", sickError);
+      } else {
+        console.log('[TeamPerformance] Sick day logs found:', sickDayLogs?.length || 0);
+        // Log ALL fetched logs to see what we're working with
+        sickDayLogs?.forEach((log, i) => {
+          const details = log.details as any;
+          console.log(`[TeamPerformance] Log ${i}:`, {
+            created_at: log.created_at,
+            reason: details?.reason,
+            name: details?.name,
+            team_member_id: details?.team_member_id,
+            event_date: details?.event_date,
+          });
+        });
+      }
 
       // Build performance map
       const performanceMap = new Map<string, TeamMemberPerformance>();
@@ -336,6 +423,63 @@ export const usePerformanceStore = create<PerformanceStore>((set, get) => ({
           entry.running_balance = runningBalance;
         });
 
+        // Calculate sick days used for this member
+        // Use directly loaded config to avoid race conditions
+        const sickResetPeriod = timeOffConfig.sick_reset_period || 'calendar_year';
+        const periodStart = getSickPeriodStart(sickResetPeriod, member.hire_date);
+        // Use string comparison to avoid timezone issues
+        // YYYY-MM-DD strings naturally sort chronologically
+
+        // Filter sick day logs for this member within their reset period
+        // Support both new format (team_member_id) and legacy format (name matching)
+        const memberFullName = `${member.first_name} ${member.last_name}`;
+        const memberSickDayDates = new Set<string>(); // Dedupe by date - one sick day per calendar day
+        
+        (sickDayLogs || []).forEach(log => {
+          const details = log.details as any;
+          if (details?.reason !== 'SICK OK') return;
+          
+          // Use event_date if available (the actual sick day), otherwise fall back to created_at
+          const eventDateStr = details?.event_date || log.created_at.split('T')[0];
+          // Extract just the date portion (YYYY-MM-DD) for comparison
+          const eventDateOnly = eventDateStr.split('T')[0];
+          
+          // String comparison for dates - avoids timezone conversion issues
+          if (eventDateOnly < periodStart) {
+            // Event is from before the reset period - skip it
+            return;
+          }
+          
+          // Match by team_member_id (new format) or name (legacy)
+          const matches = details?.team_member_id === member.id || details?.name === memberFullName;
+          
+          if (matches) {
+            memberSickDayDates.add(eventDateOnly);
+            
+            console.log(`[TeamPerformance] Matched sick day for ${memberFullName}:`, {
+              event_date: eventDateOnly,
+              created_at: log.created_at,
+              period_start: periodStart,
+              unique_days_so_far: memberSickDayDates.size,
+            });
+          }
+        });
+        
+        // Count unique sick days (not individual excuse events)
+        const sickDaysUsed = memberSickDayDates.size;
+
+        const timeOffData: TimeOffUsage = {
+          sick_days_used: sickDaysUsed,
+          sick_days_available: timeOffConfig.protected_sick_days ?? 3, // Ontario ESA default
+          sick_period_start: periodStart,
+          vacation_hours_used: 0,      // Phase 2: will come from time_off_usage table
+          vacation_hours_available: 0, // Phase 2: will come from config accrual calculation
+        };
+
+        if (sickDaysUsed > 0) {
+          console.log(`[TeamPerformance] ${memberFullName}: ${sickDaysUsed} unique sick day(s)`);
+        }
+
         performanceMap.set(member.id, {
           team_member_id: member.id,
           team_member: member,
@@ -345,6 +489,7 @@ export const usePerformanceStore = create<PerformanceStore>((set, get) => ({
           active_pip: memberPIP,
           events: allEntries as any,
           coaching_records: memberCoaching,
+          time_off: timeOffData,
         });
       });
 
@@ -396,7 +541,7 @@ export const usePerformanceStore = create<PerformanceStore>((set, get) => ({
           organization_id: user.user_metadata.organizationId,
           event_type: eventType,
           points,
-          event_date: eventDate || new Date().toISOString().split('T')[0],
+          event_date: eventDate || getLocalDateString(),
           cycle_id: cycle.id,
           notes,
           created_by: user.id,
@@ -503,7 +648,7 @@ export const usePerformanceStore = create<PerformanceStore>((set, get) => ({
           organization_id: user.user_metadata.organizationId,
           reduction_type: reductionType,
           points: adjustedPoints,
-          event_date: eventDate || new Date().toISOString().split('T')[0],
+          event_date: eventDate || getLocalDateString(),
           cycle_id: cycle.id,
           notes,
           created_by: user.id,
@@ -642,13 +787,13 @@ export const usePerformanceStore = create<PerformanceStore>((set, get) => ({
     const memberPerf = get().teamPerformance.get(memberId);
     if (!memberPerf) return 0;
 
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // Calculate 30 days ago using local date
+    const thirtyDaysAgo = getDaysAgo(30);
 
     return memberPerf.events
       .filter(e => 
         'reduction_type' in e && 
-        new Date(e.event_date) >= thirtyDaysAgo
+        e.event_date >= thirtyDaysAgo
       )
       .reduce((sum, e) => sum + e.points, 0);
   },

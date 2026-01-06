@@ -25,15 +25,22 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   TrendingUp,
   RefreshCw,
   Pencil,
   Shield,
   ArrowUpDown,
   SlidersHorizontal,
+  Thermometer,
+  Palmtree,
+  Plus,
+  Minus,
 } from "lucide-react";
 import { AddPointEventModal } from "./AddPointEventModal";
 import { AddPointReductionModal } from "./AddPointReductionModal";
+import { AddSickDayModal } from "./AddSickDayModal";
+import { AddVacationModal } from "./AddVacationModal";
 import { ActionLegend } from "./ActionLegend";
 
 // =============================================================================
@@ -193,6 +200,13 @@ export const TeamTab: React.FC = () => {
   // Modal state
   const [eventModalMember, setEventModalMember] = useState<string | null>(null);
   const [reductionModalMember, setReductionModalMember] = useState<string | null>(null);
+  const [sickDayModalMember, setSickDayModalMember] = useState<string | null>(null);
+  const [vacationModalMember, setVacationModalMember] = useState<string | null>(null);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [showAll, setShowAll] = useState(false);
+  const ITEMS_PER_PAGE = 12;
 
   // =============================================================================
   // FETCH STAGED EVENTS
@@ -465,6 +479,7 @@ export const TeamTab: React.FC = () => {
         user_id: user.id,
         activity_type: 'performance_event_excused',
         details: {
+          team_member_id: event.team_member_id,
           name: memberName,
           event_type: event.event_type,
           reason: reason,
@@ -549,6 +564,20 @@ export const TeamTab: React.FC = () => {
 
     return list;
   }, [combinedMembers, searchQuery, filterOption, sortOption, stagedByMember]);
+
+  // Reset to page 1 when filters change
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterOption, sortOption]);
+
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredAndSortedMembers.length / ITEMS_PER_PAGE);
+  const paginatedMembers = showAll 
+    ? filteredAndSortedMembers 
+    : filteredAndSortedMembers.slice(
+        (currentPage - 1) * ITEMS_PER_PAGE,
+        currentPage * ITEMS_PER_PAGE
+      );
 
   // Count stats
   const stats = useMemo(() => {
@@ -722,7 +751,7 @@ export const TeamTab: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-2">
-          {filteredAndSortedMembers.map((member) => {
+          {paginatedMembers.map((member) => {
             const pendingEvents = stagedByMember.get(member.team_member_id) || [];
             const isExpanded = expandedMember === member.team_member_id;
             const hasPending = pendingEvents.length > 0;
@@ -790,26 +819,88 @@ export const TeamTab: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  {/* L5 Action Pills */}
+                  <div className="flex items-center gap-1.5 ml-auto">
+                    {/* Sick Day Pill */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSickDayModalMember(member.team_member_id);
+                      }}
+                      className={`
+                        flex items-center gap-1.5 px-2.5 py-1.5 rounded-full
+                        border transition-all duration-200
+                        ${member.time_off && member.time_off.sick_days_used >= member.time_off.sick_days_available
+                          ? 'bg-rose-500/10 border-rose-500/30 text-rose-400 hover:bg-rose-500/20'
+                          : member.time_off && member.time_off.sick_days_used > 0
+                            ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20'
+                            : 'bg-gray-700/30 border-gray-600/30 text-gray-400 hover:bg-gray-700/50 hover:text-amber-400'
+                        }
+                      `}
+                      title={`Sick Days: ${member.time_off?.sick_days_used ?? 0}/${member.time_off?.sick_days_available ?? 3} used (click to log)`}
+                    >
+                      <Thermometer className="w-3.5 h-3.5" />
+                      <span className="text-xs font-medium">
+                        {member.time_off?.sick_days_used ?? 0}/{member.time_off?.sick_days_available ?? 3}
+                      </span>
+                    </button>
+
+                    {/* Vacation Pill */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setVacationModalMember(member.team_member_id);
+                      }}
+                      className={`
+                        flex items-center gap-1.5 px-2.5 py-1.5 rounded-full
+                        border transition-all duration-200
+                        ${member.time_off && (member.time_off.vacation_hours_used || 0) >= (member.time_off.vacation_hours_available || 1)
+                          ? 'bg-rose-500/10 border-rose-500/30 text-rose-400 hover:bg-rose-500/20'
+                          : member.time_off && (member.time_off.vacation_hours_used || 0) > 0
+                            ? 'bg-sky-500/10 border-sky-500/30 text-sky-400 hover:bg-sky-500/20'
+                            : 'bg-gray-700/30 border-gray-600/30 text-gray-400 hover:bg-gray-700/50 hover:text-sky-400'
+                        }
+                      `}
+                      title={`Vacation: ${member.time_off?.vacation_hours_used ?? 0}h used (click to log)`}
+                    >
+                      <Palmtree className="w-3.5 h-3.5" />
+                      <span className="text-xs font-medium">
+                        {member.time_off?.vacation_hours_used ?? 0}h
+                      </span>
+                    </button>
+
+                    {/* Add Event Pill */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         setEventModalMember(member.team_member_id);
                       }}
-                      className="px-2 py-1 text-xs text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
-                      title="Add point event"
+                      className="
+                        flex items-center justify-center w-8 h-8 rounded-full
+                        bg-gray-700/30 border border-gray-600/30
+                        text-gray-400 hover:text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/30
+                        transition-all duration-200
+                      "
+                      title="Add point event (demerit)"
                     >
-                      + Event
+                      <Plus className="w-4 h-4" />
                     </button>
+
+                    {/* Point Reduction Pill */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         setReductionModalMember(member.team_member_id);
                       }}
-                      className="px-2 py-1 text-xs text-gray-400 hover:text-emerald-400 hover:bg-gray-700/50 rounded transition-colors"
-                      title="Add point reduction"
+                      className="
+                        flex items-center justify-center w-8 h-8 rounded-full
+                        bg-gray-700/30 border border-gray-600/30
+                        text-gray-400 hover:text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/30
+                        transition-all duration-200
+                      "
+                      title="Add point reduction (merit)"
                     >
-                      - Reduce
+                      <Minus className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
@@ -835,6 +926,53 @@ export const TeamTab: React.FC = () => {
         </div>
       )}
 
+      {/* Pagination Controls */}
+      {filteredAndSortedMembers.length > ITEMS_PER_PAGE && (
+        <div className="flex items-center justify-between pt-4 border-t border-gray-700/30">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500">
+              {showAll 
+                ? `Showing all ${filteredAndSortedMembers.length} members`
+                : `Showing ${((currentPage - 1) * ITEMS_PER_PAGE) + 1}–${Math.min(currentPage * ITEMS_PER_PAGE, filteredAndSortedMembers.length)} of ${filteredAndSortedMembers.length}`
+              }
+            </span>
+            <button
+              onClick={() => {
+                setShowAll(!showAll);
+                setCurrentPage(1);
+              }}
+              className="text-xs text-primary-400 hover:text-primary-300 transition-colors"
+            >
+              {showAll ? 'Show pages' : 'Show all'}
+            </button>
+          </div>
+          
+          {!showAll && totalPages > 1 && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-2 rounded-lg bg-gray-800/50 border border-gray-700/50 hover:bg-gray-700/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-4 h-4 text-gray-400" />
+              </button>
+              
+              <span className="text-sm text-gray-400 min-w-[100px] text-center">
+                Page {currentPage} of {totalPages}
+              </span>
+              
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-2 rounded-lg bg-gray-800/50 border border-gray-700/50 hover:bg-gray-700/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Modals */}
       {eventModalMember && (
         <AddPointEventModal
@@ -849,6 +987,22 @@ export const TeamTab: React.FC = () => {
           memberId={reductionModalMember}
           isOpen={!!reductionModalMember}
           onClose={() => setReductionModalMember(null)}
+        />
+      )}
+
+      {sickDayModalMember && (
+        <AddSickDayModal
+          memberId={sickDayModalMember}
+          isOpen={!!sickDayModalMember}
+          onClose={() => setSickDayModalMember(null)}
+        />
+      )}
+
+      {vacationModalMember && (
+        <AddVacationModal
+          memberId={vacationModalMember}
+          isOpen={!!vacationModalMember}
+          onClose={() => setVacationModalMember(null)}
         />
       )}
     </div>

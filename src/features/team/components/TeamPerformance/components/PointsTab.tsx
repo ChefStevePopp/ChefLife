@@ -1,8 +1,17 @@
+/**
+ * PointsTab - Points Management & Team Ledger
+ * 
+ * L5 Design: Two view modes:
+ * - By Member: Card grid, click to expand individual ledger
+ * - Team Ledger: Chronological feed of ALL events across team
+ */
+
 import React, { useState, useMemo } from "react";
 import { usePerformanceStore } from "@/stores/performanceStore";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { nexus } from "@/lib/nexus";
+import { formatDateForDisplay, formatDateShort, formatDateLong } from "@/utils/dateUtils";
 import toast from "react-hot-toast";
 import { 
   Search, 
@@ -18,6 +27,16 @@ import {
   Check,
   RefreshCw,
   Flag,
+  ChevronLeft,
+  ChevronRight,
+  ArrowUpDown,
+  Users,
+  List,
+  Calendar,
+  Filter,
+  Download,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
 import { AddPointEventModal } from "./AddPointEventModal";
 import { AddPointReductionModal } from "./AddPointReductionModal";
@@ -50,6 +69,12 @@ const REDUCTION_TYPE_LABELS: Record<string, string> = {
   special_event: "Special Event/Catering",
 };
 
+// Combined labels for filtering
+const ALL_EVENT_LABELS: Record<string, string> = {
+  ...EVENT_TYPE_LABELS,
+  ...REDUCTION_TYPE_LABELS,
+};
+
 // Demerit options for reclassification
 const DEMERIT_OPTIONS = [
   { id: 'no_call_no_show', label: 'No-Call / No-Show', points: 6 },
@@ -80,6 +105,9 @@ const EXCUSE_OPTIONS = [
 // Security levels that can manage points
 const MANAGER_SECURITY_LEVELS = [0, 1, 2, 3];
 
+// View mode type
+type ViewMode = 'by_member' | 'team_ledger';
+
 // =============================================================================
 // MAIN COMPONENT
 // =============================================================================
@@ -94,6 +122,10 @@ export const PointsTab: React.FC = () => {
   } = usePerformanceStore();
   const { user, organizationId, securityLevel } = useAuth();
 
+  // View mode state
+  const [viewMode, setViewMode] = useState<ViewMode>('by_member');
+
+  // By Member view state
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [showAddEventModal, setShowAddEventModal] = useState(false);
@@ -102,21 +134,82 @@ export const PointsTab: React.FC = () => {
   // Processing state for ledger actions
   const [processingEntryId, setProcessingEntryId] = useState<string | null>(null);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [showAll, setShowAll] = useState(false);
+  const ITEMS_PER_PAGE = 12;
+
+  // Sort state
+  type SortOption = 'name_asc' | 'name_desc' | 'points_asc' | 'points_desc' | 'tier_asc' | 'tier_desc';
+  const [sortOption, setSortOption] = useState<SortOption>('name_asc');
+
+  // Team Ledger view state
+  const [ledgerDateFrom, setLedgerDateFrom] = useState<string>('');
+  const [ledgerDateTo, setLedgerDateTo] = useState<string>('');
+  const [ledgerEventTypeFilter, setLedgerEventTypeFilter] = useState<'all' | 'demerit' | 'merit'>('all');
+  const [ledgerMemberFilter, setLedgerMemberFilter] = useState<string>('all');
+  const [ledgerSearchQuery, setLedgerSearchQuery] = useState('');
+  const [ledgerPage, setLedgerPage] = useState(1);
+  const LEDGER_ITEMS_PER_PAGE = 25;
+
   const performanceArray = Array.from(teamPerformance.values());
 
   // Check if current user can manage points (security level 0-3)
   const canManagePoints = MANAGER_SECURITY_LEVELS.includes(securityLevel);
 
-  // Filter members by search
+  // Filter and sort members (By Member view)
   const filteredMembers = useMemo(() => {
-    if (!searchQuery) return performanceArray;
-    const query = searchQuery.toLowerCase();
-    return performanceArray.filter(p => 
-      p.team_member.first_name?.toLowerCase().includes(query) ||
-      p.team_member.last_name?.toLowerCase().includes(query) ||
-      p.team_member.email?.toLowerCase().includes(query)
-    );
-  }, [performanceArray, searchQuery]);
+    let list = [...performanceArray];
+    
+    // Apply search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      list = list.filter(p => 
+        p.team_member.first_name?.toLowerCase().includes(query) ||
+        p.team_member.last_name?.toLowerCase().includes(query) ||
+        p.team_member.email?.toLowerCase().includes(query)
+      );
+    }
+    
+    // Apply sort
+    list.sort((a, b) => {
+      const aName = `${a.team_member?.first_name || ''} ${a.team_member?.last_name || ''}`.trim().toLowerCase();
+      const bName = `${b.team_member?.first_name || ''} ${b.team_member?.last_name || ''}`.trim().toLowerCase();
+      
+      switch (sortOption) {
+        case 'name_asc':
+          return aName.localeCompare(bName);
+        case 'name_desc':
+          return bName.localeCompare(aName);
+        case 'points_asc':
+          return a.current_points - b.current_points;
+        case 'points_desc':
+          return b.current_points - a.current_points;
+        case 'tier_asc':
+          return a.tier - b.tier;
+        case 'tier_desc':
+          return b.tier - a.tier;
+        default:
+          return aName.localeCompare(bName);
+      }
+    });
+    
+    return list;
+  }, [performanceArray, searchQuery, sortOption]);
+
+  // Reset to page 1 when filters/sort change
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, sortOption]);
+
+  // Pagination calculations (By Member)
+  const totalPages = Math.ceil(filteredMembers.length / ITEMS_PER_PAGE);
+  const paginatedMembers = showAll 
+    ? filteredMembers 
+    : filteredMembers.slice(
+        (currentPage - 1) * ITEMS_PER_PAGE,
+        currentPage * ITEMS_PER_PAGE
+      );
 
   // Get selected member
   const selectedMember = selectedMemberId 
@@ -159,6 +252,138 @@ export const PointsTab: React.FC = () => {
   }, [selectedMember?.events]);
 
   // =============================================================================
+  // TEAM LEDGER DATA
+  // =============================================================================
+
+  // Build unified team ledger from all members
+  const teamLedgerEntries = useMemo(() => {
+    const entries: Array<{
+      id: string;
+      memberId: string;
+      memberName: string;
+      memberAvatar?: string | null;
+      memberTier: 1 | 2 | 3;
+      eventDate: string;
+      eventType: string;
+      eventLabel: string;
+      points: number;
+      notes?: string;
+      isReduction: boolean;
+      runningBalance: number;
+      createdAt?: string;
+    }> = [];
+
+    performanceArray.forEach(member => {
+      const memberName = `${member.team_member.first_name} ${member.team_member.last_name}`;
+      
+      member.events?.forEach(entry => {
+        const isReduction = 'reduction_type' in entry;
+        const eventType = isReduction ? (entry as any).reduction_type : (entry as any).event_type;
+        const eventLabel = ALL_EVENT_LABELS[eventType] || eventType.replace(/_/g, ' ');
+        
+        entries.push({
+          id: entry.id,
+          memberId: member.team_member_id,
+          memberName,
+          memberAvatar: member.team_member.avatar_url,
+          memberTier: member.tier,
+          eventDate: entry.event_date,
+          eventType,
+          eventLabel,
+          points: entry.points,
+          notes: entry.notes,
+          isReduction,
+          runningBalance: (entry as any).running_balance || 0,
+          createdAt: entry.created_at,
+        });
+      });
+    });
+
+    // Sort by date descending (newest first)
+    entries.sort((a, b) => {
+      const dateCompare = new Date(b.eventDate).getTime() - new Date(a.eventDate).getTime();
+      if (dateCompare !== 0) return dateCompare;
+      // Secondary sort by created_at for same-day entries
+      if (a.createdAt && b.createdAt) {
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      }
+      return 0;
+    });
+
+    return entries;
+  }, [performanceArray]);
+
+  // Filter team ledger entries
+  const filteredLedgerEntries = useMemo(() => {
+    let list = [...teamLedgerEntries];
+
+    // Date range filter
+    if (ledgerDateFrom) {
+      list = list.filter(e => e.eventDate >= ledgerDateFrom);
+    }
+    if (ledgerDateTo) {
+      list = list.filter(e => e.eventDate <= ledgerDateTo);
+    }
+
+    // Event type filter (demerit/merit)
+    if (ledgerEventTypeFilter === 'demerit') {
+      list = list.filter(e => !e.isReduction);
+    } else if (ledgerEventTypeFilter === 'merit') {
+      list = list.filter(e => e.isReduction);
+    }
+
+    // Member filter
+    if (ledgerMemberFilter !== 'all') {
+      list = list.filter(e => e.memberId === ledgerMemberFilter);
+    }
+
+    // Search filter
+    if (ledgerSearchQuery.trim()) {
+      const query = ledgerSearchQuery.toLowerCase();
+      list = list.filter(e => 
+        e.memberName.toLowerCase().includes(query) ||
+        e.eventLabel.toLowerCase().includes(query) ||
+        e.notes?.toLowerCase().includes(query)
+      );
+    }
+
+    return list;
+  }, [teamLedgerEntries, ledgerDateFrom, ledgerDateTo, ledgerEventTypeFilter, ledgerMemberFilter, ledgerSearchQuery]);
+
+  // Ledger pagination
+  const ledgerTotalPages = Math.ceil(filteredLedgerEntries.length / LEDGER_ITEMS_PER_PAGE);
+  const paginatedLedgerEntries = filteredLedgerEntries.slice(
+    (ledgerPage - 1) * LEDGER_ITEMS_PER_PAGE,
+    ledgerPage * LEDGER_ITEMS_PER_PAGE
+  );
+
+  // Reset ledger page when filters change
+  React.useEffect(() => {
+    setLedgerPage(1);
+  }, [ledgerDateFrom, ledgerDateTo, ledgerEventTypeFilter, ledgerMemberFilter, ledgerSearchQuery]);
+
+  // Ledger stats
+  const ledgerStats = useMemo(() => {
+    const totalDemerits = filteredLedgerEntries.filter(e => !e.isReduction).length;
+    const totalMerits = filteredLedgerEntries.filter(e => e.isReduction).length;
+    const totalPoints = filteredLedgerEntries.reduce((sum, e) => sum + e.points, 0);
+    return { totalDemerits, totalMerits, totalPoints };
+  }, [filteredLedgerEntries]);
+
+  // Group ledger entries by date for sticky headers
+  const ledgerEntriesByDate = useMemo(() => {
+    const grouped = new Map<string, typeof paginatedLedgerEntries>();
+    
+    paginatedLedgerEntries.forEach(entry => {
+      const existing = grouped.get(entry.eventDate) || [];
+      existing.push(entry);
+      grouped.set(entry.eventDate, existing);
+    });
+    
+    return grouped;
+  }, [paginatedLedgerEntries]);
+
+  // =============================================================================
   // LEDGER ENTRY ACTIONS
   // =============================================================================
 
@@ -169,9 +394,11 @@ export const PointsTab: React.FC = () => {
     entry: any,
     isReduction: boolean,
     newEventType: string,
-    newPoints: number
+    newPoints: number,
+    memberForAction?: TeamMemberPerformance
   ) => {
-    if (!organizationId || !user || !selectedMember) return;
+    const member = memberForAction || selectedMember;
+    if (!organizationId || !user || !member) return;
     
     setProcessingEntryId(entry.id);
     try {
@@ -195,8 +422,8 @@ export const PointsTab: React.FC = () => {
         user_id: user.id,
         activity_type: 'performance_event_modified',
         details: {
-          team_member_id: selectedMember.team_member_id,
-          name: `${selectedMember.team_member.first_name} ${selectedMember.team_member.last_name}`,
+          team_member_id: member.team_member_id,
+          name: `${member.team_member.first_name} ${member.team_member.last_name}`,
           entry_id: entry.id,
           original_type: isReduction ? entry.reduction_type : entry.event_type,
           new_type: newEventType,
@@ -220,8 +447,9 @@ export const PointsTab: React.FC = () => {
   /**
    * Excuse an entry (delete with reason logged)
    */
-  const handleExcuseEntry = async (entry: any, isReduction: boolean, reason: string) => {
-    if (!organizationId || !user || !selectedMember) return;
+  const handleExcuseEntry = async (entry: any, isReduction: boolean, reason: string, memberForAction?: TeamMemberPerformance) => {
+    const member = memberForAction || selectedMember;
+    if (!organizationId || !user || !member) return;
     
     setProcessingEntryId(entry.id);
     try {
@@ -240,8 +468,8 @@ export const PointsTab: React.FC = () => {
         user_id: user.id,
         activity_type: 'performance_event_excused',
         details: {
-          team_member_id: selectedMember.team_member_id,
-          name: `${selectedMember.team_member.first_name} ${selectedMember.team_member.last_name}`,
+          team_member_id: member.team_member_id,
+          name: `${member.team_member.first_name} ${member.team_member.last_name}`,
           entry_id: entry.id,
           event_type: isReduction ? entry.reduction_type : entry.event_type,
           points: entry.points,
@@ -265,8 +493,9 @@ export const PointsTab: React.FC = () => {
   /**
    * Remove an entry entirely (delete, logged as removal)
    */
-  const handleRemoveEntry = async (entry: any, isReduction: boolean) => {
-    if (!organizationId || !user || !selectedMember) return;
+  const handleRemoveEntry = async (entry: any, isReduction: boolean, memberForAction?: TeamMemberPerformance) => {
+    const member = memberForAction || selectedMember;
+    if (!organizationId || !user || !member) return;
     
     setProcessingEntryId(entry.id);
     try {
@@ -285,8 +514,8 @@ export const PointsTab: React.FC = () => {
         user_id: user.id,
         activity_type: 'performance_event_removed',
         details: {
-          team_member_id: selectedMember.team_member_id,
-          name: `${selectedMember.team_member.first_name} ${selectedMember.team_member.last_name}`,
+          team_member_id: member.team_member_id,
+          name: `${member.team_member.first_name} ${member.team_member.last_name}`,
           entry_id: entry.id,
           event_type: isReduction ? entry.reduction_type : entry.event_type,
           points: entry.points,
@@ -315,204 +544,565 @@ export const PointsTab: React.FC = () => {
       {/* Help Legend */}
       <ActionLegend context="points" />
 
-      {/* Member Selector */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        {/* Search */}
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-          <input
-            type="text"
-            placeholder="Search team member..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-gray-800/50 border border-gray-700/50 rounded-lg text-sm text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
-          />
+      {/* View Mode Toggle - L5 Pill Design */}
+      <div className="flex items-center justify-between">
+        <div className="flex gap-1 p-1 bg-gray-800/50 rounded-lg border border-gray-700/30">
+          <button
+            onClick={() => {
+              setViewMode('by_member');
+              setSelectedMemberId(null);
+            }}
+            className={`
+              flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all
+              ${viewMode === 'by_member'
+                ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30'
+                : 'text-gray-400 hover:text-gray-300 border border-transparent'
+              }
+            `}
+          >
+            <Users className="w-4 h-4" />
+            By Member
+          </button>
+          <button
+            onClick={() => setViewMode('team_ledger')}
+            className={`
+              flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all
+              ${viewMode === 'team_ledger'
+                ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30'
+                : 'text-gray-400 hover:text-gray-300 border border-transparent'
+              }
+            `}
+          >
+            <List className="w-4 h-4" />
+            Team Ledger
+          </button>
         </div>
+
+        {/* Cycle indicator */}
+        {currentCycle && (
+          <div className="text-xs text-gray-500">
+            Cycle: {formatDateShort(currentCycle.start_date)} 
+            {' - '}
+            {formatDateForDisplay(currentCycle.end_date)}
+          </div>
+        )}
       </div>
 
-      {/* Member Cards / Selection */}
-      {!selectedMemberId ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filteredMembers.map((member) => (
-            <button
-              key={member.team_member_id}
-              onClick={() => setSelectedMemberId(member.team_member_id)}
-              className="p-4 bg-gray-800/30 rounded-lg border border-gray-700/30 hover:border-primary-500/50 hover:bg-gray-800/50 transition-all text-left"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-gray-700 overflow-hidden flex items-center justify-center">
-                    {member.team_member.avatar_url ? (
-                      <img 
-                        src={member.team_member.avatar_url} 
-                        alt="" 
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <img
-                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${member.team_member.email || member.team_member_id}`}
-                        alt=""
-                        className="w-full h-full"
-                      />
-                    )}
-                  </div>
-                  <span className="text-sm font-medium text-white">
-                    {member.team_member.first_name} {member.team_member.last_name}
-                  </span>
-                </div>
-                <span className={`px-2 py-0.5 rounded text-xs font-medium ${getTierColor(member.tier)}`}>
-                  Tier {member.tier}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">Current Points</span>
-                <span className="text-lg font-bold text-white">{member.current_points}</span>
-              </div>
-              <div className="mt-2 h-2 bg-gray-700 rounded-full overflow-hidden">
-                <div 
-                  className={`h-full transition-all ${
-                    member.tier === 1 ? 'bg-green-500' :
-                    member.tier === 2 ? 'bg-amber-500' : 'bg-rose-500'
-                  }`}
-                  style={{ width: `${Math.min(100, (member.current_points / 15) * 100)}%` }}
-                />
-              </div>
-            </button>
-          ))}
-
-          {filteredMembers.length === 0 && (
-            <div className="col-span-full text-center py-8">
-              <p className="text-gray-500">No team members found</p>
-            </div>
-          )}
-        </div>
-      ) : (
-        /* Selected Member Detail View */
-        <div className="space-y-4">
-          {/* Header */}
-          <div className="flex items-center justify-between p-4 bg-gray-800/30 rounded-lg border border-gray-700/30">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => setSelectedMemberId(null)}
-                className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-              >
-                <X className="w-4 h-4 text-gray-400" />
-              </button>
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-gray-700 overflow-hidden flex items-center justify-center">
-                  {selectedMember?.team_member.avatar_url ? (
-                    <img 
-                      src={selectedMember.team_member.avatar_url} 
-                      alt="" 
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <img
-                      src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedMember?.team_member.email || selectedMemberId}`}
-                      alt=""
-                      className="w-full h-full"
-                    />
-                  )}
-                </div>
-                <div>
-                  <div className="text-lg font-medium text-white">
-                    {selectedMember?.team_member.first_name} {selectedMember?.team_member.last_name}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${getTierColor(selectedMember?.tier || 1)}`}>
-                      Tier {selectedMember?.tier}
-                    </span>
-                    <span className="text-sm text-gray-500">
-                      {selectedMember?.current_points} points
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowAddReductionModal(true)}
-                className="btn-ghost text-sm"
-              >
-                <Minus className="w-4 h-4 mr-1" />
-                Add Reduction
-              </button>
-              <button
-                onClick={() => setShowAddEventModal(true)}
-                className="btn-primary text-sm"
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                Add Event
-              </button>
-            </div>
-          </div>
-
-          {/* Reduction Limit Info - L5 muted style */}
-          {reductionsUsed > 0 && (
-            <div className="p-3 rounded-lg bg-gray-800/50 border border-gray-700/50">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
-                  reductionsRemaining <= 0 ? 'text-amber-400' : 'text-gray-500'
-                }`} />
-                <div>
-                  <p className="text-sm text-gray-300">
-                    {reductionsRemaining <= 0 
-                      ? `Limit reached: ${reductionsUsed} of ${config.max_reduction_per_30_days} points used this 30-day period`
-                      : `${reductionsUsed} of ${config.max_reduction_per_30_days} point reduction used this 30-day period`
-                    }
-                  </p>
-                  {reductionsRemaining <= 0 && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      Managers can override this limit when adding reductions
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Point Ledger */}
-          <div className="bg-gray-800/30 rounded-lg border border-gray-700/30 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-700/30 flex items-center justify-between">
-              <h4 className="text-sm font-medium text-white">Point Ledger</h4>
-              {canManagePoints && (
-                <span className="text-xs text-gray-500">Manager actions available</span>
+      {/* =========================================================================
+          BY MEMBER VIEW
+          ========================================================================= */}
+      {viewMode === 'by_member' && (
+        <>
+          {/* Member Selector */}
+          <div className="flex flex-col sm:flex-row gap-3 bg-gray-800/30 rounded-lg p-3 border border-gray-700/30">
+            {/* Search */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <input
+                type="text"
+                placeholder="Search team member..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-gray-800/50 border border-gray-700/50 rounded-lg text-sm text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               )}
             </div>
             
-            {selectedMember?.events && selectedMember.events.length > 0 ? (
-              <div className="divide-y divide-gray-700/30">
-                {[...selectedMember.events].reverse().map((entry, idx) => {
-                  const isReduction = 'reduction_type' in entry;
-                  const eventType = isReduction ? entry.reduction_type : entry.event_type;
-                  const dupeKey = `${eventType}|${entry.event_date}`;
-                  const isDuplicate = duplicateKeys.has(dupeKey);
-                  
-                  return (
-                    <LedgerEntryRow
-                      key={entry.id || idx}
-                      entry={entry}
-                      canManage={canManagePoints}
-                      isProcessing={processingEntryId === entry.id}
-                      isDuplicate={isDuplicate}
-                      onModify={(newType, newPoints) => 
-                        handleModifyEvent(entry, isReduction, newType, newPoints)
-                      }
-                      onExcuse={(reason) => handleExcuseEntry(entry, isReduction, reason)}
-                      onRemove={() => handleRemoveEntry(entry, isReduction)}
+            {/* Sort Dropdown */}
+            <div className="flex items-center gap-2">
+              <ArrowUpDown className="w-4 h-4 text-gray-500" />
+              <select
+                value={sortOption}
+                onChange={(e) => setSortOption(e.target.value as typeof sortOption)}
+                className="input bg-gray-800/50 border-gray-700/50 text-sm pr-8"
+              >
+                <option value="name_asc">Name (A → Z)</option>
+                <option value="name_desc">Name (Z → A)</option>
+                <option value="points_asc">Points (Low → High)</option>
+                <option value="points_desc">Points (High → Low)</option>
+                <option value="tier_asc">Tier (1 → 3)</option>
+                <option value="tier_desc">Tier (3 → 1)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Member Cards / Selection */}
+          {!selectedMemberId ? (
+            <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {paginatedMembers.map((member) => (
+                <button
+                  key={member.team_member_id}
+                  onClick={() => setSelectedMemberId(member.team_member_id)}
+                  className="p-4 bg-gray-800/30 rounded-lg border border-gray-700/30 hover:border-primary-500/50 hover:bg-gray-800/50 transition-all text-left"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-gray-700 overflow-hidden flex items-center justify-center">
+                        {member.team_member.avatar_url ? (
+                          <img 
+                            src={member.team_member.avatar_url} 
+                            alt="" 
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <img
+                            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${member.team_member.email || member.team_member_id}`}
+                            alt=""
+                            className="w-full h-full"
+                          />
+                        )}
+                      </div>
+                      <span className="text-sm font-medium text-white">
+                        {member.team_member.first_name} {member.team_member.last_name}
+                      </span>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${getTierColor(member.tier)}`}>
+                      Tier {member.tier}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-500">Current Points</span>
+                    <span className="text-lg font-bold text-white">{member.current_points}</span>
+                  </div>
+                  <div className="mt-2 h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full transition-all ${
+                        member.tier === 1 ? 'bg-green-500' :
+                        member.tier === 2 ? 'bg-amber-500' : 'bg-rose-500'
+                      }`}
+                      style={{ width: `${Math.min(100, (member.current_points / 15) * 100)}%` }}
                     />
-                  );
-                })}
+                  </div>
+                </button>
+              ))}
+
+              {paginatedMembers.length === 0 && (
+                <div className="col-span-full text-center py-8">
+                  <p className="text-gray-500">No team members found</p>
+                </div>
+              )}
+            </div>
+
+            {/* Pagination Controls */}
+            {filteredMembers.length > ITEMS_PER_PAGE && (
+              <div className="flex items-center justify-between pt-4 border-t border-gray-700/30">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">
+                    {showAll 
+                      ? `Showing all ${filteredMembers.length} members`
+                      : `Showing ${((currentPage - 1) * ITEMS_PER_PAGE) + 1}–${Math.min(currentPage * ITEMS_PER_PAGE, filteredMembers.length)} of ${filteredMembers.length}`
+                    }
+                  </span>
+                  <button
+                    onClick={() => {
+                      setShowAll(!showAll);
+                      setCurrentPage(1);
+                    }}
+                    className="text-xs text-primary-400 hover:text-primary-300 transition-colors"
+                  >
+                    {showAll ? 'Show pages' : 'Show all'}
+                  </button>
+                </div>
+                
+                {!showAll && totalPages > 1 && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="p-2 rounded-lg bg-gray-800/50 border border-gray-700/50 hover:bg-gray-700/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <ChevronLeft className="w-4 h-4 text-gray-400" />
+                    </button>
+                    
+                    <span className="text-sm text-gray-400 min-w-[100px] text-center">
+                      Page {currentPage} of {totalPages}
+                    </span>
+                    
+                    <button
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      className="p-2 rounded-lg bg-gray-800/50 border border-gray-700/50 hover:bg-gray-700/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <ChevronRight className="w-4 h-4 text-gray-400" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            </>
+          ) : (
+            /* Selected Member Detail View */
+            <div className="space-y-4">
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 bg-gray-800/30 rounded-lg border border-gray-700/30">
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={() => setSelectedMemberId(null)}
+                    className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+                  >
+                    <X className="w-4 h-4 text-gray-400" />
+                  </button>
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-gray-700 overflow-hidden flex items-center justify-center">
+                      {selectedMember?.team_member.avatar_url ? (
+                        <img 
+                          src={selectedMember.team_member.avatar_url} 
+                          alt="" 
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <img
+                          src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedMember?.team_member.email || selectedMemberId}`}
+                          alt=""
+                          className="w-full h-full"
+                        />
+                      )}
+                    </div>
+                    <div>
+                      <div className="text-lg font-medium text-white">
+                        {selectedMember?.team_member.first_name} {selectedMember?.team_member.last_name}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${getTierColor(selectedMember?.tier || 1)}`}>
+                          Tier {selectedMember?.tier}
+                        </span>
+                        <span className="text-sm text-gray-500">
+                          {selectedMember?.current_points} points
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowAddReductionModal(true)}
+                    className="btn-ghost text-sm"
+                  >
+                    <Minus className="w-4 h-4 mr-1" />
+                    Add Reduction
+                  </button>
+                  <button
+                    onClick={() => setShowAddEventModal(true)}
+                    className="btn-primary text-sm"
+                  >
+                    <Plus className="w-4 h-4 mr-1" />
+                    Add Event
+                  </button>
+                </div>
+              </div>
+
+              {/* Reduction Limit Info - L5 muted style */}
+              {reductionsUsed > 0 && (
+                <div className="p-3 rounded-lg bg-gray-800/50 border border-gray-700/50">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
+                      reductionsRemaining <= 0 ? 'text-amber-400' : 'text-gray-500'
+                    }`} />
+                    <div>
+                      <p className="text-sm text-gray-300">
+                        {reductionsRemaining <= 0 
+                          ? `Limit reached: ${reductionsUsed} of ${config.max_reduction_per_30_days} points used this 30-day period`
+                          : `${reductionsUsed} of ${config.max_reduction_per_30_days} point reduction used this 30-day period`
+                        }
+                      </p>
+                      {reductionsRemaining <= 0 && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Managers can override this limit when adding reductions
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Point Ledger */}
+              <div className="bg-gray-800/30 rounded-lg border border-gray-700/30 overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-700/30 flex items-center justify-between">
+                  <h4 className="text-sm font-medium text-white">Point Ledger</h4>
+                  {canManagePoints && (
+                    <span className="text-xs text-gray-500">Manager actions available</span>
+                  )}
+                </div>
+                
+                {selectedMember?.events && selectedMember.events.length > 0 ? (
+                  <div className="divide-y divide-gray-700/30">
+                    {[...selectedMember.events].reverse().map((entry, idx) => {
+                      const isReduction = 'reduction_type' in entry;
+                      const eventType = isReduction ? entry.reduction_type : entry.event_type;
+                      const dupeKey = `${eventType}|${entry.event_date}`;
+                      const isDuplicate = duplicateKeys.has(dupeKey);
+                      
+                      return (
+                        <LedgerEntryRow
+                          key={entry.id || idx}
+                          entry={entry}
+                          canManage={canManagePoints}
+                          isProcessing={processingEntryId === entry.id}
+                          isDuplicate={isDuplicate}
+                          onModify={(newType, newPoints) => 
+                            handleModifyEvent(entry, isReduction, newType, newPoints)
+                          }
+                          onExcuse={(reason) => handleExcuseEntry(entry, isReduction, reason)}
+                          onRemove={() => handleRemoveEntry(entry, isReduction)}
+                        />
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500">No events recorded this cycle</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* =========================================================================
+          TEAM LEDGER VIEW
+          ========================================================================= */}
+      {viewMode === 'team_ledger' && (
+        <div className="space-y-4">
+          {/* Filters Toolbar */}
+          <div className="flex flex-col lg:flex-row gap-3 bg-gray-800/30 rounded-lg p-3 border border-gray-700/30">
+            {/* Search */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <input
+                type="text"
+                placeholder="Search events..."
+                value={ledgerSearchQuery}
+                onChange={(e) => setLedgerSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-gray-800/50 border border-gray-700/50 rounded-lg text-sm text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+              />
+              {ledgerSearchQuery && (
+                <button
+                  onClick={() => setLedgerSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Date Range */}
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-gray-500" />
+              <input
+                type="date"
+                value={ledgerDateFrom}
+                onChange={(e) => setLedgerDateFrom(e.target.value)}
+                className="input bg-gray-800/50 border-gray-700/50 text-sm"
+                placeholder="From"
+              />
+              <span className="text-gray-500">→</span>
+              <input
+                type="date"
+                value={ledgerDateTo}
+                onChange={(e) => setLedgerDateTo(e.target.value)}
+                className="input bg-gray-800/50 border-gray-700/50 text-sm"
+                placeholder="To"
+              />
+            </div>
+
+            {/* Event Type Filter */}
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-gray-500" />
+              <select
+                value={ledgerEventTypeFilter}
+                onChange={(e) => setLedgerEventTypeFilter(e.target.value as 'all' | 'demerit' | 'merit')}
+                className="input bg-gray-800/50 border-gray-700/50 text-sm"
+              >
+                <option value="all">All Events</option>
+                <option value="demerit">Demerits Only</option>
+                <option value="merit">Merits Only</option>
+              </select>
+            </div>
+
+            {/* Member Filter */}
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-gray-500" />
+              <select
+                value={ledgerMemberFilter}
+                onChange={(e) => setLedgerMemberFilter(e.target.value)}
+                className="input bg-gray-800/50 border-gray-700/50 text-sm min-w-[150px]"
+              >
+                <option value="all">All Members</option>
+                {performanceArray
+                  .sort((a, b) => 
+                    `${a.team_member.first_name} ${a.team_member.last_name}`.localeCompare(
+                      `${b.team_member.first_name} ${b.team_member.last_name}`
+                    )
+                  )
+                  .map(m => (
+                    <option key={m.team_member_id} value={m.team_member_id}>
+                      {m.team_member.first_name} {m.team_member.last_name}
+                    </option>
+                  ))
+                }
+              </select>
+            </div>
+
+            {/* Clear Filters */}
+            {(ledgerDateFrom || ledgerDateTo || ledgerEventTypeFilter !== 'all' || ledgerMemberFilter !== 'all' || ledgerSearchQuery) && (
+              <button
+                onClick={() => {
+                  setLedgerDateFrom('');
+                  setLedgerDateTo('');
+                  setLedgerEventTypeFilter('all');
+                  setLedgerMemberFilter('all');
+                  setLedgerSearchQuery('');
+                }}
+                className="px-3 py-2 text-xs text-primary-400 hover:text-primary-300 transition-colors"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
+
+          {/* Stats Summary */}
+          <div className="flex items-center gap-6 text-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-gray-400">{filteredLedgerEntries.length} events</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-amber-400" />
+              <span className="text-amber-400">{ledgerStats.totalDemerits} demerits</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <TrendingDown className="w-4 h-4 text-emerald-400" />
+              <span className="text-emerald-400">{ledgerStats.totalMerits} merits</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-gray-500">Net:</span>
+              <span className={ledgerStats.totalPoints >= 0 ? 'text-amber-400' : 'text-emerald-400'}>
+                {ledgerStats.totalPoints >= 0 ? '+' : ''}{ledgerStats.totalPoints} pts
+              </span>
+            </div>
+          </div>
+
+          {/* Team Ledger Table */}
+          <div className="bg-gray-800/30 rounded-lg border border-gray-700/30 overflow-hidden">
+            {/* Table Header */}
+            <div className="grid grid-cols-12 gap-4 px-4 py-3 border-b border-gray-700/30 text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <div className="col-span-2">Date</div>
+              <div className="col-span-3">Team Member</div>
+              <div className="col-span-3">Event</div>
+              <div className="col-span-1 text-right">Points</div>
+              <div className="col-span-3">Notes</div>
+            </div>
+
+            {/* Table Body */}
+            {filteredLedgerEntries.length > 0 ? (
+              <div className="divide-y divide-gray-700/30">
+                {Array.from(ledgerEntriesByDate.entries()).map(([date, entries]) => (
+                  <React.Fragment key={date}>
+                    {/* Date Header */}
+                    <div className="px-4 py-2 bg-gray-800/50 sticky top-0 z-10">
+                      <span className="text-xs font-medium text-gray-400">
+                        {formatDateLong(date)}
+                      </span>
+                    </div>
+                    
+                    {/* Entries for this date */}
+                    {entries.map((entry) => (
+                      <TeamLedgerRow
+                        key={entry.id}
+                        entry={entry}
+                        canManage={canManagePoints}
+                        isProcessing={processingEntryId === entry.id}
+                        onModify={(newType, newPoints) => {
+                          const member = teamPerformance.get(entry.memberId);
+                          if (member) {
+                            handleModifyEvent(
+                              { id: entry.id, event_type: entry.eventType, notes: entry.notes, event_date: entry.eventDate, points: entry.points },
+                              entry.isReduction,
+                              newType,
+                              newPoints,
+                              member
+                            );
+                          }
+                        }}
+                        onExcuse={(reason) => {
+                          const member = teamPerformance.get(entry.memberId);
+                          if (member) {
+                            handleExcuseEntry(
+                              { id: entry.id, event_type: entry.eventType, reduction_type: entry.eventType, notes: entry.notes, event_date: entry.eventDate, points: entry.points },
+                              entry.isReduction,
+                              reason,
+                              member
+                            );
+                          }
+                        }}
+                        onRemove={() => {
+                          const member = teamPerformance.get(entry.memberId);
+                          if (member) {
+                            handleRemoveEntry(
+                              { id: entry.id, event_type: entry.eventType, reduction_type: entry.eventType, notes: entry.notes, event_date: entry.eventDate, points: entry.points },
+                              entry.isReduction,
+                              member
+                            );
+                          }
+                        }}
+                        onViewMember={() => {
+                          setViewMode('by_member');
+                          setSelectedMemberId(entry.memberId);
+                        }}
+                      />
+                    ))}
+                  </React.Fragment>
+                ))}
               </div>
             ) : (
-              <div className="text-center py-8">
+              <div className="text-center py-12">
                 <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-2" />
-                <p className="text-sm text-gray-500">No events recorded this cycle</p>
+                <p className="text-sm text-gray-500">No events match your filters</p>
               </div>
             )}
           </div>
+
+          {/* Pagination */}
+          {filteredLedgerEntries.length > LEDGER_ITEMS_PER_PAGE && (
+            <div className="flex items-center justify-between pt-4 border-t border-gray-700/30">
+              <span className="text-sm text-gray-500">
+                Showing {((ledgerPage - 1) * LEDGER_ITEMS_PER_PAGE) + 1}–{Math.min(ledgerPage * LEDGER_ITEMS_PER_PAGE, filteredLedgerEntries.length)} of {filteredLedgerEntries.length}
+              </span>
+              
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setLedgerPage(p => Math.max(1, p - 1))}
+                  disabled={ledgerPage === 1}
+                  className="p-2 rounded-lg bg-gray-800/50 border border-gray-700/50 hover:bg-gray-700/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft className="w-4 h-4 text-gray-400" />
+                </button>
+                
+                <span className="text-sm text-gray-400 min-w-[100px] text-center">
+                  Page {ledgerPage} of {ledgerTotalPages}
+                </span>
+                
+                <button
+                  onClick={() => setLedgerPage(p => Math.min(ledgerTotalPages, p + 1))}
+                  disabled={ledgerPage === ledgerTotalPages}
+                  className="p-2 rounded-lg bg-gray-800/50 border border-gray-700/50 hover:bg-gray-700/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -536,7 +1126,7 @@ export const PointsTab: React.FC = () => {
 };
 
 // =============================================================================
-// LEDGER ENTRY ROW SUB-COMPONENT
+// LEDGER ENTRY ROW SUB-COMPONENT (By Member View)
 // =============================================================================
 
 interface LedgerEntryRowProps {
@@ -608,11 +1198,7 @@ const LedgerEntryRow: React.FC<LedgerEntryRowProps> = ({
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-500">
             <Clock className="w-3 h-3" />
-            {new Date(entry.event_date).toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric',
-            })}
+            {formatDateForDisplay(entry.event_date)}
             {entry.notes && <span className="truncate">• {entry.notes}</span>}
           </div>
         </div>
@@ -773,6 +1359,266 @@ const LedgerEntryRow: React.FC<LedgerEntryRowProps> = ({
               title="Cancel"
             >
               <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// =============================================================================
+// TEAM LEDGER ROW SUB-COMPONENT
+// =============================================================================
+
+interface TeamLedgerRowProps {
+  entry: {
+    id: string;
+    memberId: string;
+    memberName: string;
+    memberAvatar?: string | null;
+    memberTier: 1 | 2 | 3;
+    eventDate: string;
+    eventType: string;
+    eventLabel: string;
+    points: number;
+    notes?: string;
+    isReduction: boolean;
+  };
+  canManage: boolean;
+  isProcessing: boolean;
+  onModify: (newType: string, newPoints: number) => void;
+  onExcuse: (reason: string) => void;
+  onRemove: () => void;
+  onViewMember: () => void;
+}
+
+const TeamLedgerRow: React.FC<TeamLedgerRowProps> = ({
+  entry,
+  canManage,
+  isProcessing,
+  onModify,
+  onExcuse,
+  onRemove,
+  onViewMember,
+}) => {
+  const [mode, setMode] = useState<'default' | 'modify' | 'excuse' | 'confirm_remove'>('default');
+  const [selectedEventType, setSelectedEventType] = useState('');
+  const [selectedPoints, setSelectedPoints] = useState(0);
+  const [excuseReason, setExcuseReason] = useState('');
+
+  const handleEventTypeChange = (newType: string) => {
+    const option = DEMERIT_OPTIONS.find(o => o.id === newType);
+    if (option) {
+      setSelectedEventType(newType);
+      setSelectedPoints(option.points);
+    }
+  };
+
+  const resetMode = () => {
+    setMode('default');
+    setSelectedEventType('');
+    setSelectedPoints(0);
+    setExcuseReason('');
+  };
+
+  const getTierBadgeColor = (tier: 1 | 2 | 3) => {
+    switch (tier) {
+      case 1: return 'bg-emerald-500/20 text-emerald-400';
+      case 2: return 'bg-amber-500/20 text-amber-400';
+      case 3: return 'bg-rose-500/20 text-rose-400';
+    }
+  };
+
+  return (
+    <div className="grid grid-cols-12 gap-4 px-4 py-3 hover:bg-gray-800/50 items-center">
+      {/* Date - Hidden in grouped view since we have date headers */}
+      <div className="col-span-2 text-sm text-gray-400">
+        {formatDateShort(entry.eventDate)}
+      </div>
+
+      {/* Team Member */}
+      <div className="col-span-3">
+        <button
+          onClick={onViewMember}
+          className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+        >
+          <div className="w-7 h-7 rounded-full bg-gray-700 overflow-hidden flex-shrink-0">
+            {entry.memberAvatar ? (
+              <img src={entry.memberAvatar} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <img
+                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${entry.memberId}`}
+                alt=""
+                className="w-full h-full"
+              />
+            )}
+          </div>
+          <span className="text-sm text-white truncate">{entry.memberName}</span>
+          <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${getTierBadgeColor(entry.memberTier)}`}>
+            T{entry.memberTier}
+          </span>
+        </button>
+      </div>
+
+      {/* Event Type */}
+      <div className="col-span-3 flex items-center gap-2">
+        <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
+          entry.isReduction ? 'bg-emerald-500/20' : 'bg-amber-500/20'
+        }`}>
+          {entry.isReduction 
+            ? <TrendingDown className="w-3 h-3 text-emerald-400" />
+            : <TrendingUp className="w-3 h-3 text-amber-400" />
+          }
+        </div>
+        <span className="text-sm text-gray-300 truncate">{entry.eventLabel}</span>
+      </div>
+
+      {/* Points */}
+      <div className="col-span-1 text-right">
+        <span className={`text-sm font-medium ${
+          entry.points > 0 ? 'text-amber-400' : 'text-emerald-400'
+        }`}>
+          {entry.points > 0 ? '+' : ''}{entry.points}
+        </span>
+      </div>
+
+      {/* Notes & Actions */}
+      <div className="col-span-3 flex items-center justify-between gap-2">
+        {mode === 'default' && (
+          <>
+            <span className="text-xs text-gray-500 truncate flex-1">
+              {entry.notes || '—'}
+            </span>
+            
+            {canManage && (
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {!entry.isReduction && (
+                  <button
+                    onClick={() => setMode('modify')}
+                    disabled={isProcessing}
+                    className="
+                      flex items-center justify-center w-7 h-7 rounded-full
+                      bg-gray-700/30 border border-gray-600/30
+                      text-gray-400 hover:text-primary-400 hover:bg-primary-500/10 hover:border-primary-500/30
+                      transition-all duration-200 disabled:opacity-50
+                    "
+                    title="Reclassify"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <button
+                  onClick={() => setMode('excuse')}
+                  disabled={isProcessing}
+                  className="
+                    flex items-center justify-center w-7 h-7 rounded-full
+                    bg-gray-700/30 border border-gray-600/30
+                    text-gray-400 hover:text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/30
+                    transition-all duration-200 disabled:opacity-50
+                  "
+                  title="Excuse"
+                >
+                  <Shield className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setMode('confirm_remove')}
+                  disabled={isProcessing}
+                  className="
+                    flex items-center justify-center w-7 h-7 rounded-full
+                    bg-gray-700/30 border border-gray-600/30
+                    text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/30
+                    transition-all duration-200 disabled:opacity-50
+                  "
+                  title="Remove"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* MODIFY MODE */}
+        {mode === 'modify' && (
+          <div className="flex items-center gap-1 w-full">
+            <select
+              value={selectedEventType}
+              onChange={(e) => handleEventTypeChange(e.target.value)}
+              className="input text-xs py-1 flex-1 min-w-0"
+              autoFocus
+            >
+              <option value="" disabled>Reclassify...</option>
+              {DEMERIT_OPTIONS.map(opt => (
+                <option key={opt.id} value={opt.id}>{opt.label}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => {
+                if (selectedEventType) {
+                  onModify(selectedEventType, selectedPoints);
+                  resetMode();
+                }
+              }}
+              disabled={!selectedEventType || isProcessing}
+              className="p-1 rounded bg-emerald-500/20 text-emerald-400"
+            >
+              {isProcessing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+            </button>
+            <button onClick={resetMode} className="p-1 rounded text-gray-400">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* EXCUSE MODE */}
+        {mode === 'excuse' && (
+          <div className="flex items-center gap-1 w-full">
+            <select
+              value={excuseReason}
+              onChange={(e) => setExcuseReason(e.target.value)}
+              className="input text-xs py-1 flex-1 min-w-0"
+              autoFocus
+            >
+              <option value="" disabled>Reason...</option>
+              {EXCUSE_OPTIONS.map(opt => (
+                <option key={opt.id} value={opt.id}>{opt.label}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => {
+                if (excuseReason) {
+                  onExcuse(excuseReason);
+                  resetMode();
+                }
+              }}
+              disabled={!excuseReason || isProcessing}
+              className="p-1 rounded bg-emerald-500/20 text-emerald-400"
+            >
+              {isProcessing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+            </button>
+            <button onClick={resetMode} className="p-1 rounded text-gray-400">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* CONFIRM REMOVE MODE */}
+        {mode === 'confirm_remove' && (
+          <div className="flex items-center gap-1 w-full justify-end">
+            <span className="text-xs text-rose-400">Remove?</span>
+            <button
+              onClick={() => {
+                onRemove();
+                resetMode();
+              }}
+              disabled={isProcessing}
+              className="p-1 rounded bg-rose-500/20 text-rose-400"
+            >
+              {isProcessing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+            </button>
+            <button onClick={resetMode} className="p-1 rounded text-gray-400">
+              <X className="w-3.5 h-3.5" />
             </button>
           </div>
         )}

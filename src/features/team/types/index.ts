@@ -123,6 +123,15 @@ export interface PIPMilestone {
   notes?: string;
 }
 
+// Time-off usage tracking
+export interface TimeOffUsage {
+  sick_days_used: number;
+  sick_days_available: number;
+  sick_period_start: string;  // ISO date
+  vacation_hours_used?: number;
+  vacation_hours_available?: number;
+}
+
 export interface TeamMemberPerformance {
   team_member_id: string;
   team_member: TeamMember;
@@ -132,6 +141,7 @@ export interface TeamMemberPerformance {
   active_pip?: PerformanceImprovementPlan;
   events: (PointEvent | PointReduction)[];
   coaching_records: CoachingRecord[];
+  time_off?: TimeOffUsage;
 }
 
 // Default point values (configurable per org)
