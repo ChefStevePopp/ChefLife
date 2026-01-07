@@ -384,26 +384,110 @@ export function suggestFieldPath(fieldTag: string): { source: string; path: stri
 }
 
 // =============================================================================
+// PERIOD LABEL CALCULATION
+// =============================================================================
+
+/**
+ * Calculate period labels based on current date
+ * Periods are 4-month cycles:
+ *   - Jan-Apr: Winter/Spring
+ *   - May-Aug: Summer  
+ *   - Sep-Dec: Fall/Winter
+ */
+function calculatePeriodLabels(): { current: string; prev1: string; prev2: string; prev3: string } {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1; // 1-12
+  
+  // Determine current period
+  let currentPeriod: number;
+  let currentYear = year;
+  
+  if (month >= 1 && month <= 4) {
+    currentPeriod = 1; // Winter/Spring
+  } else if (month >= 5 && month <= 8) {
+    currentPeriod = 2; // Summer
+  } else {
+    currentPeriod = 3; // Fall/Winter
+  }
+  
+  // Generate labels going backwards
+  const labels: string[] = [];
+  let period = currentPeriod;
+  let labelYear = currentYear;
+  
+  for (let i = 0; i < 4; i++) {
+    labels.push(getPeriodName(period, labelYear));
+    period--;
+    if (period < 1) {
+      period = 3;
+      labelYear--;
+    }
+  }
+  
+  return {
+    current: labels[0],
+    prev1: labels[1],
+    prev2: labels[2],
+    prev3: labels[3],
+  };
+}
+
+function getPeriodName(period: number, year: number): string {
+  switch (period) {
+    case 1: return `Winter/Spring ${year}`;
+    case 2: return `Summer ${year}`;
+    case 3: return `Fall/Winter ${year}`;
+    default: return `Period ${period} ${year}`;
+  }
+}
+
+// =============================================================================
 // PREVIEW
 // =============================================================================
 
 /**
  * Generate sample context data for template preview
+ * L5 Quality: Professional, realistic sample data that demonstrates real patterns
  */
 export function getSampleContext(): MergeContext {
+  // Calculate dynamic period labels based on current date
+  const periodLabels = calculatePeriodLabels();
+  
+  // Calculate current week dates
+  const now = new Date();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - now.getDay() + 1); // Monday of current week
+  
+  const formatDate = (d: Date) => d.toISOString().split('T')[0];
+  const formatDateDisplay = (d: Date) => d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const formatWeekLabel = (d: Date) => `Week of ${d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
+  
+  // Generate week days
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const day = new Date(monday);
+    day.setDate(monday.getDate() + i);
+    days.push({
+      date: formatDateDisplay(day),
+      day_name: day.toLocaleDateString('en-US', { weekday: 'long' }),
+      info: i === 0 ? '4pm-10pm' : i === 2 ? 'Off' : i === 6 ? 'Off' : '4pm-10pm',
+    });
+  }
+
   return {
     recipient: {
       id: 'sample-001',
-      first_name: 'Jane',
-      last_name: 'Smith',
-      email: 'jane.smith@example.com',
+      first_name: 'Marcus',
+      last_name: 'Chen',
+      email: 'marcus.chen@gmail.com',
       avatar_url: undefined,
-      hire_date: '2023-06-15',
-      position: 'Line Cook',
+      hire_date: 'Mar 15, 2023',
+      position: 'Grill Lead',
       department: 'Kitchen',
     },
     organization: {
-      name: 'Memphis Fire Barbeque Company',
+      name: 'Memphis Fire BBQ',
       logo_url: undefined,
       timezone: 'America/Toronto',
     },
@@ -413,75 +497,62 @@ export function getSampleContext(): MergeContext {
       tier_label: 'Priority',
       coaching_stage: undefined,
       coaching_stage_label: undefined,
-      points_this_week: 1,
+      points_this_week: 0,
       points_this_period: 2,
-      events_this_week: [
-        { date: '2026-01-06', event_type: 'late_5', points: 1, notes: 'Traffic' },
-      ],
-      attendance_period_pct: 96.5,
-      attendance_ytd_pct: 94.2,
+      events_this_week: [],
+      attendance_period_pct: 97.8,
+      attendance_ytd_pct: 96.2,
     },
     time_off: {
       sick_days_available: 3,
       sick_days_used: 1,
       sick_days_remaining: 2,
       vacation_hours_benefit: 80,
-      vacation_hours_used: 16,
-      vacation_hours_remaining: 64,
-      seniority_status: 'Standard',
+      vacation_hours_used: 24,
+      vacation_hours_remaining: 56,
+      seniority_status: 'Core Team',
     },
     period: {
-      start_date: '2026-01-06',
-      end_date: '2026-01-12',
-      week_label: 'Week of January 6, 2026',
-      period_label: 'Winter/Spring 2026',
-      days: [
-        { date: '2026-01-06', day_name: 'Monday', info: 'Worked 8hrs' },
-        { date: '2026-01-07', day_name: 'Tuesday', info: 'Worked 8hrs' },
-        { date: '2026-01-08', day_name: 'Wednesday', info: 'Off' },
-        { date: '2026-01-09', day_name: 'Thursday', info: 'Worked 8hrs' },
-        { date: '2026-01-10', day_name: 'Friday', info: 'Worked 8hrs' },
-        { date: '2026-01-11', day_name: 'Saturday', info: 'Worked 10hrs' },
-        { date: '2026-01-12', day_name: 'Sunday', info: 'Off' },
-      ],
+      start_date: formatDate(monday),
+      end_date: formatDate(new Date(monday.getTime() + 6 * 24 * 60 * 60 * 1000)),
+      week_label: formatWeekLabel(monday),
+      period_label: periodLabels.current,
+      days,
     },
     // Historical trimester data for past period stats (legacy support)
     history: {
-      // 2025 Trimester 1 (Jan-Apr) - Winter/Spring
+      // Legacy fields - kept for backward compatibility
       t1_2025_late: 0,
       t1_2025_attendance: 0,
-      // 2025 Trimester 2 (May-Aug) - Spring/Summer  
       t2_2025_late: 2,
       t2_2025_attendance: 1,
-      // 2025 Trimester 3 (Sep-Dec) - Fall/Winter
       t3_2025_late: 1,
       t3_2025_attendance: 0,
-      // 2026 Trimester 1 (Jan-Apr) - Current
       t1_2026_late: 1,
       t1_2026_attendance: 0,
     },
-    // Rolling periods - universal field names that work for any operator
+    // Rolling periods - dynamic labels based on current date
     periods: {
       current: {
-        label: 'Winter/Spring 2026',
+        label: periodLabels.current,
         late: 1,
         absences: 0,
         points: 2,
       },
       prev1: {
-        label: 'Fall/Winter 2025',
+        label: periodLabels.prev1,
         late: 1,
         absences: 0,
-        points: 3,
+        points: 2,
       },
       prev2: {
-        label: 'Spring/Summer 2025',
+        label: periodLabels.prev2,
         late: 2,
         absences: 1,
         points: 4,
       },
       prev3: {
-        label: 'Winter/Spring 2025',
+        label: periodLabels.prev3,
         late: 0,
         absences: 0,
         points: 0,
