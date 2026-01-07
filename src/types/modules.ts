@@ -187,6 +187,44 @@ export interface TasksModuleConfig extends BaseModuleConfig {
 }
 
 // =============================================================================
+// COMMUNICATIONS MODULE
+// =============================================================================
+
+/**
+ * Organization-level email config
+ * Note: API key is stored at PLATFORM level (platform_settings table)
+ */
+export interface EmailProviderConfig {
+  /** Email service provider (always 'resend' - set at platform level) */
+  provider: 'resend' | 'sendgrid' | 'smtp' | 'none';
+  /** From email address (platform level - not used here) */
+  fromEmail: string;
+  /** From display name (org's business name) */
+  fromName: string;
+  /** Reply-to email address (org's email) */
+  replyTo?: string;
+}
+
+export interface CommunicationsConfig {
+  /** Email settings (org-level: fromName, replyTo) */
+  email: EmailProviderConfig;
+  /** Merge field syntax style */
+  mergeSyntax: 'guillemets' | 'handlebars'; // «field» or {{field}}
+  /** Enable scheduled sends */
+  schedulingEnabled: boolean;
+  /** Enable trigger-based sends */
+  triggersEnabled: boolean;
+  /** Timezone for scheduling (IANA format) */
+  timezone: string;
+  /** Maximum templates allowed (0 = unlimited) */
+  maxTemplates: number;
+}
+
+export interface CommunicationsModuleConfig extends BaseModuleConfig {
+  config: CommunicationsConfig | null;
+}
+
+// =============================================================================
 // ALL MODULES MAP
 // =============================================================================
 
@@ -197,6 +235,7 @@ export interface OrganizationModules {
   recipes: RecipesModuleConfig;
   haccp: HACCPModuleConfig;
   tasks: TasksModuleConfig;
+  communications: CommunicationsModuleConfig;
 }
 
 export type ModuleId = keyof OrganizationModules;
@@ -273,6 +312,15 @@ export const MODULE_REGISTRY: ModuleDefinition[] = [
     requiresCompliance: false,
     defaultEnabled: false,
   },
+  {
+    id: 'communications',
+    label: 'Communications',
+    description: 'Email templates, merge fields, scheduled broadcasts, and team notifications',
+    icon: 'Mail',
+    color: 'sky',
+    requiresCompliance: false,
+    defaultEnabled: false,
+  },
 ];
 
 // =============================================================================
@@ -317,4 +365,18 @@ export const DEFAULT_MODULE_PERMISSIONS: Record<ModuleId, ModulePermissions> = {
   recipes: { view: 5, enable: 1, configure: 3, use: 4 },
   haccp: { view: 5, enable: 1, configure: 2, use: 5 },
   tasks: { view: 5, enable: 1, configure: 3, use: 5 },
+  communications: { view: 3, enable: 1, configure: 2, use: 3 },
+};
+
+export const DEFAULT_COMMUNICATIONS_CONFIG: CommunicationsConfig = {
+  email: {
+    provider: 'none',
+    fromEmail: '',
+    fromName: '',
+  },
+  mergeSyntax: 'guillemets',
+  schedulingEnabled: false,
+  triggersEnabled: false,
+  timezone: 'America/Toronto',
+  maxTemplates: 50,
 };

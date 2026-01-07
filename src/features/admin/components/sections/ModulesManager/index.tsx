@@ -7,6 +7,7 @@ import {
   UtensilsCrossed,
   ThermometerSnowflake,
   ClipboardCheck,
+  Mail,
   Cog,
   Info,
   ChevronUp,
@@ -68,6 +69,14 @@ const ADDON_FEATURES = [
     complianceWarning: 'Point-based attendance systems may not be legal in all jurisdictions. Consult local labor laws before enabling. You are responsible for ensuring compliance.',
     configPath: '/admin/modules/team-performance',
   },
+  {
+    id: 'communications' as ModuleId,
+    label: 'Communications',
+    description: 'Email templates, merge fields, scheduled broadcasts, and team notifications',
+    icon: Mail,
+    requiresCompliance: false,
+    configPath: '/admin/modules/communications',
+  },
 ];
 
 export const ModulesManager: React.FC = () => {
@@ -112,8 +121,25 @@ export const ModulesManager: React.FC = () => {
   const toggleModule = async (moduleId: ModuleId) => {
     if (!organizationId || !user) return;
     
-    const currentModule = modules[moduleId];
-    if (!currentModule) return;
+    const moduleDef = ADDON_FEATURES.find(m => m.id === moduleId);
+    let currentModule = modules[moduleId];
+    
+    // If module doesn't exist yet, initialize it
+    if (!currentModule) {
+      currentModule = {
+        enabled: false,
+        compliance_acknowledged: false,
+        enabled_at: null,
+        enabled_by: null,
+        permissions: {
+          view: 3,
+          enable: 1,
+          configure: 2,
+          use: 3,
+        },
+        config: null,
+      };
+    }
 
     // Check permissions
     if (!canEnableModule(securityLevel, currentModule)) {
@@ -122,7 +148,6 @@ export const ModulesManager: React.FC = () => {
     }
 
     // Check compliance acknowledgment for modules that require it
-    const moduleDef = ADDON_FEATURES.find(m => m.id === moduleId);
     if (moduleDef?.requiresCompliance && !currentModule.enabled && !currentModule.compliance_acknowledged) {
       toast.error("You must acknowledge compliance requirements first");
       return;
@@ -180,8 +205,24 @@ export const ModulesManager: React.FC = () => {
   const handleComplianceAcknowledge = async (moduleId: ModuleId, acknowledged: boolean) => {
     if (!organizationId || !user) return;
     
-    const currentModule = modules[moduleId];
-    if (!currentModule) return;
+    let currentModule = modules[moduleId];
+    
+    // If module doesn't exist yet, initialize it
+    if (!currentModule) {
+      currentModule = {
+        enabled: false,
+        compliance_acknowledged: false,
+        enabled_at: null,
+        enabled_by: null,
+        permissions: {
+          view: 3,
+          enable: 1,
+          configure: 2,
+          use: 3,
+        },
+        config: null,
+      };
+    }
 
     try {
       const updatedModules = {
@@ -340,7 +381,14 @@ export const ModulesManager: React.FC = () => {
           {ADDON_FEATURES.map((feature) => {
             const moduleConfig = modules[feature.id];
             const isEnabled = moduleConfig?.enabled ?? false;
-            const canToggle = canEnableModule(securityLevel, moduleConfig);
+            
+            // For modules that don't exist yet, create a default config for permission check
+            const configForPermissionCheck = moduleConfig || {
+              enabled: false,
+              permissions: { view: 3, enable: 1, configure: 2, use: 3 },
+              config: null,
+            };
+            const canToggle = canEnableModule(securityLevel, configForPermissionCheck);
             
             return (
               <FeatureCard

@@ -157,6 +157,44 @@ npm run build
 
 ---
 
+## 📚 Developer Documentation
+
+### Handoff Documents
+Session-specific documentation for feature implementations:
+
+| Document | Description |
+|----------|-------------|
+| `docs/HANDOFF-2026-01-06-Communications-Module.md` | Communications module, Resend integration, merge engine |
+| `docs/HANDOFF-2026-01-06-TeamLedger-L5Pills-Timezone.md` | Team Ledger view, L5 action pills, timezone fixes |
+| `docs/HANDOFF-2026-01-05-TimeOff.md` | Time-off tracking (sick days, vacation) |
+| `docs/HANDOFF-2026-01-05-Points-Ledger.md` | Points ledger implementation |
+| `docs/HANDOFF-2026-01-05-Pagination.md` | Pagination patterns |
+
+### Utility Reference
+| Document | Description |
+|----------|-------------|
+| `docs/UTILS.md` | Date utilities, string helpers, validation functions |
+
+### Key Patterns
+
+**Date Handling (CRITICAL):**
+```typescript
+// ❌ WRONG - Timezone shift issues
+new Date('2026-01-06').toLocaleDateString()
+
+// ✅ CORRECT - Use dateUtils
+import { formatDateForDisplay } from '@/utils/dateUtils';
+formatDateForDisplay('2026-01-06')
+```
+
+**L5 Design System:**
+- Use Lucide icons (no emojis)
+- Pill buttons: `rounded-full` with border and hover states
+- Color coding: Gray (default) → Amber (warning) → Rose (critical)
+- Consistent spacing and transitions
+
+---
+
 ## 📄 License
 
 Copyright © 2024 Chef Steve Popp / Memphis Fire Barbeque Company

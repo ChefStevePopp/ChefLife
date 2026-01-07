@@ -6,6 +6,7 @@ import { DatabasePanel } from './DatabasePanel';
 import { SystemInfoPanel } from './SystemInfoPanel';
 import { ThemeExport } from './ThemeExport';
 import { CodeBaseCombiner } from './CodeBaseCombiner';
+import { EmailServicePanel } from './EmailServicePanel';
 
 interface DevManagementProps {}
 
@@ -36,6 +37,7 @@ export const DevManagement: React.FC<DevManagementProps> = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left Column */}
         <div className="space-y-6">
+          <EmailServicePanel />
           <DiagnosticsPanel />
           <DatabasePanel />
         </div>
