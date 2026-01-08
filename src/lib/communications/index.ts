@@ -64,6 +64,61 @@ export {
 } from './mergeEngine';
 
 // =============================================================================
+// CONTEXT BUILDER
+// =============================================================================
+
+export {
+  buildMergeContext,
+  buildQuickContext,
+  getAvailableRecipients,
+} from './contextBuilder';
+
+// =============================================================================
+// FIELD REGISTRY (Single Source of Truth)
+// =============================================================================
+
+export {
+  // Registry data
+  FIELD_REGISTRY,
+  FIELD_CATEGORIES,
+  MODULE_DEFINITIONS,
+  
+  // Module-based functions
+  getModuleDefinition,
+  getFieldsByModule,
+  getFieldsForModules,
+  getFieldsGroupedByModule,
+  getModulesWithFields,
+  isModuleEnabled,
+  getEnabledModules,
+  getFieldCountByModule,
+  searchFields,
+  detectFieldsByModule,
+  
+  // Legacy/general functions
+  getFieldsByCategory,
+  getFieldByTag,
+  getDataPath,
+  getCategory,
+  buildFieldMap,
+  getAllTags,
+  isRegisteredTag,
+  getSampleValue,
+  getDefaultValue,
+  detectUnregisteredFields,
+  
+  // Types
+  type ModuleId,
+  type ModuleDefinition,
+  type FieldDefinition,
+  type FieldCategory,
+  type FieldSubcategory,
+  type CategoryDefinition,
+  type FieldType,
+  type FieldTransform as RegistryFieldTransform,
+} from './fieldRegistry';
+
+// =============================================================================
 // DELIVERY (via Edge Function)
 // =============================================================================
 

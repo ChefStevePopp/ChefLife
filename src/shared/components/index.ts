@@ -6,3 +6,4 @@ export { LiveClock } from './LiveClock';
 export { ImportedBadge } from './ImportedBadge';
 export { FeatureCard, type FeatureCardProps } from './FeatureCard';
 export { IntegrationCard, type IntegrationCardProps } from './IntegrationCard';
+export { ModuleMergeFields } from './ModuleMergeFields';

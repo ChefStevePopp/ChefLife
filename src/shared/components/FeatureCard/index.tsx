@@ -79,11 +79,7 @@ export const FeatureCard: React.FC<FeatureCardProps> = ({
       onClick={handleCardClick}
       onMouseEnter={() => setMenuOpen(true)}
       onMouseLeave={() => setMenuOpen(false)}
-      className={`bg-gray-800/50 backdrop-blur-sm rounded-lg p-4 border transition-all duration-200 group flex flex-col relative ${
-        displayEnabled && !isCore
-          ? 'border-primary-500 bg-primary-500/10 ring-1 ring-primary-500/30 scale-[1.02]' 
-          : 'border-gray-700/50 hover:bg-gray-800/70 hover:border-gray-600/50 hover:scale-[1.01]'
-      } ${isSelectable ? 'cursor-pointer' : ''} ${isUpdating ? 'opacity-70 pointer-events-none' : ''}`}
+      className={`bg-gray-800/50 backdrop-blur-sm rounded-lg p-4 border transition-all duration-200 group flex flex-col relative border-gray-700/50 hover:bg-gray-800/70 hover:border-gray-600/50 ${isSelectable ? 'cursor-pointer hover:scale-[1.01]' : ''} ${isUpdating ? 'opacity-70 pointer-events-none' : ''}`}
     >
       {/* Checkbox - commented out for modules, kept for potential future use
       {variant === 'addon' && !comingSoon && (
@@ -107,14 +103,8 @@ export const FeatureCard: React.FC<FeatureCardProps> = ({
       <div className="flex flex-col items-center text-center gap-3 flex-1">
         {/* Icon with ring */}
         <div className="relative">
-          <div className={`w-16 h-16 rounded-xl flex items-center justify-center ring-2 transition-all ${
-            displayEnabled && !isCore
-              ? 'bg-primary-500/20 ring-primary-500/50' 
-              : 'bg-gray-700/50 ring-gray-700/50 group-hover:ring-primary-500/30'
-          }`}>
-            <Icon className={`w-8 h-8 transition-colors ${
-              displayEnabled && !isCore ? 'text-primary-400' : 'text-gray-400'
-            }`} />
+          <div className="w-16 h-16 rounded-xl flex items-center justify-center ring-2 transition-all bg-gray-700/50 ring-gray-700/50 group-hover:ring-gray-600">
+            <Icon className="w-8 h-8 text-gray-400" />
           </div>
           {/* Active indicator dot */}
           {displayEnabled && !isCore && (

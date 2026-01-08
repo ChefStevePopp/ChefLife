@@ -23,6 +23,8 @@ import {
 } from "@/config/security";
 import { LoadingLogo } from "@/features/shared/components";
 import { FeatureCard } from "@/shared/components";
+import { DisableModuleModal } from "./components";
+import { getFieldsByModule } from "@/lib/communications/fieldRegistry";
 
 // Core features - always on, just configurable
 // Icons MUST match sidebar menuItems.ts for consistency
@@ -87,6 +89,13 @@ export const ModulesManager: React.FC = () => {
   const [updatingModule, setUpdatingModule] = useState<ModuleId | null>(null);
   const [coreInfoExpanded, setCoreInfoExpanded] = useState(false);
   const [addonInfoExpanded, setAddonInfoExpanded] = useState(false);
+  
+  // Disable confirmation modal state
+  const [disableModalOpen, setDisableModalOpen] = useState(false);
+  const [moduleToDisable, setModuleToDisable] = useState<{
+    id: ModuleId;
+    label: string;
+  } | null>(null);
 
   // Fetch organization data
   React.useEffect(() => {
@@ -117,8 +126,8 @@ export const ModulesManager: React.FC = () => {
 
   const modules = organization?.modules || {};
 
-  // Toggle module enabled state
-  const toggleModule = async (moduleId: ModuleId) => {
+  // Handle module toggle request
+  const handleToggleRequest = (moduleId: ModuleId) => {
     if (!organizationId || !user) return;
     
     const moduleDef = ADDON_FEATURES.find(m => m.id === moduleId);
@@ -147,14 +156,51 @@ export const ModulesManager: React.FC = () => {
       return;
     }
 
+    // If currently enabled, show confirmation modal
+    if (currentModule.enabled) {
+      setModuleToDisable({
+        id: moduleId,
+        label: moduleDef?.label || moduleId,
+      });
+      setDisableModalOpen(true);
+      return;
+    }
+
     // Check compliance acknowledgment for modules that require it
-    if (moduleDef?.requiresCompliance && !currentModule.enabled && !currentModule.compliance_acknowledged) {
+    if (moduleDef?.requiresCompliance && !currentModule.compliance_acknowledged) {
       toast.error("You must acknowledge compliance requirements first");
       return;
     }
 
+    // Enable module directly (no confirmation needed)
+    executeToggle(moduleId, true);
+  };
+
+  // Execute the actual toggle
+  const executeToggle = async (moduleId: ModuleId, newEnabled: boolean) => {
+    if (!organizationId || !user) return;
+    
+    const moduleDef = ADDON_FEATURES.find(m => m.id === moduleId);
+    let currentModule = modules[moduleId];
+    
+    // If module doesn't exist yet, initialize it
+    if (!currentModule) {
+      currentModule = {
+        enabled: false,
+        compliance_acknowledged: false,
+        enabled_at: null,
+        enabled_by: null,
+        permissions: {
+          view: 3,
+          enable: 1,
+          configure: 2,
+          use: 3,
+        },
+        config: null,
+      };
+    }
+
     setUpdatingModule(moduleId);
-    const newEnabled = !currentModule.enabled;
 
     try {
       const updatedModules = {
@@ -164,6 +210,8 @@ export const ModulesManager: React.FC = () => {
           enabled: newEnabled,
           enabled_at: newEnabled ? new Date().toISOString() : currentModule.enabled_at,
           enabled_by: newEnabled ? user.id : currentModule.enabled_by,
+          disabled_at: !newEnabled ? new Date().toISOString() : null,
+          disabled_by: !newEnabled ? user.id : null,
         },
       };
 
@@ -180,7 +228,10 @@ export const ModulesManager: React.FC = () => {
       // Update local state
       setOrganization((prev: any) => ({ ...prev, modules: updatedModules }));
 
-      // Log to nexus
+      // Get field count for this module (for logging)
+      const moduleFields = getFieldsByModule(moduleId as any);
+
+      // Log to NEXUS with full context
       await nexus({
         organization_id: organizationId,
         user_id: user.id,
@@ -189,6 +240,8 @@ export const ModulesManager: React.FC = () => {
           module_id: moduleId,
           module_name: moduleDef?.label,
           action: newEnabled ? 'enabled' : 'disabled',
+          fields_affected: moduleFields.length,
+          confirmation_required: !newEnabled, // Disabling required confirmation
         },
       });
 
@@ -199,6 +252,21 @@ export const ModulesManager: React.FC = () => {
     } finally {
       setUpdatingModule(null);
     }
+  };
+
+  // Handle confirmed disable from modal
+  const handleConfirmDisable = () => {
+    if (!moduleToDisable) return;
+    
+    executeToggle(moduleToDisable.id, false);
+    setDisableModalOpen(false);
+    setModuleToDisable(null);
+  };
+
+  // Handle modal close
+  const handleCloseModal = () => {
+    setDisableModalOpen(false);
+    setModuleToDisable(null);
   };
 
   // Handle compliance acknowledgment
@@ -399,7 +467,7 @@ export const ModulesManager: React.FC = () => {
                 icon={feature.icon}
                 variant="addon"
                 isEnabled={isEnabled}
-                onToggle={(id) => toggleModule(id as ModuleId)}
+                onToggle={(id) => handleToggleRequest(id as ModuleId)}
                 canToggle={canToggle}
                 isUpdating={updatingModule === feature.id}
                 complianceWarning={feature.requiresCompliance ? feature.complianceWarning : undefined}
@@ -419,6 +487,19 @@ export const ModulesManager: React.FC = () => {
           </p>
         </div>
       </div>
+
+      {/* Disable Confirmation Modal */}
+      {organizationId && moduleToDisable && (
+        <DisableModuleModal
+          isOpen={disableModalOpen}
+          onClose={handleCloseModal}
+          onConfirm={handleConfirmDisable}
+          moduleId={moduleToDisable.id as any}
+          moduleLabel={moduleToDisable.label}
+          organizationId={organizationId}
+          isProcessing={updatingModule === moduleToDisable.id}
+        />
+      )}
     </div>
   );
 };

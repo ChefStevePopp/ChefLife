@@ -1,14 +1,18 @@
 /**
  * TemplateEditor - Create/Edit Email Templates
  * 
- * L5 Design: Workflow-focused editor with merge field reference
+ * L5 Design: Enhanced editor with merge field highlighting
  * 
- * Workflow: Design elsewhere → Paste HTML → Add merge fields → Preview → Save
+ * Features:
+ * - Syntax highlighting for merge fields (guillemets)
+ * - Desktop/Mobile preview toggle
+ * - Code + Merge Fields side by side, Preview below
+ * - Sample data preview
  * 
  * Location: Admin → Modules → Communications → Templates → New/Edit
  */
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -20,13 +24,14 @@ import {
   Loader2,
   Info,
   ChevronUp,
-  Wand2,
   RotateCcw,
   Type,
   Code,
   Clipboard,
   ExternalLink,
   AlertCircle,
+  Monitor,
+  Smartphone,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
@@ -69,6 +74,145 @@ const DEFAULT_FORM: FormData = {
 };
 
 // =============================================================================
+// HIGHLIGHTED CODE EDITOR COMPONENT
+// =============================================================================
+
+interface HighlightedEditorProps {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}
+
+const HighlightedEditor: React.FC<HighlightedEditorProps> = ({
+  value,
+  onChange,
+  placeholder,
+}) => {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const highlightRef = useRef<HTMLPreElement>(null);
+  
+  // Sync scroll between textarea and highlight overlay
+  const handleScroll = useCallback(() => {
+    const textarea = textareaRef.current;
+    const highlight = highlightRef.current;
+    
+    if (textarea && highlight) {
+      highlight.scrollTop = textarea.scrollTop;
+      highlight.scrollLeft = textarea.scrollLeft;
+    }
+  }, []);
+  
+  // Highlight merge fields in the content
+  const highlightedContent = useMemo(() => {
+    if (!value) return '';
+    
+    // Escape HTML but preserve structure
+    const escaped = value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    
+    // Highlight merge fields (guillemets)
+    return escaped.replace(
+      /«([^»]+)»/g,
+      '<span class="merge-field">«$1»</span>'
+    );
+  }, [value]);
+  
+  return (
+    <div className="highlighted-editor">
+      {/* Syntax highlighting layer (visual only) */}
+      <pre
+        ref={highlightRef}
+        className="highlighted-editor-backdrop"
+        aria-hidden="true"
+        dangerouslySetInnerHTML={{ __html: highlightedContent + '\n' }}
+      />
+      
+      {/* Actual editable textarea (transparent text) */}
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onScroll={handleScroll}
+        placeholder={placeholder}
+        className="highlighted-editor-textarea"
+        spellCheck={false}
+      />
+      
+      <style>{`
+        .highlighted-editor {
+          position: relative;
+          font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+          font-size: 12px;
+          line-height: 1.5;
+          background: rgb(17, 24, 39);
+          border: 1px solid rgb(55, 65, 81);
+          border-radius: 0.5rem;
+          overflow: hidden;
+        }
+        
+        .highlighted-editor-backdrop,
+        .highlighted-editor-textarea {
+          margin: 0;
+          padding: 12px 16px;
+          width: 100%;
+          height: 450px;
+          font: inherit;
+          line-height: inherit;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+          overflow: auto;
+        }
+        
+        .highlighted-editor-backdrop {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          color: rgb(209, 213, 219);
+          pointer-events: none;
+          z-index: 1;
+        }
+        
+        .highlighted-editor-textarea {
+          position: relative;
+          background: transparent;
+          color: transparent;
+          caret-color: rgb(251, 191, 36);
+          border: none;
+          outline: none;
+          resize: none;
+          z-index: 2;
+        }
+        
+        .highlighted-editor-textarea::placeholder {
+          color: rgb(75, 85, 99);
+        }
+        
+        .highlighted-editor-textarea:focus {
+          outline: none;
+        }
+        
+        .highlighted-editor:focus-within {
+          border-color: rgb(99, 102, 241);
+          box-shadow: 0 0 0 1px rgb(99, 102, 241);
+        }
+        
+        .highlighted-editor .merge-field {
+          background: rgba(251, 191, 36, 0.15);
+          color: rgb(251, 191, 36);
+          border-radius: 3px;
+          padding: 1px 2px;
+          font-weight: 500;
+        }
+      `}</style>
+    </div>
+  );
+};
+
+// =============================================================================
 // MAIN COMPONENT
 // =============================================================================
 
@@ -85,9 +229,11 @@ export const TemplateEditor: React.FC = () => {
   const [form, setForm] = useState<FormData>(DEFAULT_FORM);
   const [originalForm, setOriginalForm] = useState<FormData>(DEFAULT_FORM);
   const [detectedFields, setDetectedFields] = useState<string[]>([]);
+  const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
+  const [orgModules, setOrgModules] = useState<Record<string, any> | null>(null);
   
   // Sample context for preview
-  const sampleContext = useMemo(() => getSampleContext(), []);
+  const mergeContext = useMemo<MergeContext>(() => getSampleContext(), []);
   
   // Preview state
   const [previewHtml, setPreviewHtml] = useState('');
@@ -95,6 +241,31 @@ export const TemplateEditor: React.FC = () => {
 
   // Derive hasChanges
   const hasChanges = JSON.stringify(form) !== JSON.stringify(originalForm);
+
+  // ---------------------------------------------------------------------------
+  // FETCH ORG MODULES (for merge fields availability)
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const fetchOrgModules = async () => {
+      if (!organizationId) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('organizations')
+          .select('modules')
+          .eq('id', organizationId)
+          .single();
+        
+        if (!error && data) {
+          setOrgModules(data.modules);
+        }
+      } catch (err) {
+        console.error('Error fetching org modules:', err);
+      }
+    };
+    
+    fetchOrgModules();
+  }, [organizationId]);
 
   // ---------------------------------------------------------------------------
   // LOAD EXISTING TEMPLATE
@@ -164,7 +335,7 @@ export const TemplateEditor: React.FC = () => {
     const timer = setTimeout(() => {
       try {
         if (form.html_template) {
-          const merged = mergeTemplate(form.html_template, sampleContext, {
+          const merged = mergeTemplate(form.html_template, mergeContext, {
             syntax: 'guillemets',
             missingFieldBehavior: 'preserve',
           });
@@ -174,7 +345,7 @@ export const TemplateEditor: React.FC = () => {
         }
 
         if (form.subject_template) {
-          const mergedSubject = mergeTemplate(form.subject_template, sampleContext, {
+          const mergedSubject = mergeTemplate(form.subject_template, mergeContext, {
             syntax: 'guillemets',
             missingFieldBehavior: 'preserve',
           });
@@ -188,7 +359,7 @@ export const TemplateEditor: React.FC = () => {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [form.html_template, form.subject_template, sampleContext]);
+  }, [form.html_template, form.subject_template, mergeContext]);
 
   // ---------------------------------------------------------------------------
   // FORM HANDLERS
@@ -237,7 +408,6 @@ export const TemplateEditor: React.FC = () => {
     setIsSaving(true);
     try {
       if (isNew) {
-        // Create new template
         const { data, error } = await supabase
           .from('email_templates')
           .insert({
@@ -258,7 +428,6 @@ export const TemplateEditor: React.FC = () => {
 
         if (error) throw error;
 
-        // Log activity
         await nexus({
           organization_id: organizationId,
           user_id: user.id,
@@ -272,7 +441,6 @@ export const TemplateEditor: React.FC = () => {
         toast.success('Template created');
         navigate(`/admin/modules/communications/templates/${data.id}`);
       } else {
-        // Update existing template
         const { error } = await supabase
           .from('email_templates')
           .update({
@@ -290,7 +458,6 @@ export const TemplateEditor: React.FC = () => {
 
         if (error) throw error;
 
-        // Log activity
         await nexus({
           organization_id: organizationId,
           user_id: user.id,
@@ -423,14 +590,14 @@ export const TemplateEditor: React.FC = () => {
                     <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-xs font-bold">3</span>
                     <span className="text-gray-300 font-medium">Add Fields</span>
                   </div>
-                  <p className="text-gray-500 text-xs">Click fields from the reference panel to copy merge tags</p>
+                  <p className="text-gray-500 text-xs">Merge fields are <span className="text-amber-400">highlighted</span> — click to copy from reference</p>
                 </div>
                 <div className="bg-gray-800/30 rounded-lg p-3 border border-gray-700/30">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-xs font-bold">4</span>
                     <span className="text-gray-300 font-medium">Preview</span>
                   </div>
-                  <p className="text-gray-500 text-xs">See how it looks with real data before sending</p>
+                  <p className="text-gray-500 text-xs">Toggle Desktop/Mobile to check responsive design</p>
                 </div>
               </div>
               <div className="flex flex-wrap gap-3 text-xs">
@@ -554,11 +721,44 @@ export const TemplateEditor: React.FC = () => {
         )}
       </div>
 
-      {/* Main Content Area - Two Columns */}
+      {/* Editor Controls */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <span>{form.html_template.length.toLocaleString()} characters</span>
+          {detectedFields.length > 0 && (
+            <>
+              <span>•</span>
+              <span className="flex items-center gap-1 text-emerald-400">
+                <CheckCircle className="w-3 h-3" />
+                {detectedFields.length} merge field{detectedFields.length !== 1 ? 's' : ''}
+              </span>
+            </>
+          )}
+          {detectedFields.length === 0 && form.html_template.length > 0 && (
+            <>
+              <span>•</span>
+              <span className="flex items-center gap-1 text-amber-400">
+                <AlertCircle className="w-3 h-3" />
+                No merge fields
+              </span>
+            </>
+          )}
+        </div>
+        
+        <button
+          onClick={handlePasteFromClipboard}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white transition-colors"
+        >
+          <Clipboard className="w-3.5 h-3.5" />
+          Paste HTML
+        </button>
+      </div>
+
+      {/* Main Editor Area - Code + Merge Fields Side by Side */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         
-        {/* Left: HTML Content (2 cols) */}
-        <div className="xl:col-span-2 space-y-4">
+        {/* HTML Editor (2 cols) */}
+        <div className="xl:col-span-2">
           <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
@@ -566,52 +766,30 @@ export const TemplateEditor: React.FC = () => {
                 <h2 className="text-sm font-semibold text-white">HTML Content</h2>
                 <span className="text-rose-400 text-xs">*</span>
               </div>
-              <button
-                onClick={handlePasteFromClipboard}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white transition-colors"
-              >
-                <Clipboard className="w-3.5 h-3.5" />
-                Paste from Clipboard
-              </button>
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <span className="w-3 h-3 rounded bg-amber-400/20 border border-amber-400/30"></span>
+                <span>Merge fields highlighted</span>
+              </div>
             </div>
             
-            <textarea
+            <HighlightedEditor
               value={form.html_template}
-              onChange={(e) => updateForm('html_template', e.target.value)}
-              placeholder="Paste your HTML here...
+              onChange={(value) => updateForm('html_template', value)}
+              placeholder={`Paste your HTML here...
 
 Design your email in BeeFree or Canva, export as HTML, and paste here.
-Then add merge fields like «First_Name» where you want personalized data."
-              rows={20}
-              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors font-mono text-xs resize-none"
+Then add merge fields like «First_Name» where you want personalized data.
+
+Merge fields will be highlighted in amber for easy identification.`}
             />
             
-            {/* Footer Stats */}
-            <div className="mt-3 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-4 text-gray-500">
-                <span>{form.html_template.length.toLocaleString()} characters</span>
-                {detectedFields.length > 0 && (
-                  <span className="flex items-center gap-1 text-emerald-400">
-                    <CheckCircle className="w-3 h-3" />
-                    {detectedFields.length} merge field{detectedFields.length !== 1 ? 's' : ''} detected
-                  </span>
-                )}
-              </div>
-              {detectedFields.length === 0 && form.html_template.length > 0 && (
-                <span className="flex items-center gap-1 text-amber-400">
-                  <AlertCircle className="w-3 h-3" />
-                  No merge fields found — add some from the reference panel
-                </span>
-              )}
-            </div>
-
-            {/* Detected Fields Preview */}
+            {/* Detected Fields */}
             {detectedFields.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {detectedFields.map(field => (
                   <span
                     key={field}
-                    className="inline-flex items-center px-2 py-0.5 rounded bg-gray-800 text-xs font-mono text-amber-400"
+                    className="inline-flex items-center px-2 py-0.5 rounded bg-amber-400/10 border border-amber-400/20 text-xs font-mono text-amber-400"
                   >
                     {field}
                   </span>
@@ -621,38 +799,58 @@ Then add merge fields like «First_Name» where you want personalized data."
           </div>
         </div>
 
-        {/* Right: Merge Fields Reference (1 col) */}
-        <div className="space-y-4">
-          <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Wand2 className="w-4 h-4 text-gray-500" />
-              <h2 className="text-sm font-semibold text-white">Merge Fields</h2>
-            </div>
-            <p className="text-xs text-gray-500 mb-3">
-              Click a field to copy it, then paste into your HTML.
-            </p>
-            <MergeFieldsReference />
+        {/* Merge Fields Reference (1 col) */}
+        <div>
+          <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-4 h-full">
+            <MergeFieldsReference orgModules={orgModules} />
           </div>
         </div>
       </div>
 
-      {/* Live Preview */}
+      {/* Live Preview - Full Width with Desktop/Mobile Toggle */}
       <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Eye className="w-4 h-4 text-gray-500" />
             <h2 className="text-sm font-semibold text-white">Live Preview</h2>
+            <span className="text-xs text-gray-500">• Sample: Marcus Chen</span>
           </div>
-          <span className="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded">
-            Sample: {sampleContext.recipient.first_name} {sampleContext.recipient.last_name}
-          </span>
+          
+          {/* Desktop/Mobile Toggle */}
+          <div className="flex items-center gap-1 p-1 bg-gray-800 rounded-lg">
+            <button
+              onClick={() => setPreviewMode('desktop')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                previewMode === 'desktop'
+                  ? 'bg-gray-700 text-white'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <Monitor className="w-3.5 h-3.5" />
+              Desktop
+            </button>
+            <button
+              onClick={() => setPreviewMode('mobile')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                previewMode === 'mobile'
+                  ? 'bg-gray-700 text-white'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              Mobile
+            </button>
+          </div>
         </div>
-
+        
         {previewHtml ? (
-          <div className="bg-white rounded-lg overflow-hidden">
+          <div className={`bg-white rounded-lg overflow-hidden mx-auto transition-all duration-300 ${
+            previewMode === 'mobile' ? 'max-w-[375px]' : 'max-w-full'
+          }`}>
             <iframe
               srcDoc={previewHtml}
-              className="w-full h-[500px] border-0"
+              className="w-full border-0"
+              style={{ height: previewMode === 'mobile' ? '667px' : '600px' }}
               title="Email Preview"
               sandbox="allow-same-origin"
             />

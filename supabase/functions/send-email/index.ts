@@ -323,7 +323,7 @@ serve(async (req) => {
         replyTo,
         tags: organizationId ? [
           { name: 'organization', value: organizationId },
-          { name: 'template', value: templateName || 'direct' },
+          { name: 'template', value: (templateName || 'direct').replace(/[^a-zA-Z0-9_-]/g, '_') },
         ] : undefined,
       });
 

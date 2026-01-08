@@ -121,7 +121,9 @@ export interface PerformanceContext {
   tier_label: string;
   coaching_stage?: number;
   coaching_stage_label?: string;
-  points_this_week: number;
+  points_this_week: number;         // Net change (gained - lost)
+  points_gained_this_week?: number; // Points added (events)
+  points_lost_this_week?: number;   // Points reduced (credits)
   points_this_period: number;
   events_this_week: Array<{
     date: string;
