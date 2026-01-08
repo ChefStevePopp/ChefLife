@@ -1,29 +1,28 @@
 /**
- * CommunicationsConfig - Organization-Level Communications Settings
+ * SettingsTab - Communications Module Settings
  * 
- * L5 Design: Card-based layout with consistent styling.
- * Uses Edge Function for email sending (API key stays server-side).
+ * L5 Design: Form-based settings with save bar
+ * Extracted from CommunicationsConfig for tabbed interface
  * 
- * Location: Admin → Modules → Communications
+ * Features:
+ * - Organization email settings (from name, reply-to)
+ * - Module configuration (merge syntax, timezone, toggles)
+ * - Test email functionality
+ * - Floating save bar with undo
+ * 
+ * Location: Admin → Modules → Communications → Settings Tab
  */
 
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Mail,
   Save,
-  ArrowLeft,
-  Settings,
-  FileText,
-  History,
   Send,
-  CheckCircle,
-  XCircle,
-  Loader2,
-  Plus,
   Info,
   ChevronUp,
   Building2,
+  Settings,
+  Loader2,
   RotateCcw,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -31,44 +30,8 @@ import { supabase } from "@/lib/supabase";
 import { nexus } from "@/lib/nexus";
 import { sendTestEmail } from "@/lib/communications";
 import toast from "react-hot-toast";
-import { LoadingLogo } from "@/features/shared/components";
 import type { CommunicationsConfig as CommunicationsConfigType } from "@/types/modules";
 import { DEFAULT_COMMUNICATIONS_CONFIG } from "@/types/modules";
-import { SECURITY_LEVELS } from "@/config/security";
-
-// =============================================================================
-// SUB-COMPONENTS
-// =============================================================================
-
-interface StatCardProps {
-  label: string;
-  value: string | number;
-  icon: React.ReactNode;
-  color?: 'emerald' | 'amber' | 'rose' | 'sky';
-}
-
-const StatCard: React.FC<StatCardProps> = ({ label, value, icon, color = 'sky' }) => {
-  const colorClasses = {
-    emerald: 'bg-emerald-500/20 text-emerald-400',
-    amber: 'bg-amber-500/20 text-amber-400',
-    rose: 'bg-rose-500/20 text-rose-400',
-    sky: 'bg-sky-500/20 text-sky-400',
-  };
-
-  return (
-    <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50">
-      <div className="flex items-center gap-3">
-        <div className={`w-10 h-10 rounded-lg ${colorClasses[color]} flex items-center justify-center`}>
-          {icon}
-        </div>
-        <div>
-          <p className="text-2xl font-bold text-white">{value}</p>
-          <p className="text-sm text-gray-400">{label}</p>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 // =============================================================================
 // TYPES
@@ -79,13 +42,19 @@ interface OrgEmailConfig {
   replyTo: string;
 }
 
+interface SettingsTabProps {
+  platformConfigured?: boolean;
+}
+
 // =============================================================================
 // MAIN COMPONENT
 // =============================================================================
 
-export const CommunicationsConfig: React.FC = () => {
+export const SettingsTab: React.FC<SettingsTabProps> = ({ 
+  platformConfigured = false,
+}) => {
   const navigate = useNavigate();
-  const { organizationId, securityLevel, user, isLoading: authLoading } = useAuth();
+  const { organizationId, user } = useAuth();
   
   // State
   const [isLoading, setIsLoading] = useState(true);
@@ -95,15 +64,6 @@ export const CommunicationsConfig: React.FC = () => {
   const [originalConfig, setOriginalConfig] = useState<CommunicationsConfigType>(DEFAULT_COMMUNICATIONS_CONFIG);
   const [orgEmail, setOrgEmail] = useState<OrgEmailConfig>({ fromName: '', replyTo: '' });
   const [originalOrgEmail, setOriginalOrgEmail] = useState<OrgEmailConfig>({ fromName: '', replyTo: '' });
-  const [platformConfigured, setPlatformConfigured] = useState(false);
-  
-  // Stats
-  const [stats, setStats] = useState({
-    templateCount: 0,
-    sentThisWeek: 0,
-    sentThisMonth: 0,
-    failedCount: 0,
-  });
 
   // Derive hasChanges
   const hasChanges = 
@@ -118,7 +78,6 @@ export const CommunicationsConfig: React.FC = () => {
       if (!organizationId) return;
 
       try {
-        // Load org config
         const { data: org, error: orgError } = await supabase
           .from('organizations')
           .select('name, modules')
@@ -138,81 +97,21 @@ export const CommunicationsConfig: React.FC = () => {
           setOrgEmail(emailConfig);
           setOriginalOrgEmail(emailConfig);
         } else {
-          // Default from name to org name
           const defaultEmail = { fromName: org.name || '', replyTo: '' };
           setOrgEmail(defaultEmail);
           setOriginalOrgEmail(defaultEmail);
         }
 
-        // Check if platform email is configured
-        const { data: platformSettings } = await supabase
-          .from('platform_settings')
-          .select('value')
-          .eq('key', 'email_service')
-          .single();
-
-        const platformEmail = platformSettings?.value;
-        setPlatformConfigured(
-          platformEmail?.provider !== 'none' && 
-          !!platformEmail?.api_key && 
-          !!platformEmail?.from_email
-        );
-
-        // Load template count
-        const { count: templateCount } = await supabase
-          .from('email_templates')
-          .select('*', { count: 'exact', head: true })
-          .eq('organization_id', organizationId);
-
-        // Load send stats (this week)
-        const weekAgo = new Date();
-        weekAgo.setDate(weekAgo.getDate() - 7);
-        
-        const { count: sentThisWeek } = await supabase
-          .from('email_send_log')
-          .select('*', { count: 'exact', head: true })
-          .eq('organization_id', organizationId)
-          .eq('status', 'sent')
-          .gte('sent_at', weekAgo.toISOString());
-
-        // Load send stats (this month)
-        const monthAgo = new Date();
-        monthAgo.setMonth(monthAgo.getMonth() - 1);
-        
-        const { count: sentThisMonth } = await supabase
-          .from('email_send_log')
-          .select('*', { count: 'exact', head: true })
-          .eq('organization_id', organizationId)
-          .eq('status', 'sent')
-          .gte('sent_at', monthAgo.toISOString());
-
-        // Load failed count
-        const { count: failedCount } = await supabase
-          .from('email_send_log')
-          .select('*', { count: 'exact', head: true })
-          .eq('organization_id', organizationId)
-          .eq('status', 'failed')
-          .gte('created_at', monthAgo.toISOString());
-
-        setStats({
-          templateCount: templateCount || 0,
-          sentThisWeek: sentThisWeek || 0,
-          sentThisMonth: sentThisMonth || 0,
-          failedCount: failedCount || 0,
-        });
-
       } catch (error) {
-        console.error('Error loading communications config:', error);
-        toast.error('Failed to load configuration');
+        console.error('Error loading settings:', error);
+        toast.error('Failed to load settings');
       } finally {
         setIsLoading(false);
       }
     };
 
-    if (!authLoading) {
-      loadData();
-    }
-  }, [organizationId, authLoading]);
+    loadData();
+  }, [organizationId]);
 
   // ---------------------------------------------------------------------------
   // UPDATE HANDLERS
@@ -238,7 +137,7 @@ export const CommunicationsConfig: React.FC = () => {
   };
 
   // ---------------------------------------------------------------------------
-  // SEND TEST EMAIL (via Edge Function)
+  // SEND TEST EMAIL
   // ---------------------------------------------------------------------------
   const handleSendTestEmail = async () => {
     if (!platformConfigured) {
@@ -274,7 +173,6 @@ export const CommunicationsConfig: React.FC = () => {
 
     setIsSaving(true);
     try {
-      // Get current modules
       const { data: org } = await supabase
         .from('organizations')
         .select('modules')
@@ -283,18 +181,16 @@ export const CommunicationsConfig: React.FC = () => {
 
       const currentModules = org?.modules || {};
 
-      // Build updated config
       const updatedConfig: CommunicationsConfigType = {
         ...config,
         email: {
           provider: 'resend',
-          fromEmail: '', // Platform level
+          fromEmail: '',
           fromName: orgEmail.fromName,
           replyTo: orgEmail.replyTo,
         },
       };
 
-      // Update communications module config
       const updatedModules = {
         ...currentModules,
         communications: {
@@ -303,7 +199,6 @@ export const CommunicationsConfig: React.FC = () => {
         },
       };
 
-      // Save to database
       const { error } = await supabase
         .from('organizations')
         .update({
@@ -314,11 +209,9 @@ export const CommunicationsConfig: React.FC = () => {
 
       if (error) throw error;
 
-      // Update original states
       setOriginalConfig(updatedConfig);
       setOriginalOrgEmail({ ...orgEmail });
 
-      // Log activity
       await nexus({
         organization_id: organizationId,
         user_id: user.id,
@@ -329,10 +222,10 @@ export const CommunicationsConfig: React.FC = () => {
         },
       });
 
-      toast.success('Configuration saved');
+      toast.success('Settings saved');
     } catch (error) {
-      console.error('Error saving config:', error);
-      toast.error('Failed to save configuration');
+      console.error('Error saving settings:', error);
+      toast.error('Failed to save settings');
     } finally {
       setIsSaving(false);
     }
@@ -341,156 +234,19 @@ export const CommunicationsConfig: React.FC = () => {
   // ---------------------------------------------------------------------------
   // RENDER
   // ---------------------------------------------------------------------------
-  if (isLoading || authLoading) {
+  if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <LoadingLogo message="Loading communications settings..." />
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500" />
       </div>
     );
   }
 
-  const isOmega = securityLevel === SECURITY_LEVELS.OMEGA;
-
   return (
     <div className="space-y-6">
-      {/* Diagnostic Text - Omega only */}
-      {isOmega && (
-        <div className="text-xs text-gray-500 font-mono">
-          src/features/admin/components/sections/CommunicationsConfig/index.tsx
-        </div>
-      )}
-
-      {/* Header */}
-      <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate('/admin/modules')}
-              className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5 text-gray-400" />
-            </button>
-            <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
-              <Mail className="w-5 h-5 text-amber-400" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-white">Communications</h1>
-              <p className="text-gray-400 text-sm">
-                Email templates, broadcasts, and notifications
-              </p>
-            </div>
-          </div>
-          
-          {/* Header save button (secondary to floating bar) */}
-          <button
-            onClick={handleSave}
-            disabled={!hasChanges || isSaving}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
-              hasChanges
-                ? 'bg-primary-500 hover:bg-primary-600 text-white'
-                : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-            }`}
-          >
-            {isSaving ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Save className="w-4 h-4" />
-            )}
-            Save Changes
-          </button>
-        </div>
-      </div>
-
-      {/* Platform Status Banner */}
-      {!platformConfigured && (
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <XCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-amber-300 font-medium">Platform Email Not Configured</p>
-              <p className="text-sm text-amber-300/70 mt-1">
-                The platform email service needs to be configured in{' '}
-                <button
-                  onClick={() => navigate('/admin/dev-management')}
-                  className="text-amber-300 underline hover:no-underline"
-                >
-                  Development Settings
-                </button>{' '}
-                before emails can be sent.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {platformConfigured && (
-        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4">
-          <div className="flex items-center gap-3">
-            <CheckCircle className="w-5 h-5 text-emerald-400" />
-            <p className="text-emerald-300">Platform email service is configured and ready</p>
-          </div>
-        </div>
-      )}
-
-      {/* Stats Overview */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard
-          label="Templates"
-          value={stats.templateCount}
-          icon={<FileText className="w-5 h-5" />}
-          color="sky"
-        />
-        <StatCard
-          label="Sent This Week"
-          value={stats.sentThisWeek}
-          icon={<Send className="w-5 h-5" />}
-          color="emerald"
-        />
-        <StatCard
-          label="Sent This Month"
-          value={stats.sentThisMonth}
-          icon={<History className="w-5 h-5" />}
-          color="amber"
-        />
-        <StatCard
-          label="Failed (30d)"
-          value={stats.failedCount}
-          icon={<XCircle className="w-5 h-5" />}
-          color="rose"
-        />
-      </div>
-
-      {/* Quick Actions */}
-      <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-6">
-        <h2 className="text-lg font-semibold text-white mb-4">Quick Actions</h2>
-        <div className="flex flex-wrap gap-3">
-          <button
-            onClick={() => navigate('/admin/modules/communications/templates')}
-            className="btn-ghost-primary"
-          >
-            <FileText className="w-4 h-4" />
-            Manage Templates
-          </button>
-          <button
-            onClick={() => navigate('/admin/modules/communications/history')}
-            className="btn-ghost"
-          >
-            <History className="w-4 h-4" />
-            Send History
-          </button>
-          <button
-            onClick={() => navigate('/admin/modules/communications/templates/new')}
-            className="btn-ghost"
-          >
-            <Plus className="w-4 h-4" />
-            New Template
-          </button>
-        </div>
-      </div>
-
       {/* Organization Email Settings */}
-      <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-6">
-        <div className="flex items-center gap-3 mb-4">
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
             <Building2 className="w-5 h-5 text-purple-400" />
           </div>
@@ -500,8 +256,8 @@ export const CommunicationsConfig: React.FC = () => {
           </div>
         </div>
 
-        {/* Expandable Info - Using L5 CSS class pattern */}
-        <div className="expandable-info-section mb-5">
+        {/* Expandable Info */}
+        <div className="expandable-info-section">
           <button
             onClick={(e) => {
               const section = e.currentTarget.closest('.expandable-info-section');
@@ -572,7 +328,7 @@ export const CommunicationsConfig: React.FC = () => {
               className={`btn ${
                 isSendingTest || !platformConfigured
                   ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                  : 'btn-primary'
+                  : 'btn-ghost'
               }`}
             >
               {isSendingTest ? (
@@ -580,15 +336,26 @@ export const CommunicationsConfig: React.FC = () => {
               ) : (
                 <Send className="w-4 h-4" />
               )}
-              Send Test Email
+              Send Test Email to {user?.email || 'yourself'}
             </button>
+            {!platformConfigured && (
+              <p className="text-xs text-amber-400 mt-1.5">
+                Platform email must be configured in{' '}
+                <button
+                  onClick={() => navigate('/admin/dev-management')}
+                  className="underline hover:no-underline"
+                >
+                  Development Settings
+                </button>
+              </p>
+            )}
           </div>
         </div>
       </div>
 
       {/* Module Settings */}
-      <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-6">
-        <div className="flex items-center gap-3 mb-4">
+      <div className="space-y-4 pt-6 border-t border-gray-700">
+        <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
             <Settings className="w-5 h-5 text-amber-400" />
           </div>
@@ -674,7 +441,7 @@ export const CommunicationsConfig: React.FC = () => {
         </div>
       </div>
 
-      {/* Floating Save Bar - L5 Pattern */}
+      {/* Floating Save Bar */}
       {hasChanges && (
         <div className="floating-action-bar warning">
           <div className="floating-action-bar-inner">
@@ -698,7 +465,7 @@ export const CommunicationsConfig: React.FC = () => {
                 ) : (
                   <Save className="w-4 h-4" />
                 )}
-                Save Changes
+                Save Settings
               </button>
             </div>
           </div>
@@ -708,4 +475,4 @@ export const CommunicationsConfig: React.FC = () => {
   );
 };
 
-export default CommunicationsConfig;
+export default SettingsTab;

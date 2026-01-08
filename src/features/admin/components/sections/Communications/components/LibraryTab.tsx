@@ -1,23 +1,26 @@
 /**
- * TemplateList - Email Template Management
+ * LibraryTab - Template Library for Communications Module
  * 
  * L5 Design: Card-based list with search, filter, sort, pagination
- * All 6 phases implemented
+ * Extracted from TemplateList for tabbed Communications interface
  * 
- * Location: Admin → Modules → Communications → Templates
+ * Features:
+ * - Search with keyboard shortcut (/)
+ * - Category and status filters
+ * - Pagination (12 per page)
+ * - NEXUS logging for all actions
+ * - Keyboard navigation (arrow keys for pages)
+ * 
+ * Location: Admin → Modules → Communications → Library Tab
  */
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ArrowLeft,
   Mail,
   Plus,
   Search,
-  FileText,
   X,
-  Info,
-  ChevronUp,
   ChevronLeft,
   ChevronRight,
   Keyboard,
@@ -26,9 +29,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { nexus } from "@/lib/nexus";
 import toast from "react-hot-toast";
-import { LoadingLogo } from "@/features/shared/components";
-import { SECURITY_LEVELS } from "@/config/security";
-import { TemplateCard } from "./components/TemplateCard";
+import { TemplateCard } from "./TemplateCard";
 import type { EmailTemplate } from "@/lib/communications/types";
 
 // =============================================================================
@@ -45,13 +46,21 @@ type StatusFilter = 'all' | 'active' | 'draft' | 'archived';
 type CategoryFilter = 'all' | 'performance' | 'hr' | 'operations' | 'general';
 type SortOption = 'updated' | 'name' | 'created';
 
+interface LibraryTabProps {
+  onTemplateChange?: () => void;
+  platformConfigured?: boolean;
+}
+
 // =============================================================================
 // MAIN COMPONENT
 // =============================================================================
 
-export const TemplateList: React.FC = () => {
+export const LibraryTab: React.FC<LibraryTabProps> = ({ 
+  onTemplateChange,
+  platformConfigured = false,
+}) => {
   const navigate = useNavigate();
-  const { organizationId, securityLevel, user, isLoading: authLoading } = useAuth();
+  const { organizationId, user } = useAuth();
   const searchInputRef = useRef<HTMLInputElement>(null);
   
   // Data state
@@ -91,10 +100,8 @@ export const TemplateList: React.FC = () => {
       }
     };
 
-    if (!authLoading) {
-      loadTemplates();
-    }
-  }, [organizationId, authLoading]);
+    loadTemplates();
+  }, [organizationId]);
 
   // ---------------------------------------------------------------------------
   // FILTERING & SORTING
@@ -158,14 +165,12 @@ export const TemplateList: React.FC = () => {
   }, [searchQuery, statusFilter, categoryFilter, sortBy]);
 
   // ---------------------------------------------------------------------------
-  // KEYBOARD SHORTCUTS (Phase 6)
+  // KEYBOARD SHORTCUTS
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger if user is typing in an input
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
-        // Allow Escape to blur input
         if (e.key === 'Escape') {
           target.blur();
         }
@@ -227,8 +232,8 @@ export const TemplateList: React.FC = () => {
       if (error) throw error;
       
       setTemplates(prev => [data, ...prev]);
+      onTemplateChange?.();
       
-      // NEXUS logging
       await nexus({
         organization_id: organizationId,
         user_id: user.id,
@@ -262,8 +267,8 @@ export const TemplateList: React.FC = () => {
       setTemplates(prev => prev.map(t => 
         t.id === template.id ? { ...t, is_archived: true } : t
       ));
+      onTemplateChange?.();
       
-      // NEXUS logging
       await nexus({
         organization_id: organizationId,
         user_id: user.id,
@@ -294,8 +299,8 @@ export const TemplateList: React.FC = () => {
       if (error) throw error;
       
       setTemplates(prev => prev.filter(t => t.id !== template.id));
+      onTemplateChange?.();
       
-      // NEXUS logging
       await nexus({
         organization_id: organizationId,
         user_id: user.id,
@@ -325,174 +330,108 @@ export const TemplateList: React.FC = () => {
   // ---------------------------------------------------------------------------
   // RENDER
   // ---------------------------------------------------------------------------
-  if (isLoading || authLoading) {
+  if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <LoadingLogo message="Loading templates..." />
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500" />
       </div>
     );
   }
 
-  const isOmega = securityLevel === SECURITY_LEVELS.OMEGA;
-
   return (
-    <div className="space-y-6">
-      {/* Diagnostic Text - Omega only */}
-      {isOmega && (
-        <div className="text-xs text-gray-500 font-mono">
-          src/features/admin/components/sections/Communications/TemplateList.tsx
-        </div>
-      )}
-
-      {/* Header */}
-      <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate('/admin/modules/communications')}
-              className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5 text-gray-400" />
-            </button>
-            <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
-              <FileText className="w-5 h-5 text-amber-400" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-white">Email Templates</h1>
-              <p className="text-gray-400 text-sm">
-                {templates.length} template{templates.length !== 1 ? 's' : ''} • Create and manage email templates
-              </p>
-            </div>
-          </div>
-          
-          {/* Header CTA - Ghost style per L5 */}
-          <button
-            onClick={() => navigate('/admin/modules/communications/templates/new')}
-            className="btn-ghost-primary"
-            title="Ctrl+N"
-          >
-            <Plus className="w-4 h-4" />
-            New Template
-          </button>
+    <div className="space-y-4">
+      {/* Filters Bar */}
+      <div className="flex flex-wrap items-center gap-3">
+        {/* Search */}
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+          <input
+            ref={searchInputRef}
+            type="text"
+            placeholder="Search templates... ( / )"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="input w-full pl-10"
+          />
         </div>
 
-        {/* Expandable Info Section */}
-        <div className="expandable-info-section mt-4">
+        {/* Category Filter */}
+        <select
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value as CategoryFilter)}
+        >
+          <option value="all">All Categories</option>
+          <option value="performance">Performance</option>
+          <option value="hr">HR</option>
+          <option value="operations">Operations</option>
+          <option value="general">General</option>
+        </select>
+
+        {/* Status Filter */}
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+        >
+          <option value="all">All Status</option>
+          <option value="active">Active</option>
+          <option value="draft">Draft</option>
+          <option value="archived">Archived</option>
+        </select>
+
+        {/* Sort */}
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as SortOption)}
+        >
+          <option value="updated">Recently Updated</option>
+          <option value="created">Recently Created</option>
+          <option value="name">Name (A-Z)</option>
+        </select>
+
+        {/* New Template Button */}
+        <button
+          onClick={() => navigate('/admin/modules/communications/templates/new')}
+          className="btn-primary"
+          title="Ctrl+N"
+        >
+          <Plus className="w-4 h-4" />
+          New Template
+        </button>
+
+        {/* Clear Filters */}
+        {hasActiveFilters && (
           <button
-            onClick={(e) => {
-              const section = e.currentTarget.closest('.expandable-info-section');
-              section?.classList.toggle('expanded');
-            }}
-            className="expandable-info-header w-full justify-between"
+            onClick={clearFilters}
+            className="btn-ghost text-gray-400"
           >
-            <div className="flex items-center gap-2">
-              <Info className="w-4 h-4 text-amber-400 flex-shrink-0" />
-              <span className="text-sm font-medium text-gray-300">About email templates</span>
-            </div>
-            <ChevronUp className="w-4 h-4 text-gray-400" />
+            <X className="w-4 h-4" />
+            Clear
           </button>
-          <div className="expandable-info-content">
-            <div className="p-4 pt-2 space-y-4">
-              <p className="text-sm text-gray-400">
-                Email templates let you create reusable, personalized communications for your team. Use merge fields like <span className="text-amber-400 font-mono">«First_Name»</span> to automatically insert recipient data.
-              </p>
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Active</span>
-                <span className="text-gray-500">Ready to send</span>
-                <span className="px-2 py-1 rounded bg-gray-500/20 text-gray-400 border border-gray-500/30">Draft</span>
-                <span className="text-gray-500">Work in progress</span>
-                <span className="px-2 py-1 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30">Archived</span>
-                <span className="text-gray-500">No longer in use</span>
-              </div>
-              {/* Keyboard shortcuts hint */}
-              <div className="flex items-center gap-2 pt-2 border-t border-gray-700/50">
-                <Keyboard className="w-4 h-4 text-gray-500" />
-                <span className="text-xs text-gray-500">
-                  <kbd className="px-1.5 py-0.5 rounded bg-gray-700 text-gray-300">/</kbd> Search
-                  <span className="mx-2">•</span>
-                  <kbd className="px-1.5 py-0.5 rounded bg-gray-700 text-gray-300">←</kbd>
-                  <kbd className="px-1.5 py-0.5 rounded bg-gray-700 text-gray-300 ml-1">→</kbd> Navigate pages
-                  <span className="mx-2">•</span>
-                  <kbd className="px-1.5 py-0.5 rounded bg-gray-700 text-gray-300">Ctrl+N</kbd> New template
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* Filters Bar */}
-      <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-4">
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Search */}
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-            <input
-              ref={searchInputRef}
-              type="text"
-              placeholder="Search templates... ( / )"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="input w-full pl-10"
-            />
-          </div>
-
-          {/* Category Filter */}
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value as CategoryFilter)}
-          >
-            <option value="all">All Categories</option>
-            <option value="performance">Performance</option>
-            <option value="hr">HR</option>
-            <option value="operations">Operations</option>
-            <option value="general">General</option>
-          </select>
-
-          {/* Status Filter */}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-          >
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="draft">Draft</option>
-            <option value="archived">Archived</option>
-          </select>
-
-          {/* Sort */}
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as SortOption)}
-          >
-            <option value="updated">Recently Updated</option>
-            <option value="created">Recently Created</option>
-            <option value="name">Name (A-Z)</option>
-          </select>
-
-          {/* Clear Filters */}
-          {hasActiveFilters && (
-            <button
-              onClick={clearFilters}
-              className="btn-ghost text-gray-400"
-            >
-              <X className="w-4 h-4" />
-              Clear
-            </button>
-          )}
+      {/* Results count & keyboard hints */}
+      <div className="flex items-center justify-between text-xs text-gray-500">
+        <span>
+          {hasActiveFilters 
+            ? `Showing ${filteredTemplates.length} of ${templates.length} templates`
+            : `${templates.length} template${templates.length !== 1 ? 's' : ''}`
+          }
+        </span>
+        <div className="flex items-center gap-1">
+          <Keyboard className="w-3 h-3" />
+          <span>
+            <kbd className="px-1 py-0.5 rounded bg-gray-700 text-gray-300 text-[10px]">/</kbd> Search
+            <span className="mx-1">•</span>
+            <kbd className="px-1 py-0.5 rounded bg-gray-700 text-gray-300 text-[10px]">←</kbd>
+            <kbd className="px-1 py-0.5 rounded bg-gray-700 text-gray-300 text-[10px] ml-0.5">→</kbd> Pages
+          </span>
         </div>
-
-        {/* Results count */}
-        {hasActiveFilters && (
-          <p className="mt-3 text-sm text-gray-500">
-            Showing {filteredTemplates.length} of {templates.length} templates
-          </p>
-        )}
       </div>
 
       {/* Templates Grid */}
       {filteredTemplates.length === 0 ? (
-        <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-12 text-center">
+        <div className="py-12 text-center">
           {templates.length === 0 ? (
             <>
               <div className="w-16 h-16 rounded-full bg-gray-800 flex items-center justify-center mx-auto mb-4">
@@ -581,4 +520,4 @@ export const TemplateList: React.FC = () => {
   );
 };
 
-export default TemplateList;
+export default LibraryTab;

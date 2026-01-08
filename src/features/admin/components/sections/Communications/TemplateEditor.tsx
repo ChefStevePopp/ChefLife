@@ -1,13 +1,14 @@
 /**
  * TemplateEditor - Create/Edit Email Templates
  * 
- * L5 Design: Enhanced editor with merge field highlighting
+ * L5 Design: Tabbed editor following Team Performance gold standard pattern
+ * - Header card with icon, title, actions
+ * - Expandable info section
+ * - Separate tabs + content card below
  * 
- * Features:
- * - Syntax highlighting for merge fields (guillemets)
- * - Desktop/Mobile preview toggle
- * - Code + Merge Fields side by side, Preview below
- * - Sample data preview
+ * Tabs:
+ * - Details (primary): Name, Category, Status, Subject, Description
+ * - Content (green): HTML Editor + Merge Fields + Live Preview
  * 
  * Location: Admin → Modules → Communications → Templates → New/Edit
  */
@@ -32,6 +33,8 @@ import {
   AlertCircle,
   Monitor,
   Smartphone,
+  Keyboard,
+  Settings,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
@@ -73,6 +76,8 @@ const DEFAULT_FORM: FormData = {
   is_active: false,
 };
 
+type TabId = 'details' | 'content';
+
 // =============================================================================
 // HIGHLIGHTED CODE EDITOR COMPONENT
 // =============================================================================
@@ -91,7 +96,6 @@ const HighlightedEditor: React.FC<HighlightedEditorProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const highlightRef = useRef<HTMLPreElement>(null);
   
-  // Sync scroll between textarea and highlight overlay
   const handleScroll = useCallback(() => {
     const textarea = textareaRef.current;
     const highlight = highlightRef.current;
@@ -102,17 +106,14 @@ const HighlightedEditor: React.FC<HighlightedEditorProps> = ({
     }
   }, []);
   
-  // Highlight merge fields in the content
   const highlightedContent = useMemo(() => {
     if (!value) return '';
     
-    // Escape HTML but preserve structure
     const escaped = value
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
     
-    // Highlight merge fields (guillemets)
     return escaped.replace(
       /«([^»]+)»/g,
       '<span class="merge-field">«$1»</span>'
@@ -121,15 +122,12 @@ const HighlightedEditor: React.FC<HighlightedEditorProps> = ({
   
   return (
     <div className="highlighted-editor">
-      {/* Syntax highlighting layer (visual only) */}
       <pre
         ref={highlightRef}
         className="highlighted-editor-backdrop"
         aria-hidden="true"
         dangerouslySetInnerHTML={{ __html: highlightedContent + '\n' }}
       />
-      
-      {/* Actual editable textarea (transparent text) */}
       <textarea
         ref={textareaRef}
         value={value}
@@ -139,75 +137,6 @@ const HighlightedEditor: React.FC<HighlightedEditorProps> = ({
         className="highlighted-editor-textarea"
         spellCheck={false}
       />
-      
-      <style>{`
-        .highlighted-editor {
-          position: relative;
-          font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
-          font-size: 12px;
-          line-height: 1.5;
-          background: rgb(17, 24, 39);
-          border: 1px solid rgb(55, 65, 81);
-          border-radius: 0.5rem;
-          overflow: hidden;
-        }
-        
-        .highlighted-editor-backdrop,
-        .highlighted-editor-textarea {
-          margin: 0;
-          padding: 12px 16px;
-          width: 100%;
-          height: 450px;
-          font: inherit;
-          line-height: inherit;
-          white-space: pre-wrap;
-          word-wrap: break-word;
-          overflow: auto;
-        }
-        
-        .highlighted-editor-backdrop {
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          color: rgb(209, 213, 219);
-          pointer-events: none;
-          z-index: 1;
-        }
-        
-        .highlighted-editor-textarea {
-          position: relative;
-          background: transparent;
-          color: transparent;
-          caret-color: rgb(251, 191, 36);
-          border: none;
-          outline: none;
-          resize: none;
-          z-index: 2;
-        }
-        
-        .highlighted-editor-textarea::placeholder {
-          color: rgb(75, 85, 99);
-        }
-        
-        .highlighted-editor-textarea:focus {
-          outline: none;
-        }
-        
-        .highlighted-editor:focus-within {
-          border-color: rgb(99, 102, 241);
-          box-shadow: 0 0 0 1px rgb(99, 102, 241);
-        }
-        
-        .highlighted-editor .merge-field {
-          background: rgba(251, 191, 36, 0.15);
-          color: rgb(251, 191, 36);
-          border-radius: 3px;
-          padding: 1px 2px;
-          font-weight: 500;
-        }
-      `}</style>
     </div>
   );
 };
@@ -231,19 +160,17 @@ export const TemplateEditor: React.FC = () => {
   const [detectedFields, setDetectedFields] = useState<string[]>([]);
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
   const [orgModules, setOrgModules] = useState<Record<string, any> | null>(null);
+  const [activeTab, setActiveTab] = useState<TabId>('details');
   
-  // Sample context for preview
   const mergeContext = useMemo<MergeContext>(() => getSampleContext(), []);
   
-  // Preview state
   const [previewHtml, setPreviewHtml] = useState('');
   const [previewSubject, setPreviewSubject] = useState('');
 
-  // Derive hasChanges
   const hasChanges = JSON.stringify(form) !== JSON.stringify(originalForm);
 
   // ---------------------------------------------------------------------------
-  // FETCH ORG MODULES (for merge fields availability)
+  // FETCH ORG MODULES
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const fetchOrgModules = async () => {
@@ -302,7 +229,6 @@ export const TemplateEditor: React.FC = () => {
         setForm(loadedForm);
         setOriginalForm(loadedForm);
         
-        // Detect fields on load
         const fields = detectFields(data.html_template || '', 'guillemets');
         const subjectFields = detectFields(data.subject_template || '', 'guillemets');
         setDetectedFields([...new Set([...fields, ...subjectFields])]);
@@ -320,7 +246,7 @@ export const TemplateEditor: React.FC = () => {
   }, [id, isNew, authLoading, navigate]);
 
   // ---------------------------------------------------------------------------
-  // FIELD DETECTION (on content change)
+  // FIELD DETECTION
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const fields = detectFields(form.html_template, 'guillemets');
@@ -329,7 +255,7 @@ export const TemplateEditor: React.FC = () => {
   }, [form.html_template, form.subject_template]);
 
   // ---------------------------------------------------------------------------
-  // LIVE PREVIEW (debounced)
+  // LIVE PREVIEW
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -391,17 +317,19 @@ export const TemplateEditor: React.FC = () => {
   const handleSave = async () => {
     if (!organizationId || !user) return;
 
-    // Validation
     if (!form.name.trim()) {
       toast.error('Template name is required');
+      setActiveTab('details');
       return;
     }
     if (!form.subject_template.trim()) {
       toast.error('Subject line is required');
+      setActiveTab('details');
       return;
     }
     if (!form.html_template.trim()) {
       toast.error('HTML content is required');
+      setActiveTab('content');
       return;
     }
 
@@ -435,6 +363,7 @@ export const TemplateEditor: React.FC = () => {
           details: {
             template_id: data.id,
             template_name: form.name,
+            category: form.category,
           },
         });
 
@@ -465,6 +394,8 @@ export const TemplateEditor: React.FC = () => {
           details: {
             template_id: id,
             template_name: form.name,
+            category: form.category,
+            fields_used: detectedFields,
           },
         });
 
@@ -478,6 +409,49 @@ export const TemplateEditor: React.FC = () => {
       setIsSaving(false);
     }
   };
+
+  // ---------------------------------------------------------------------------
+  // KEYBOARD SHORTCUTS - Use refs to avoid stale closures
+  // ---------------------------------------------------------------------------
+  const saveRef = useRef<() => Promise<void>>(handleSave);
+  const hasChangesRef = useRef<boolean>(hasChanges);
+  const isSavingRef = useRef<boolean>(isSaving);
+  
+  useEffect(() => {
+    saveRef.current = handleSave;
+    hasChangesRef.current = hasChanges;
+    isSavingRef.current = isSaving;
+  });
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if (hasChangesRef.current && !isSavingRef.current) {
+          saveRef.current();
+        }
+      }
+      
+      if (e.key === 'Escape') {
+        const target = e.target as HTMLElement;
+        const isInInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';
+        
+        if (isInInput) {
+          target.blur();
+        }
+      }
+      
+      const target = e.target as HTMLElement;
+      const isInInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';
+      if (!isInInput) {
+        if (e.key === '1') setActiveTab('details');
+        if (e.key === '2') setActiveTab('content');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // ---------------------------------------------------------------------------
   // RENDER
@@ -501,55 +475,93 @@ export const TemplateEditor: React.FC = () => {
         </div>
       )}
 
-      {/* Header */}
+      {/* ========================================================================
+       * HEADER CARD - Following Team Performance gold standard
+       * ======================================================================== */}
       <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate('/admin/modules/communications/templates')}
-              className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5 text-gray-400" />
-            </button>
-            <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
-              <FileText className="w-5 h-5 text-amber-400" />
+        <div className="flex flex-col gap-4">
+          {/* Top row: Icon/Title + Actions */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            {/* Icon + Title */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => navigate('/admin/modules/communications/templates')}
+                className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+                title="Back to templates (Esc)"
+              >
+                <ArrowLeft className="w-5 h-5 text-gray-400" />
+              </button>
+              <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <FileText className="w-5 h-5 text-amber-400" />
+              </div>
+              <div>
+                <h1 className="text-xl sm:text-2xl font-bold text-white">
+                  {isNew ? 'New Template' : form.name || 'Template'}
+                </h1>
+                <p className="text-gray-400 text-sm">
+                  {isNew ? 'Create a new email template' : 'Edit template settings and content'}
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-xl font-bold text-white">
-                {isNew ? 'New Template' : `Edit: ${form.name || 'Template'}`}
-              </h1>
-              <p className="text-gray-400 text-sm">
-                {isNew ? 'Create a new email template' : 'Modify template settings and content'}
-              </p>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2">
+              {!isNew && (
+                <button
+                  onClick={() => navigate(`/admin/modules/communications/templates/${id}/preview`)}
+                  className="btn-ghost-amber"
+                >
+                  <Eye className="w-4 h-4" />
+                  Preview & Send
+                </button>
+              )}
+              <button
+                onClick={handleSave}
+                disabled={!hasChanges || isSaving}
+                className={`btn ${
+                  hasChanges
+                    ? 'btn-primary'
+                    : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                }`}
+                title="Ctrl+S"
+              >
+                {isSaving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
+                {isNew ? 'Create' : 'Save'}
+              </button>
             </div>
           </div>
-          
-          <div className="flex items-center gap-2">
-            {!isNew && (
-              <button
-                onClick={() => navigate(`/admin/modules/communications/templates/${id}/preview`)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 bg-gray-700 text-white hover:bg-gray-600"
-              >
-                <Eye className="w-4 h-4" />
-                Full Preview
-              </button>
-            )}
-            <button
-              onClick={handleSave}
-              disabled={!hasChanges || isSaving}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
-                hasChanges
-                  ? 'bg-primary-500 hover:bg-primary-600 text-white'
-                  : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-              }`}
-            >
-              {isSaving ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+
+          {/* Template Status Badge */}
+          <div className="flex items-center gap-3">
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm font-medium ${
+              form.is_active
+                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                : 'bg-gray-500/20 text-gray-400 border border-gray-500/30'
+            }`}>
+              {form.is_active ? (
+                <>
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  Active
+                </>
               ) : (
-                <Save className="w-4 h-4" />
+                'Draft'
               )}
-              {isNew ? 'Create' : 'Save'}
-            </button>
+            </span>
+            <span className="text-sm text-gray-500">
+              {form.category.charAt(0).toUpperCase() + form.category.slice(1)}
+            </span>
+            {detectedFields.length > 0 && (
+              <>
+                <span className="text-gray-600">•</span>
+                <span className="text-sm text-gray-500">
+                  {detectedFields.length} merge field{detectedFields.length !== 1 ? 's' : ''}
+                </span>
+              </>
+            )}
           </div>
         </div>
 
@@ -564,307 +576,351 @@ export const TemplateEditor: React.FC = () => {
           >
             <div className="flex items-center gap-2">
               <Info className="w-4 h-4 text-amber-400 flex-shrink-0" />
-              <span className="text-sm font-medium text-gray-300">How to create a template</span>
+              <span className="text-sm font-medium text-gray-300">How to create an email template</span>
             </div>
             <ChevronUp className="w-4 h-4 text-gray-400" />
           </button>
           <div className="expandable-info-content">
             <div className="p-4 pt-2 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
-                <div className="bg-gray-800/30 rounded-lg p-3 border border-gray-700/30">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-sm">
+                <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-xs font-bold">1</span>
-                    <span className="text-gray-300 font-medium">Design</span>
+                    <span className="text-gray-300 font-medium">Details</span>
                   </div>
-                  <p className="text-gray-500 text-xs">Use BeeFree, Canva, or any HTML editor to design your email</p>
+                  <p className="text-gray-500 text-xs">Name, category, subject line</p>
                 </div>
-                <div className="bg-gray-800/30 rounded-lg p-3 border border-gray-700/30">
+                <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-xs font-bold">2</span>
-                    <span className="text-gray-300 font-medium">Paste HTML</span>
+                    <span className="text-gray-300 font-medium">Design</span>
                   </div>
-                  <p className="text-gray-500 text-xs">Export HTML from your editor and paste it below</p>
+                  <p className="text-gray-500 text-xs">Use BeeFree or Canva</p>
                 </div>
-                <div className="bg-gray-800/30 rounded-lg p-3 border border-gray-700/30">
+                <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-xs font-bold">3</span>
-                    <span className="text-gray-300 font-medium">Add Fields</span>
+                    <span className="text-gray-300 font-medium">Paste & Merge</span>
                   </div>
-                  <p className="text-gray-500 text-xs">Merge fields are <span className="text-amber-400">highlighted</span> — click to copy from reference</p>
+                  <p className="text-gray-500 text-xs">Add «merge fields»</p>
                 </div>
-                <div className="bg-gray-800/30 rounded-lg p-3 border border-gray-700/30">
+                <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-xs font-bold">4</span>
                     <span className="text-gray-300 font-medium">Preview</span>
                   </div>
-                  <p className="text-gray-500 text-xs">Toggle Desktop/Mobile to check responsive design</p>
+                  <p className="text-gray-500 text-xs">Check rendering</p>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-3 text-xs">
-                <a 
-                  href="https://beefree.io" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-primary-400 hover:text-primary-300"
-                >
-                  <ExternalLink className="w-3 h-3" />
-                  BeeFree (Free)
-                </a>
-                <a 
-                  href="https://www.canva.com" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-primary-400 hover:text-primary-300"
-                >
-                  <ExternalLink className="w-3 h-3" />
-                  Canva
-                </a>
-                <span className="text-gray-500">— Recommended free email design tools</span>
+              
+              <div className="flex flex-wrap items-center justify-between gap-4 text-xs pt-2 border-t border-gray-700/50">
+                <div className="flex items-center gap-3">
+                  <a 
+                    href="https://beefree.io" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-primary-400 hover:text-primary-300"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    BeeFree (Free)
+                  </a>
+                  <a 
+                    href="https://www.canva.com" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-primary-400 hover:text-primary-300"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Canva
+                  </a>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Keyboard className="w-4 h-4 text-gray-500" />
+                  <span className="text-gray-500">
+                    <kbd className="px-1.5 py-0.5 rounded bg-gray-700 text-gray-300">1</kbd>
+                    <kbd className="px-1.5 py-0.5 rounded bg-gray-700 text-gray-300 ml-1">2</kbd> Tabs
+                    <span className="mx-2">•</span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-gray-700 text-gray-300">Ctrl+S</kbd> Save
+                  </span>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Template Basics - Compact Row */}
-      <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {/* Name */}
-          <div className="md:col-span-2">
-            <label className="block text-xs font-medium text-gray-400 mb-1.5">
-              Template Name <span className="text-rose-400">*</span>
-            </label>
-            <input
-              type="text"
-              value={form.name}
-              onChange={(e) => updateForm('name', e.target.value)}
-              placeholder="Weekly Performance Digest"
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors text-sm"
-            />
-          </div>
-
-          {/* Category */}
-          <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1.5">
-              Category
-            </label>
-            <select
-              value={form.category}
-              onChange={(e) => updateForm('category', e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors text-sm"
-            >
-              <option value="performance">Performance</option>
-              <option value="hr">HR</option>
-              <option value="operations">Operations</option>
-              <option value="general">General</option>
-            </select>
-          </div>
-
-          {/* Active Toggle */}
-          <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1.5">
-              Status
-            </label>
+      {/* ========================================================================
+       * TABS + CONTENT CARD - Following Team Performance pattern
+       * ======================================================================== */}
+      <div className="bg-[#1a1f2b] rounded-lg shadow-lg">
+        {/* Tab Navigation */}
+        <div className="border-b border-gray-700">
+          <div className="flex items-center gap-2 p-4">
             <button
-              onClick={() => updateForm('is_active', !form.is_active)}
-              className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                form.is_active
-                  ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
-                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'
-              }`}
+              onClick={() => setActiveTab('details')}
+              className={`tab primary ${activeTab === 'details' ? 'active' : ''}`}
             >
-              {form.is_active ? (
-                <>
-                  <CheckCircle className="w-4 h-4" />
-                  Active
-                </>
-              ) : (
-                'Draft'
-              )}
+              <Settings className="w-4 h-4" />
+              Details
+            </button>
+            <button
+              onClick={() => setActiveTab('content')}
+              className={`tab green ${activeTab === 'content' ? 'active' : ''}`}
+            >
+              <Code className="w-4 h-4" />
+              Content
             </button>
           </div>
         </div>
 
-        {/* Description - Optional */}
-        <div className="mt-3">
-          <label className="block text-xs font-medium text-gray-400 mb-1.5">
-            Description <span className="text-gray-500">(optional)</span>
-          </label>
-          <input
-            type="text"
-            value={form.description}
-            onChange={(e) => updateForm('description', e.target.value)}
-            placeholder="Sent every Sunday at 6pm to all team members"
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors text-sm"
-          />
-        </div>
-      </div>
+        {/* Tab Content */}
+        <div className="p-4">
+          {/* ================================================================
+           * TAB: DETAILS
+           * ================================================================ */}
+          {activeTab === 'details' && (
+            <div className="space-y-6">
+              {/* Template Basics */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {/* Name */}
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Template Name <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={form.name}
+                    onChange={(e) => updateForm('name', e.target.value)}
+                    placeholder="Weekly Performance Digest"
+                    className="input w-full"
+                  />
+                </div>
 
-      {/* Subject Line */}
-      <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Type className="w-4 h-4 text-gray-500" />
-          <h2 className="text-sm font-semibold text-white">Subject Line</h2>
-          <span className="text-rose-400 text-xs">*</span>
-        </div>
-        <input
-          type="text"
-          value={form.subject_template}
-          onChange={(e) => updateForm('subject_template', e.target.value)}
-          placeholder="Your Week at «Org_Name» - «First_Name»"
-          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors font-mono text-sm"
-        />
-        {previewSubject && (
-          <p className="mt-2 text-xs text-gray-500">
-            Preview: <span className="text-gray-300">{previewSubject}</span>
-          </p>
-        )}
-      </div>
+                {/* Category */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Category
+                  </label>
+                  <select
+                    value={form.category}
+                    onChange={(e) => updateForm('category', e.target.value)}
+                    className="w-full"
+                  >
+                    <option value="performance">Performance</option>
+                    <option value="hr">HR</option>
+                    <option value="operations">Operations</option>
+                    <option value="general">General</option>
+                  </select>
+                </div>
 
-      {/* Editor Controls */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-xs text-gray-500">
-          <span>{form.html_template.length.toLocaleString()} characters</span>
-          {detectedFields.length > 0 && (
-            <>
-              <span>•</span>
-              <span className="flex items-center gap-1 text-emerald-400">
-                <CheckCircle className="w-3 h-3" />
-                {detectedFields.length} merge field{detectedFields.length !== 1 ? 's' : ''}
-              </span>
-            </>
-          )}
-          {detectedFields.length === 0 && form.html_template.length > 0 && (
-            <>
-              <span>•</span>
-              <span className="flex items-center gap-1 text-amber-400">
-                <AlertCircle className="w-3 h-3" />
-                No merge fields
-              </span>
-            </>
-          )}
-        </div>
-        
-        <button
-          onClick={handlePasteFromClipboard}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white transition-colors"
-        >
-          <Clipboard className="w-3.5 h-3.5" />
-          Paste HTML
-        </button>
-      </div>
-
-      {/* Main Editor Area - Code + Merge Fields Side by Side */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        
-        {/* HTML Editor (2 cols) */}
-        <div className="xl:col-span-2">
-          <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Code className="w-4 h-4 text-gray-500" />
-                <h2 className="text-sm font-semibold text-white">HTML Content</h2>
-                <span className="text-rose-400 text-xs">*</span>
+                {/* Active Toggle */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Status
+                  </label>
+                  <button
+                    onClick={() => updateForm('is_active', !form.is_active)}
+                    className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                      form.is_active
+                        ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
+                        : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'
+                    }`}
+                  >
+                    {form.is_active ? (
+                      <>
+                        <CheckCircle className="w-4 h-4" />
+                        Active
+                      </>
+                    ) : (
+                      'Draft'
+                    )}
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2 text-xs text-gray-500">
-                <span className="w-3 h-3 rounded bg-amber-400/20 border border-amber-400/30"></span>
-                <span>Merge fields highlighted</span>
+
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Description <span className="text-gray-500">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={form.description}
+                  onChange={(e) => updateForm('description', e.target.value)}
+                  placeholder="Sent every Sunday at 6pm to all team members"
+                  className="input w-full"
+                />
+              </div>
+
+              {/* Subject Line */}
+              <div className="pt-4 border-t border-gray-700">
+                <div className="flex items-center gap-2 mb-3">
+                  <Type className="w-5 h-5 text-gray-500" />
+                  <h3 className="text-lg font-semibold text-white">Subject Line</h3>
+                  <span className="text-rose-400 text-sm">*</span>
+                </div>
+                <input
+                  type="text"
+                  value={form.subject_template}
+                  onChange={(e) => updateForm('subject_template', e.target.value)}
+                  placeholder="Your Week at «Org_Name» - «First_Name»"
+                  className="input w-full font-mono"
+                />
+                {previewSubject && (
+                  <p className="mt-3 text-sm text-gray-500">
+                    Preview: <span className="text-gray-300">{previewSubject}</span>
+                  </p>
+                )}
               </div>
             </div>
-            
-            <HighlightedEditor
-              value={form.html_template}
-              onChange={(value) => updateForm('html_template', value)}
-              placeholder={`Paste your HTML here...
+          )}
+
+          {/* ================================================================
+           * TAB: CONTENT
+           * ================================================================ */}
+          {activeTab === 'content' && (
+            <div className="space-y-6">
+              {/* Editor Controls */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <span>{form.html_template.length.toLocaleString()} characters</span>
+                  {detectedFields.length > 0 && (
+                    <>
+                      <span>•</span>
+                      <span className="flex items-center gap-1 text-emerald-400">
+                        <CheckCircle className="w-3 h-3" />
+                        {detectedFields.length} merge field{detectedFields.length !== 1 ? 's' : ''}
+                      </span>
+                    </>
+                  )}
+                  {detectedFields.length === 0 && form.html_template.length > 0 && (
+                    <>
+                      <span>•</span>
+                      <span className="flex items-center gap-1 text-amber-400">
+                        <AlertCircle className="w-3 h-3" />
+                        No merge fields
+                      </span>
+                    </>
+                  )}
+                </div>
+                
+                <button
+                  onClick={handlePasteFromClipboard}
+                  className="btn-ghost text-xs"
+                >
+                  <Clipboard className="w-3.5 h-3.5" />
+                  Paste HTML
+                </button>
+              </div>
+
+              {/* Main Editor Area */}
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                {/* HTML Editor */}
+                <div className="xl:col-span-2">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Code className="w-4 h-4 text-gray-500" />
+                      <h3 className="text-sm font-semibold text-white">HTML Content</h3>
+                      <span className="text-rose-400 text-xs">*</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <span className="w-3 h-3 rounded bg-amber-400/20 border border-amber-400/30"></span>
+                      <span>Merge fields highlighted</span>
+                    </div>
+                  </div>
+                  
+                  <HighlightedEditor
+                    value={form.html_template}
+                    onChange={(value) => updateForm('html_template', value)}
+                    placeholder={`Paste your HTML here...
 
 Design your email in BeeFree or Canva, export as HTML, and paste here.
-Then add merge fields like «First_Name» where you want personalized data.
+Then add merge fields like «First_Name» where you want personalized data.`}
+                  />
+                  
+                  {/* Detected Fields */}
+                  {detectedFields.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {detectedFields.map(field => (
+                        <span
+                          key={field}
+                          className="inline-flex items-center px-2 py-0.5 rounded bg-amber-400/10 border border-amber-400/20 text-xs font-mono text-amber-400"
+                        >
+                          {field}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
-Merge fields will be highlighted in amber for easy identification.`}
-            />
-            
-            {/* Detected Fields */}
-            {detectedFields.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {detectedFields.map(field => (
-                  <span
-                    key={field}
-                    className="inline-flex items-center px-2 py-0.5 rounded bg-amber-400/10 border border-amber-400/20 text-xs font-mono text-amber-400"
-                  >
-                    {field}
-                  </span>
-                ))}
+                {/* Merge Fields Reference */}
+                <div>
+                  <MergeFieldsReference orgModules={orgModules} />
+                </div>
               </div>
-            )}
-          </div>
-        </div>
 
-        {/* Merge Fields Reference (1 col) */}
-        <div>
-          <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-4 h-full">
-            <MergeFieldsReference orgModules={orgModules} />
-          </div>
-        </div>
-      </div>
-
-      {/* Live Preview - Full Width with Desktop/Mobile Toggle */}
-      <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Eye className="w-4 h-4 text-gray-500" />
-            <h2 className="text-sm font-semibold text-white">Live Preview</h2>
-            <span className="text-xs text-gray-500">• Sample: Marcus Chen</span>
-          </div>
-          
-          {/* Desktop/Mobile Toggle */}
-          <div className="flex items-center gap-1 p-1 bg-gray-800 rounded-lg">
-            <button
-              onClick={() => setPreviewMode('desktop')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                previewMode === 'desktop'
-                  ? 'bg-gray-700 text-white'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              <Monitor className="w-3.5 h-3.5" />
-              Desktop
-            </button>
-            <button
-              onClick={() => setPreviewMode('mobile')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                previewMode === 'mobile'
-                  ? 'bg-gray-700 text-white'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              <Smartphone className="w-3.5 h-3.5" />
-              Mobile
-            </button>
-          </div>
-        </div>
-        
-        {previewHtml ? (
-          <div className={`bg-white rounded-lg overflow-hidden mx-auto transition-all duration-300 ${
-            previewMode === 'mobile' ? 'max-w-[375px]' : 'max-w-full'
-          }`}>
-            <iframe
-              srcDoc={previewHtml}
-              className="w-full border-0"
-              style={{ height: previewMode === 'mobile' ? '667px' : '600px' }}
-              title="Email Preview"
-              sandbox="allow-same-origin"
-            />
-          </div>
-        ) : (
-          <div className="flex items-center justify-center h-[300px] bg-gray-800/50 rounded-lg border border-gray-700/50">
-            <div className="text-center">
-              <Mail className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-              <p className="text-gray-500">
-                Paste HTML content above to see preview
-              </p>
+              {/* Live Preview */}
+              <div className="pt-6 border-t border-gray-700">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Eye className="w-4 h-4 text-gray-500" />
+                    <h3 className="text-sm font-semibold text-white">Live Preview</h3>
+                    <span className="text-xs text-gray-500">• Sample: Marcus Chen</span>
+                  </div>
+                  
+                  {/* Desktop/Mobile Toggle */}
+                  <div className="flex items-center gap-1 p-1 bg-gray-800 rounded-lg">
+                    <button
+                      onClick={() => setPreviewMode('desktop')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                        previewMode === 'desktop'
+                          ? 'bg-gray-700 text-white'
+                          : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      <Monitor className="w-3.5 h-3.5" />
+                      Desktop
+                    </button>
+                    <button
+                      onClick={() => setPreviewMode('mobile')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                        previewMode === 'mobile'
+                          ? 'bg-gray-700 text-white'
+                          : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      <Smartphone className="w-3.5 h-3.5" />
+                      Mobile
+                    </button>
+                  </div>
+                </div>
+                
+                {previewHtml ? (
+                  <div className={`bg-white rounded-lg overflow-hidden mx-auto transition-all duration-300 ${
+                    previewMode === 'mobile' ? 'max-w-[375px]' : 'max-w-full'
+                  }`}>
+                    <iframe
+                      srcDoc={previewHtml}
+                      className="w-full border-0"
+                      style={{ height: previewMode === 'mobile' ? '667px' : '600px' }}
+                      title="Email Preview"
+                      sandbox="allow-same-origin"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-[300px] bg-gray-800/50 rounded-lg border border-gray-700/50">
+                    <div className="text-center">
+                      <Mail className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                      <p className="text-gray-500">
+                        Paste HTML content above to see preview
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Floating Save Bar */}
@@ -876,20 +932,20 @@ Merge fields will be highlighted in amber for easy identification.`}
               <button
                 onClick={handleUndo}
                 disabled={isSaving}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-700 text-white hover:bg-gray-600 transition-colors"
+                className="btn-ghost"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
+                <RotateCcw className="w-4 h-4" />
                 Undo
               </button>
               <button
                 onClick={handleSave}
                 disabled={isSaving}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-primary-500 hover:bg-primary-600 text-white transition-colors"
+                className="btn-primary"
               >
                 {isSaving ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <Save className="w-3.5 h-3.5" />
+                  <Save className="w-4 h-4" />
                 )}
                 {isNew ? 'Create' : 'Save'}
               </button>

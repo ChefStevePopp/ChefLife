@@ -351,6 +351,239 @@ useEffect(() => {
 
 ---
 
+## UX Cohesion Standards
+
+These standards ensure visual and interaction consistency across all ChefLife modules.
+
+### Navigation Depth
+
+**Maximum 3 levels of nesting:**
+```
+Config → List → Detail (with tabs)
+  1        2           3
+```
+
+**Anti-pattern (avoid):**
+```
+Config → List → Editor → Preview → Send
+  1        2       3         4        5
+```
+
+When a feature needs multiple concerns (edit, preview, send), use **tabs within the detail view** rather than separate routes.
+
+### Tabbed Interfaces
+
+Use tabs when a module has multiple concerns that benefit from context preservation and reduced navigation depth.
+
+**Reference Implementations:**
+- `src/features/team/components/TeamPerformance/index.tsx` — Gold standard (7 tabs)
+- `src/features/admin/components/sections/Communications/Communications.tsx` — Module config + list combined
+
+**The Pattern:**
+```
+┌─ Header Card ──────────────────────────────────────┐
+│ Icon + Title + Stats                               │
+│ Platform status / contextual info                  │
+│ Expandable info section                            │
+└────────────────────────────────────────────────────┘
+
+┌─ Tabs + Content Card ──────────────────────────────┐
+│ [Tab 1]  [Tab 2]  [Tab 3]                         │
+│ ───────────────────────────────────────────────── │
+│ Tab content renders here based on activeTab       │
+└────────────────────────────────────────────────────┘
+```
+
+**Route Simplification with Tabs:**
+```
+// Before: Separate routes for config and list
+/admin/modules/communications           → Config page
+/admin/modules/communications/templates → List page (extra click)
+
+// After: Tabs combine them
+/admin/modules/communications           → Library tab (default)
+/admin/modules/communications?tab=settings → Settings tab
+```
+
+**Tab buttons with L5 styling:**
+```tsx
+<div className="flex items-center gap-2">
+  <button className={`tab primary ${activeTab === 'library' ? 'active' : ''}`}>
+    <Library className="w-4 h-4" />
+    Library
+  </button>
+  <button className={`tab green ${activeTab === 'settings' ? 'active' : ''}`}>
+    <Settings className="w-4 h-4" />
+    Settings
+  </button>
+</div>
+```
+
+**Modular Tab Components:**
+
+Keep tab content in separate files for maintainability:
+```
+Communications/
+├── Communications.tsx      # ~300 lines - orchestrator only
+├── components/
+│   ├── LibraryTab.tsx      # Self-contained tab
+│   ├── SettingsTab.tsx     # Self-contained tab
+│   ├── StoreTab.tsx        # Future tab (one file to add)
+│   └── ...
+```
+
+Each tab component owns:
+- Its own state
+- Its own data fetching  
+- Its own NEXUS logging
+- Its own UI
+
+The orchestrator stays slim (~300 lines max).
+
+**Tab Color Progression (from index.css):**
+
+| Position | Color | Class | Use For |
+|----------|-------|-------|--------|
+| 1st | Blue | `.primary` | Primary/default tab |
+| 2nd | Green | `.green` | Content, success states |
+| 3rd | Amber | `.amber` | Review, warnings, pending |
+| 4th | Rose | `.rose` | Danger, deletions |
+| 5th | Purple | `.purple` | HR, people, special |
+| 6th | Lime | `.lime` | Fresh, new items |
+| 7th | Red | `.red` | Critical actions |
+| 8th | Cyan | `.cyan` | Info, secondary blue |
+
+*Blues bookend the row for visual balance when using full progression.*
+
+**Tab Anatomy:**
+- Icon (Lucide, 4x4) + Label
+- Active: white text, colored top bar, `bg-gray-800`
+- Inactive: gray text, muted icon, hover reveals
+
+### Icon Standard
+
+**Lucide Icons only.** No mixing icon libraries.
+
+```tsx
+// ✅ Correct
+import { FileText, Code, Eye, Send } from "lucide-react";
+
+// ❌ Wrong - don't mix libraries
+import { FaFile } from "react-icons/fa";
+import { MdCode } from "react-icons/md";
+```
+
+**Icon Sizes:**
+| Context | Size | Class |
+|---------|------|-------|
+| Inline with text | 4x4 | `w-4 h-4` |
+| Card headers | 5x5 | `w-5 h-5` |
+| Empty states | 8x8 to 12x12 | `w-8 h-8` / `w-12 h-12` |
+| Page headers | 5x5 in icon box | `w-5 h-5` |
+
+**Icon Box Pattern (headers):**
+```tsx
+<div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
+  <Mail className="w-5 h-5 text-amber-400" />
+</div>
+```
+
+---
+
+## CSS Component Library
+
+**Location:** `src/index.css`
+
+ChefLife maintains a centralized CSS component library for reusable patterns. Always check here before writing inline styles or duplicating patterns.
+
+### Core Components (from `@layer components`)
+
+| Class | Purpose | Usage |
+|-------|---------|-------|
+| `.card` | Standard card container | `bg-gray-800/50 backdrop-blur-xl border border-gray-700/50 rounded-2xl shadow-xl` |
+| `.btn` | Button base | Flex, centered, rounded, with transitions |
+| `.btn-primary` | Primary action | Blue background with hover |
+| `.btn-secondary` | Secondary action | Gray background |
+| `.btn-ghost` | Subtle action | Transparent with border |
+| `.btn-ghost-red` | Danger ghost | Red text, red hover |
+| `.btn-ghost-green` | Success ghost | Green text, green hover |
+| `.btn-ghost-amber` | Warning ghost | Amber text, amber hover |
+| `.btn-ghost-primary` | Primary ghost | Blue text, blue hover |
+| `.input` | Standard text input | Dark background, border, focus ring |
+| `.tab` | Tab navigation button | With color variants (see UX Cohesion) |
+| `.tab.active` | Active tab state | White text, colored top bar |
+| `.expandable-info-section` | Collapsible info panel | Use with `.expanded` class toggle |
+| `.expandable-kanban-section` | Collapsible kanban panel | Alternative expandable style |
+
+### Animation Classes
+
+| Class | Effect |
+|-------|--------|
+| `.animate-slide-in-right` | Slide in from right |
+| `.animate-in.slide-in-from-left-2` | Slide in from left |
+| `.animate-in.slide-in-from-right-2` | Slide in from right |
+| `.animate-in.fade-in` | Fade in |
+| `.mobile-nav-appear` | Mobile navigation slide up |
+| `.task-updated` | Green pulse for updated items |
+
+### Floating Action Bar
+
+```html
+<div class="floating-action-bar">           <!-- or .warning, .danger, .success -->
+  <div class="floating-action-bar-inner">
+    <div class="floating-action-bar-content">
+      <!-- Your content -->
+    </div>
+  </div>
+</div>
+```
+
+**Variants:** `.warning` (amber), `.danger` (rose), `.success` (emerald)
+
+### Toggle Switch
+
+```html
+<label class="toggle-switch">       <!-- or .emerald, .amber, .rose -->
+  <input type="checkbox" />
+  <div class="toggle-switch-track" />
+</label>
+```
+
+**Variants:** `.emerald`, `.amber`, `.rose` (default is primary blue)
+
+### Specialized Components
+
+| Class | Purpose | Location |
+|-------|---------|----------|
+| `.highlighted-editor` | Code editor with syntax highlighting | TemplateEditor |
+| `.highlighted-editor-backdrop` | Syntax highlight layer | TemplateEditor |
+| `.highlighted-editor-textarea` | Transparent input layer | TemplateEditor |
+| `.merge-field` | Highlighted merge field tag | TemplateEditor |
+| `.toggle-switch` | On/off toggle switch | Config pages |
+| `.toggle-switch-track` | Toggle switch track element | Config pages |
+| `.stage-dropdown` | Wider dropdown for recipe stages | Recipe components |
+
+### Utility Classes
+
+| Class | Purpose |
+|-------|--------|
+| `.scrollbar-thin` | Thin scrollbar with hover reveal |
+| `.pb-safe` | Safe area padding for mobile |
+| `.line-clamp-1/2/3` | Text truncation |
+| `.text-2xs` | Extra small text (0.65rem) |
+| `.text-balance` | Balanced text wrapping |
+| `.text-pretty` | Pretty text wrapping |
+
+### Adding New CSS Components
+
+When adding reusable styles:
+1. Add to `src/index.css` in appropriate `@layer` section
+2. Include a comment header describing the component
+3. Document in this strategy file
+4. Remove any inline `<style>` tags from components
+
+---
+
 ## L5 Color Palette
 
 Use these consistently across all L5 components:
@@ -445,11 +678,34 @@ A feature is L5 complete when:
 ## References
 
 - **UTILS.md** — Date utilities, formatters
+- **src/index.css** — CSS component library (buttons, cards, animations)
+- **tailwind.config.js** — Custom colors, fonts, fluid spacing
 - **Handoff docs** — Feature specifications
-- **The Roster** — Reference L5 implementation (search, filter, pagination, bulk)
-- **Team Performance Config** — Reference L5 config panels
-- **Communications Config** — Reference L5 module config
+- **ROADMAP-Communications.md** — Communications module roadmap
+
+**Reference Implementations:**
+- **Team Performance** — Gold standard tabbed interface (7 tabs, modular components)
+- **Communications** — Tabbed module pattern (Library + Settings tabs, route simplification)
+- **The Roster** — L5 list page (search, filter, pagination, bulk actions)
+- **TemplateEditor** — L5 editor with header-to-tabs pattern
 
 ---
 
-*Last updated: January 6, 2026*
+*Last updated: January 8, 2026*
+
+---
+
+## Changelog
+
+**Jan 8, 2026 (PM):**
+- Added Communications module as second tabbed interface reference
+- Documented route simplification pattern (tabs reduce clicks)
+- Added modular tab component structure (orchestrator + tab files)
+- Updated tabbed interface visual diagram
+
+**Jan 8, 2026 (AM):**
+- Added UX Cohesion Standards (navigation depth, tabbed interfaces, icon standard)
+- Added Tab Color Progression reference
+- Documented Lucide-only icon policy
+- Added toggle switch to CSS component library
+- Added highlighted editor styles reference

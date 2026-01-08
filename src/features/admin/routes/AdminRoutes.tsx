@@ -21,8 +21,7 @@ import { ChecklistsManager } from "../components/sections/ChecklistsManager";
 import { MyProfile } from "@/features/team/components/MyProfile";
 import { TeamPerformance } from "@/features/team/components/TeamPerformance";
 import { TeamPerformanceConfig } from "../components/sections/TeamPerformanceConfig";
-import { CommunicationsConfig } from "../components/sections/CommunicationsConfig";
-import { TemplateList, TemplateEditor, TemplatePreview } from "../components/sections/Communications";
+import { Communications, TemplateEditor, TemplatePreview } from "../components/sections/Communications";
 
 export const AdminRoutes: React.FC = () => {
   return (
@@ -43,8 +42,7 @@ export const AdminRoutes: React.FC = () => {
         <Route path="organizations" element={<OrganizationSettings />} />
         <Route path="modules" element={<ModulesManager />} />
         <Route path="modules/team-performance" element={<TeamPerformanceConfig />} />
-        <Route path="modules/communications" element={<CommunicationsConfig />} />
-        <Route path="modules/communications/templates" element={<TemplateList />} />
+        <Route path="modules/communications" element={<Communications />} />
         <Route path="modules/communications/templates/new" element={<TemplateEditor />} />
         <Route path="modules/communications/templates/:id" element={<TemplateEditor />} />
         <Route path="modules/communications/templates/:id/preview" element={<TemplatePreview />} />

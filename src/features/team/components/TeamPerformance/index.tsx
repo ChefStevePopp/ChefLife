@@ -24,6 +24,7 @@ import {
   FileText,
   History,
 } from "lucide-react";
+import { SECURITY_LEVELS } from "@/config/security";
 
 // Tab Components
 import { OverviewTab } from "./components/OverviewTab";
@@ -48,7 +49,7 @@ type ModuleState = 'loading' | 'not_enabled' | 'setup_required' | 'no_data' | 'r
 
 export const TeamPerformance: React.FC = () => {
   const navigate = useNavigate();
-  const { organizationId } = useAuth();
+  const { organizationId, securityLevel } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>("overview");
   const [moduleState, setModuleState] = useState<ModuleState>('loading');
   const [moduleEnabled, setModuleEnabled] = useState<boolean | null>(null);
@@ -516,8 +517,17 @@ export const TeamPerformance: React.FC = () => {
   // READY STATE - FULL MODULE UI
   // ==========================================================================
 
+  const isOmega = securityLevel === SECURITY_LEVELS.OMEGA;
+
   return (
     <div className="space-y-6">
+      {/* Diagnostic Text - Omega only */}
+      {isOmega && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/team/components/TeamPerformance/index.tsx
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-4">
         <div className="flex flex-col gap-4">
