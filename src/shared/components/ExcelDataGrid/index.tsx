@@ -15,6 +15,7 @@ import { ColumnFilter } from "./ColumnFilter";
 import { ResizableHeader } from "./ResizableHeader";
 import { AllergenCell } from "@/features/admin/components/sections/recipe/MasterIngredientList/components/AllergenCell";
 import { PriceChangeCell } from "@/features/admin/components/sections/VendorInvoice/components/PriceHistory/PriceChangeCell";
+import { ImageWithFallback } from "@/shared/components/ImageWithFallback";
 
 interface ExcelDataGridProps<T> {
   columns: ExcelColumn[];
@@ -312,20 +313,13 @@ export function ExcelDataGrid<T>({
         return `${Number(value).toFixed(1)}%`;
 
       case "imageUrl":
-        return value ? (
-          <div className="w-10 h-10 rounded-md overflow-hidden bg-gray-800">
-            <img
-              src={value}
-              alt="Thumbnail"
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src =
-                  "https://via.placeholder.com/40?text=N/A";
-              }}
-            />
-          </div>
-        ) : (
-          "-"
+        return (
+          <ImageWithFallback
+            src={value}
+            alt="Thumbnail"
+            size="md"
+            shape="rounded"
+          />
         );
 
       case "boolean":

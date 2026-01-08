@@ -7,7 +7,6 @@ import { TeamManagement } from "../components/sections/TeamManagement";
 import { PermissionsManager } from "../components/sections/PermissionsManager";
 import { Nexus } from "../components/sections/Nexus";
 import { HelpSupport } from "../components/sections/HelpSupport";
-import { ExcelImports } from "../components/sections/ExcelImports";
 import { RecipeManager } from "@/features/recipes/components/RecipeManager";
 import { DevManagement } from "../components/sections/DevManagement";
 import { OrganizationSettings } from "../components/settings/OrganizationSettings";
@@ -23,6 +22,9 @@ import { TeamPerformance } from "@/features/team/components/TeamPerformance";
 import { TeamPerformanceConfig } from "../components/sections/TeamPerformanceConfig";
 import { Communications, TemplateEditor, TemplatePreview } from "../components/sections/Communications";
 import { Operations } from "../components/sections/Operations";
+// Data Management - proper routes instead of hash-based
+import { MasterIngredientList } from "../components/sections/recipe/MasterIngredientList";
+import { InventoryManagement } from "../components/sections/InventoryManagement";
 
 export const AdminRoutes: React.FC = () => {
   return (
@@ -37,8 +39,10 @@ export const AdminRoutes: React.FC = () => {
         <Route path="app-access" element={<PermissionsManager />} />
         <Route path="nexus" element={<Nexus />} />
         <Route path="help" element={<HelpSupport />} />
-        <Route path="excel-imports" element={<ExcelImports />} />
-        <Route path="vendor-invoices" element={<VendorInvoiceManager />} />
+        {/* Data Management - proper routes */}
+        <Route path="data/ingredients" element={<MasterIngredientList />} />
+        <Route path="data/invoices" element={<VendorInvoiceManager />} />
+        <Route path="data/inventory" element={<InventoryManagement />} />
         <Route path="dev-management" element={<DevManagement />} />
         <Route path="organizations" element={<OrganizationSettings />} />
         <Route path="operations" element={<Operations />} />

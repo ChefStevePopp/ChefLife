@@ -34,26 +34,139 @@ ChefLife's L5 design language prioritizes:
 - [ ] Basic data fetch (even if no data exists yet)
 
 **L5 Header Pattern:**
+
+There are two variants of L5 headers, both wrapped in a `bg-[#1a1f2b] rounded-lg shadow-lg p-4` card.
+
+**Variant A: Simple Header** (Operations, Settings pages)
 ```tsx
+// Reference: src/features/admin/components/sections/Operations/Operations.tsx
 <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-4">
-  <div className="flex items-center justify-between">
-    <div className="flex items-center gap-3">
-      <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-700 rounded-lg">
-        <ArrowLeft className="w-5 h-5 text-gray-400" />
-      </button>
-      <div className="w-10 h-10 rounded-lg bg-{color}-500/20 flex items-center justify-center">
-        <Icon className="w-5 h-5 text-{color}-400" />
-      </div>
-      <div>
-        <h1 className="text-xl font-bold text-white">Title</h1>
-        <p className="text-gray-400 text-sm">Subtitle description</p>
+  <div className="flex flex-col gap-4">
+    {/* Top row: Icon/Title */}
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-lg bg-primary-500/20 flex items-center justify-center">
+          <Settings className="w-5 h-5 text-primary-400" />
+        </div>
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-white">Operations</h1>
+          <p className="text-gray-400 text-sm">Define how your kitchen measures, stores, and categorizes</p>
+        </div>
       </div>
     </div>
-    <div className="flex items-center gap-2">
-      {/* Primary action button */}
+
+    {/* Expandable Info Section */}
+    <div className={`expandable-info-section ${isInfoExpanded ? 'expanded' : ''}`}>
+      <button
+        onClick={() => setIsInfoExpanded(!isInfoExpanded)}
+        className="expandable-info-header w-full justify-between"
+      >
+        <div className="flex items-center gap-2">
+          <Info className="w-4 h-4 text-primary-400 flex-shrink-0" />
+          <span className="text-sm font-medium text-gray-300">About Operations</span>
+        </div>
+        <ChevronUp className="w-4 h-4 text-gray-400" />
+      </button>
+      <div className="expandable-info-content">
+        <div className="p-4 pt-2 space-y-4">
+          {/* Info content here */}
+        </div>
+      </div>
     </div>
   </div>
 </div>
+```
+
+**Variant B: Rich Header** (Team Performance, data-heavy pages)
+```tsx
+// Reference: src/features/team/components/TeamPerformance/index.tsx
+<div className="bg-[#1a1f2b] rounded-lg shadow-lg p-4">
+  <div className="flex flex-col gap-4">
+    {/* Top row: Icon/Title + Stats */}
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      {/* Icon + Title */}
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-lg bg-primary-500/20 flex items-center justify-center flex-shrink-0">
+          <TrendingUp className="w-5 h-5 text-primary-400" />
+        </div>
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-white">Team Performance</h1>
+          <p className="text-gray-400 text-sm">Professional Excellence & Attendance Management</p>
+        </div>
+      </div>
+
+      {/* Quick Stats Badge */}
+      <div className="flex items-center gap-3">
+        <div className="px-3 py-2 bg-gray-800/50 rounded-lg border border-gray-700/30">
+          <div className="text-xs text-gray-500 uppercase tracking-wide">Team</div>
+          <div className="text-lg font-semibold text-white">26</div>
+        </div>
+        {/* Conditional alert badges */}
+        {alertCount > 0 && (
+          <div className="px-3 py-2 bg-rose-500/10 rounded-lg border border-rose-500/30">
+            <div className="text-xs text-rose-400 uppercase tracking-wide">Tier 3</div>
+            <div className="text-lg font-semibold text-rose-400">{alertCount}</div>
+          </div>
+        )}
+      </div>
+    </div>
+
+    {/* Period Selector with Progress */}
+    {selectedCycle && (
+      <div className="space-y-2">
+        <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
+          <div className="flex items-center justify-between mb-2">
+            {/* Period Dropdown */}
+            <button className="flex items-center gap-2 hover:bg-gray-700/30 rounded-lg px-2 py-1">
+              <Calendar className="w-4 h-4 text-primary-400" />
+              <span className="text-sm font-medium text-gray-300">Jan-Apr 2026</span>
+              <span className="px-1.5 py-0.5 text-xs font-medium bg-primary-500/20 text-primary-400 rounded">
+                Current
+              </span>
+              <ChevronDown className="w-4 h-4 text-gray-500" />
+            </button>
+            <span className="text-xs text-gray-500">Day 9 of 120</span>
+          </div>
+          
+          {/* Progress bar */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-2 bg-gray-700 rounded-full overflow-hidden">
+              <div className="h-full bg-primary-500" style={{ width: '7.5%' }} />
+            </div>
+            <span className="text-xs text-gray-400">Jan 1, 2026 — Apr 30, 2026</span>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Expandable Info Section */}
+    <div className="expandable-info-section mt-4">
+      {/* Same pattern as Variant A */}
+    </div>
+  </div>
+</div>
+```
+
+**When to use which:**
+| Variant | Use When |
+|---------|----------|
+| Simple (A) | Settings pages, config screens, simple modules |
+| Rich (B) | Data-heavy pages with KPIs, time periods, or aggregate stats |
+
+**Header Anatomy:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ ┌──────┐                                          ┌─────────┐  │
+│ │ Icon │  Title                                   │  STATS  │  │
+│ │ Box  │  Subtitle                                │   26    │  │
+│ └──────┘                                          └─────────┘  │
+├─────────────────────────────────────────────────────────────────┤
+│ 📅 Jan-Apr 2026 [Current] ▼                    Day 9 of 120   │
+│ ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░  Jan 1 — Apr 30, 2026       │
+├─────────────────────────────────────────────────────────────────┤
+│ ⓘ About Team Performance                                   ⌃   │
+│   (expandable content)                                         │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -804,11 +917,15 @@ A feature is L5 complete when:
 - **ROADMAP-Communications.md** — Communications module roadmap
 
 **Reference Implementations:**
-- **Team Performance** — Gold standard tabbed interface (7 tabs, modular components)
+- **Team Performance** — Gold standard tabbed interface (7 tabs, modular components), **Rich L5 Header** with stats + progress
+- **Operations** — Admin lifecycle step 2, **Simple L5 Header** with expandable info
 - **Communications** — Tabbed module pattern (Library + Settings tabs, route simplification)
-- **Operations** — Admin lifecycle step 2 (Variables + Food Relationships tabs)
 - **The Roster** — L5 list page (search, filter, pagination, bulk actions)
 - **TemplateEditor** — L5 editor with header-to-tabs pattern
+
+**L5 Header Gold Standards:**
+- `src/features/admin/components/sections/Operations/Operations.tsx` — Simple Header (Variant A)
+- `src/features/team/components/TeamPerformance/index.tsx` — Rich Header (Variant B)
 
 **Related Documentation:**
 - **ROADMAP.md** — Product roadmap with module hierarchy
@@ -816,11 +933,22 @@ A feature is L5 complete when:
 
 ---
 
-*Last updated: January 8, 2026*
+*Last updated: January 9, 2026*
 
 ---
 
 ## Changelog
+
+**Jan 9, 2026 (Late Night):**
+- **Documented L5 Header Pattern** with two variants:
+  - Variant A: Simple Header (Operations, Settings) - Icon + Title + Expandable Info
+  - Variant B: Rich Header (Team Performance) - Icon + Title + Stats Badge + Period Selector + Progress Bar + Expandable Info
+- Added Header Anatomy ASCII diagram
+- Added reference implementations: `Operations.tsx`, `TeamPerformance/index.tsx`
+- Fixed sidebar active states for hash-based routes (#ingredients, #prepared, #inventory)
+- Created `ImageWithFallback` component for graceful missing image handling
+- Simplified `ExcelImports.tsx` - removed duplicate tab navigation (sidebar handles it)
+- Updated `InventoryManagement` with L5 tabs using index.css `.tab` classes
 
 **Jan 8, 2026 (Evening):**
 - Added Phase 6 Polish: Dropdown/popover stability pattern

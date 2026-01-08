@@ -1,5 +1,6 @@
 export * from "./excel";
 export * from "./inventory";
+export * from "./inventory-sessions";
 export * from "./tasks";
 
 export interface MasterIngredient {
