@@ -1,3 +1,24 @@
+/**
+ * OrganizationSettings - Company Settings Main Component
+ * 
+ * L5 Design: 
+ * - Header icon = amber (matches Organization nav context)
+ * - Tabs use CSS color progression (primary, green, amber, rose, lime)
+ * - Section icons = gray (structural, not competing)
+ * - Focus on content, not chrome
+ * 
+ * Part of Admin Lifecycle: Step 1 - "Who you are"
+ * 
+ * Tabs:
+ * - Organization: Business identity, contact info, addresses
+ * - Industry: Business type, cuisine, revenue centers
+ * - Location: Seating capacity, operating hours
+ * - Localization: Timezone, currency, date/time formats
+ * - Compliance: Health certificates, inspection history
+ * 
+ * Location: Admin → Organization → Company Settings
+ */
+
 import React, { useState, useEffect } from "react";
 import { 
   Building2, 
@@ -8,12 +29,13 @@ import {
   Info,
   Save,
   X,
-  Edit3
+  ShieldCheck
 } from "lucide-react";
 import { OrganizationDetails } from "./OrganizationDetails";
 import { IndustryDetails } from "./IndustryDetails";
 import { LocationDetails } from "./LocationDetails";
 import { LocalizationSettings } from "./LocalizationSettings";
+import { BoardOfHealth } from "./BoardOfHealth";
 import { useOrganizationSettings } from "./useOrganizationSettings";
 import { LoadingLogo } from "@/features/shared/components";
 import { useAuth } from "@/hooks/useAuth";
@@ -22,35 +44,20 @@ import { ROUTES } from "@/config/routes";
 import { SECURITY_LEVELS } from "@/config/security";
 import toast from "react-hot-toast";
 
-type TabId = "organization" | "industry" | "location" | "localization";
+type TabId = "organization" | "industry" | "location" | "localization" | "compliance";
 
-// Section header component - L5 design system (from MyProfile)
-const SectionHeader: React.FC<{
+interface TabConfig {
+  id: TabId;
+  label: string;
   icon: React.ElementType;
-  title: string;
-  subtitle: string;
-  action?: React.ReactNode;
-}> = ({ icon: Icon, title, subtitle, action }) => (
-  <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-700/50">
-    <div className="flex items-center gap-3">
-      <div className="w-10 h-10 rounded-lg bg-gray-700/50 flex items-center justify-center flex-shrink-0">
-        <Icon className="w-5 h-5 text-gray-400" />
-      </div>
-      <div>
-        <h3 className="text-base font-semibold text-white">{title}</h3>
-        <p className="text-sm text-gray-400">{subtitle}</p>
-      </div>
-    </div>
-    {action}
-  </div>
-);
+  color: string;
+  description: string;
+}
 
 export const OrganizationSettings: React.FC = () => {
   const navigate = useNavigate();
   const {
     organizationId,
-    organization: authOrganization,
-    user,
     isLoading: authLoading,
     isDev,
     hasAdminAccess,
@@ -98,32 +105,44 @@ export const OrganizationSettings: React.FC = () => {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasUnsavedChanges]);
 
-  const tabs = [
+  // Tab configuration - uses CSS color progression
+  const tabs: TabConfig[] = [
     {
-      id: "organization" as const,
+      id: "organization",
       label: "Organization",
       icon: Building2,
       color: "primary",
+      description: "Business name, contact info, and addresses",
     },
     {
-      id: "industry" as const,
+      id: "industry",
       label: "Industry",
       icon: Store,
       color: "green",
+      description: "Business type, cuisine, revenue centers",
     },
     {
-      id: "location" as const,
+      id: "location",
       label: "Location",
       icon: MapPin,
       color: "amber",
+      description: "Seating capacity and operating hours",
     },
     {
-      id: "localization" as const,
+      id: "localization",
       label: "Localization",
       icon: Globe,
       color: "rose",
+      description: "Timezone, currency, and date/time formats",
     },
-  ] as const;
+    {
+      id: "compliance",
+      label: "Compliance",
+      icon: ShieldCheck,
+      color: "lime",
+      description: "Health certificates and inspection history",
+    },
+  ];
 
   if (isLoading) {
     return (
@@ -152,103 +171,101 @@ export const OrganizationSettings: React.FC = () => {
         </div>
       )}
 
-      {/* L5 Header - Matching Team page style */}
+      {/* ========================================================================
+       * HEADER CARD - Amber = Organization nav context
+       * ======================================================================== */}
       <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-primary-500/20 flex items-center justify-center flex-shrink-0">
-            <Building2 className="w-5 h-5 text-primary-400" />
-          </div>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-white">
-              Organization Settings
-            </h1>
-            <p className="text-gray-400 text-sm">
-              {organization.name} • Profile and preferences
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content Card */}
-      <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-6">
-        {/* Expandable Info Section */}
-        <div className={`expandable-info-section mb-6 ${isInfoExpanded ? 'expanded' : ''}`}>
-          <button
-            onClick={() => setIsInfoExpanded(!isInfoExpanded)}
-            className="expandable-info-header"
-          >
-            <Info className="w-5 h-5 text-primary-400 flex-shrink-0 mt-0.5" />
-            <div className="flex-1 min-w-0">
-              <span className="text-sm font-medium text-primary-300">
-                About Organization Settings
-              </span>
-              <p className="text-xs text-gray-400 mt-0.5">
-                Click to learn about each configuration section
-              </p>
+        <div className="flex flex-col gap-4">
+          {/* Top row: Icon/Title */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                <Building2 className="w-5 h-5 text-amber-400" />
+              </div>
+              <div>
+                <h1 className="text-xl sm:text-2xl font-bold text-white">
+                  Company Settings
+                </h1>
+                <p className="text-gray-400 text-sm">
+                  {organization.name} • Profile, preferences, and compliance
+                </p>
+              </div>
             </div>
-            <ChevronUp className="w-5 h-5 text-gray-400 flex-shrink-0" />
-          </button>
-          
-          <div className="expandable-info-content">
-            <div className="px-4 pb-4 pt-2 space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="bg-gray-800/30 rounded-lg p-3 border border-gray-700/30">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Building2 className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm font-medium text-white">Organization</span>
-                  </div>
-                  <p className="text-xs text-gray-400">
-                    Business name, legal name, contact information, and tax details
-                  </p>
-                </div>
-                <div className="bg-gray-800/30 rounded-lg p-3 border border-gray-700/30">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Store className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm font-medium text-white">Industry</span>
-                  </div>
-                  <p className="text-xs text-gray-400">
-                    Business type, cuisine style, and industry-specific settings
-                  </p>
-                </div>
-                <div className="bg-gray-800/30 rounded-lg p-3 border border-gray-700/30">
-                  <div className="flex items-center gap-2 mb-1">
-                    <MapPin className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm font-medium text-white">Location</span>
-                  </div>
-                  <p className="text-xs text-gray-400">
-                    Physical address, operating hours, and multi-location settings
-                  </p>
-                </div>
-                <div className="bg-gray-800/30 rounded-lg p-3 border border-gray-700/30">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Globe className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm font-medium text-white">Localization</span>
-                  </div>
-                  <p className="text-xs text-gray-400">
-                    Currency, date/time formats, timezone, and week start
-                  </p>
+          </div>
+
+          {/* Expandable Info Section */}
+          <div className={`expandable-info-section ${isInfoExpanded ? 'expanded' : ''}`}>
+            <button
+              onClick={() => setIsInfoExpanded(!isInfoExpanded)}
+              className="expandable-info-header w-full justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <Info className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                <span className="text-sm font-medium text-gray-300">
+                  About Company Settings
+                </span>
+              </div>
+              <ChevronUp className={`w-4 h-4 text-gray-400 transition-transform ${isInfoExpanded ? '' : 'rotate-180'}`} />
+            </button>
+            <div className="expandable-info-content">
+              <div className="p-4 pt-2 space-y-4">
+                <p className="text-sm text-gray-400">
+                  Company Settings defines who you are — your business identity, where you're located, 
+                  how you operate, and your compliance documentation. This information appears 
+                  throughout ChefLife and on printed documents.
+                </p>
+                
+                {/* Tab explanations grid - gray icons (structural) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {tabs.map(tab => {
+                    const Icon = tab.icon;
+                    return (
+                      <div 
+                        key={tab.id}
+                        className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30"
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <Icon className="w-4 h-4 text-gray-400" />
+                          <span className="text-sm font-medium text-gray-300">{tab.label}</span>
+                        </div>
+                        <p className="text-xs text-gray-500">{tab.description}</p>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Tab Navigation */}
-        <div className="flex flex-wrap gap-2 mb-6">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`tab ${tab.color} ${activeTab === tab.id ? "active" : ""}`}
-            >
-              <tab.icon className="w-5 h-5" />
-              <span className="hidden sm:inline">{tab.label}</span>
-            </button>
-          ))}
+      {/* ========================================================================
+       * TABS + CONTENT CARD
+       * ======================================================================== */}
+      <div className="bg-[#1a1f2b] rounded-lg shadow-lg">
+        {/* Tab Navigation - CSS color progression */}
+        <div className="border-b border-gray-700">
+          <div className="flex flex-wrap items-center gap-2 p-4">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`tab ${tab.color} ${isActive ? 'active' : ''}`}
+                >
+                  <Icon className="w-4 h-4" />
+                  <span className="hidden sm:inline">{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Tab Content */}
-        <div>
+        <div className="p-4">
           {activeTab === "organization" && (
             <OrganizationDetails
               organization={organization}
@@ -269,6 +286,12 @@ export const OrganizationSettings: React.FC = () => {
           )}
           {activeTab === "localization" && (
             <LocalizationSettings
+              organization={organization}
+              onChange={updateOrganization}
+            />
+          )}
+          {activeTab === "compliance" && (
+            <BoardOfHealth
               organization={organization}
               onChange={updateOrganization}
             />

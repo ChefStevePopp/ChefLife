@@ -4,22 +4,17 @@ import {
   Database,
   CircleDollarSign,
   Package,
-  Settings,
-  Box,
-  FolderTree,
 } from "lucide-react";
 import { MasterIngredientList } from "./recipe/MasterIngredientList";
 import { VendorInvoiceManager } from "./VendorInvoice/VendorInvoiceManager";
 import { InventoryManagement } from "./InventoryManagement";
-import { OperationsManager } from "./OperationsManager";
-import { FoodRelationshipsManager } from "./FoodRelationshipsManager";
 import { useLocation, useNavigate } from "react-router-dom";
 
 export const ExcelImports: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<
-    "ingredients" | "prepared" | "inventory" | "operations" | "relationships"
+    "ingredients" | "prepared" | "inventory"
   >("ingredients");
 
   // Sync tab state with URL hash
@@ -27,17 +22,13 @@ export const ExcelImports: React.FC = () => {
     const hash = location.hash.replace("#", "") as
       | "ingredients"
       | "prepared"
-      | "inventory"
-      | "operations"
-      | "relationships";
+      | "inventory";
     if (
       hash &&
       [
         "ingredients",
         "prepared",
         "inventory",
-        "operations",
-        "relationships",
       ].includes(hash)
     ) {
       setActiveTab(hash);
@@ -70,18 +61,6 @@ export const ExcelImports: React.FC = () => {
       label: "Food Inventory",
       icon: Package,
       color: "amber",
-    },
-    {
-      id: "operations" as const,
-      label: "Operations",
-      icon: Settings,
-      color: "rose",
-    },
-    {
-      id: "relationships" as const,
-      label: "Food Relationships",
-      icon: FolderTree,
-      color: "purple",
     },
   ];
 
@@ -119,8 +98,6 @@ export const ExcelImports: React.FC = () => {
         {activeTab === "ingredients" && <MasterIngredientList />}
         {activeTab === "prepared" && <VendorInvoiceManager />}
         {activeTab === "inventory" && <InventoryManagement />}
-        {activeTab === "operations" && <OperationsManager />}
-        {activeTab === "relationships" && <FoodRelationshipsManager />}
       </div>
     </div>
   );

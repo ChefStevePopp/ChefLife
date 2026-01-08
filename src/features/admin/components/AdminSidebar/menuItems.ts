@@ -163,9 +163,15 @@ export const menuItems = (isDev: boolean, securityLevel: SecurityLevel = SECURIT
       items: [
         {
           icon: Building2,
-          label: "Settings",
+          label: "Company Settings",
           path: "/admin/organizations",
-          tooltip: "Organization profile & preferences",
+          tooltip: "Business profile & preferences",
+        },
+        {
+          icon: Settings,
+          label: "Operations",
+          path: "/admin/operations",
+          tooltip: "Measurements, storage, vendors & food categories",
         },
         {
           icon: Package,
@@ -209,16 +215,6 @@ export const menuItems = (isDev: boolean, securityLevel: SecurityLevel = SECURIT
           icon: Package,
           label: "Food Inventory Review",
           path: "/admin/excel-imports#inventory",
-        },
-        {
-          icon: Settings,
-          label: "Operation Variables",
-          path: "/admin/excel-imports#operations",
-        },
-        {
-          icon: Box,
-          label: "Food Relationships",
-          path: "/admin/excel-imports#relationships",
         },
       ],
     },

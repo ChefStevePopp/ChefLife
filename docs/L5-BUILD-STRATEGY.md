@@ -317,6 +317,8 @@ This phase is feature-specific. Examples:
 - [ ] Error handling with toast notifications
 - [ ] Omega-only diagnostic text
 - [ ] Accessibility (focus states, aria labels)
+- [ ] Dropdown/popover stability (no re-render closures)
+- [ ] Form state isolation (inputs don't trigger parent re-renders)
 
 **Keyboard Shortcuts Pattern:**
 ```tsx
@@ -347,6 +349,57 @@ useEffect(() => {
     src/features/admin/components/sections/Feature/index.tsx
   </div>
 )}
+```
+
+**Dropdown/Popover Stability:**
+
+Dropdowns closing unexpectedly during user interaction is a common React bug caused by parent re-renders. Fix with:
+
+```tsx
+// 1. Lift dropdown state OR use stable refs
+const [isOpen, setIsOpen] = useState(false);
+
+// 2. Memoize dropdown component to prevent re-renders
+const MemoizedDropdown = React.memo(Dropdown);
+
+// 3. Stop propagation on dropdown container clicks
+<div onClick={(e) => e.stopPropagation()}>
+  <Dropdown />
+</div>
+
+// 4. Use stable keys (never Math.random() or array index for dynamic lists)
+key={item.id}  // ✅ Good
+key={index}    // ❌ Bad if list can change
+
+// 5. Isolate form state - don't lift every keystroke to parent
+const [localValue, setLocalValue] = useState(initialValue);
+// Only sync to parent on blur or explicit save
+onBlur={() => onParentChange(localValue)}
+```
+
+**Form State Isolation:**
+
+Avoid re-rendering the entire form on every keystroke:
+
+```tsx
+// ❌ Bad: Every keystroke re-renders parent
+<input 
+  value={parentState.name} 
+  onChange={(e) => setParentState({...parentState, name: e.target.value})} 
+/>
+
+// ✅ Good: Local state, sync on blur
+const [localName, setLocalName] = useState(parentState.name);
+<input 
+  value={localName}
+  onChange={(e) => setLocalName(e.target.value)}
+  onBlur={() => updateParent('name', localName)}
+/>
+
+// ✅ Also good: Memoized child components
+const FormField = React.memo(({ value, onChange }) => (
+  <input value={value} onChange={onChange} />
+));
 ```
 
 ---
@@ -490,7 +543,70 @@ import { MdCode } from "react-icons/md";
 
 ---
 
-## CSS Component Library
+## Admin Lifecycle Architecture
+
+The Organization section follows a natural admin journey:
+
+```
+ORGANIZATION
+│
+├── 1. Company Settings      "Who you are"
+│   └── Name, industry, location, timezone
+│
+├── 2. Operations            "Your language"
+│   └── Measurements, storage, vendors, food categories
+│
+├── 3. Modules               "What you need"
+│   └── Enable/configure feature packs
+│
+├── 4. Integrations          "Who you connect with"
+│   └── 7shifts, Square, external services
+│
+└── 5. Activity Log          "What's happening"
+    └── NEXUS audit trail
+```
+
+**This is a journey, not a checklist.** Users can skip ahead and return.
+
+### Module Hierarchy
+
+##### Core Modules (Always Available)
+- **Recipe Manager** — The kitchen brain
+- **Print Manager** — Output configuration (planned)
+
+##### Optional Modules (Enable When Ready)
+- **Team Performance** — Points, tiers, coaching
+- **Communications** — Email templates, broadcasts
+- **HACCP** — Food safety tracking
+- **Reports & Insights** — Cross-module analytics (planned)
+
+Each module works independently. No module requires another module.
+
+### Operations as Second Step
+
+Operations defines the **vocabulary your business speaks**:
+
+| Category | What It Defines |
+|----------|----------------|
+| Measurements | How you measure ingredients |
+| Storage | Where things go |
+| Vendors | Who you buy from |
+| Food Relationships | How food is categorized |
+| Business | Revenue channels, departments |
+
+These values appear as dropdown options throughout ChefLife.
+
+**Reference Implementation:** `src/features/admin/components/sections/Operations/`
+
+```
+Operations/
+├── Operations.tsx          # Tabbed orchestrator
+└── components/
+    ├── VariablesTab.tsx    # Measurements, storage, vendors
+    └── RelationshipsTab.tsx # Food taxonomy (groups → categories → subs)
+```
+
+---
 
 **Location:** `src/index.css`
 
@@ -652,6 +768,8 @@ When starting a new feature, copy this template:
 - [ ] Animations
 - [ ] Error handling
 - [ ] Omega diagnostics
+- [ ] Dropdown stability (no re-render closures)
+- [ ] Form state isolation
 ```
 
 ---
@@ -672,6 +790,8 @@ A feature is L5 complete when:
 10. **Omega diagnostics** — file path visible for debugging
 11. **Consistent styling** — follows L5 color palette and patterns
 12. **Floating save bar** — for any form with unsaved changes
+13. **Dropdown stability** — dropdowns don't close unexpectedly on re-renders
+14. **Form state isolation** — inputs don't cause full-page re-renders
 
 ---
 
@@ -686,8 +806,13 @@ A feature is L5 complete when:
 **Reference Implementations:**
 - **Team Performance** — Gold standard tabbed interface (7 tabs, modular components)
 - **Communications** — Tabbed module pattern (Library + Settings tabs, route simplification)
+- **Operations** — Admin lifecycle step 2 (Variables + Food Relationships tabs)
 - **The Roster** — L5 list page (search, filter, pagination, bulk actions)
 - **TemplateEditor** — L5 editor with header-to-tabs pattern
+
+**Related Documentation:**
+- **ROADMAP.md** — Product roadmap with module hierarchy
+- **ONBOARDING-PHILOSOPHY.md** — First-run UX principles
 
 ---
 
@@ -696,6 +821,20 @@ A feature is L5 complete when:
 ---
 
 ## Changelog
+
+**Jan 8, 2026 (Evening):**
+- Added Phase 6 Polish: Dropdown/popover stability pattern
+- Added Phase 6 Polish: Form state isolation pattern
+- Updated success criteria with stability requirements
+- Documented common re-render bugs and fixes
+
+**Jan 8, 2026 (PM Session 2):**
+- Added Admin Lifecycle Architecture section
+- Added Module Hierarchy (Core vs Optional)
+- Added Operations as reference implementation
+- Created ROADMAP.md with full product roadmap
+- Created ONBOARDING-PHILOSOPHY.md for first-run UX
+- Updated References with new documentation links
 
 **Jan 8, 2026 (PM):**
 - Added Communications module as second tabbed interface reference
