@@ -1,6 +1,10 @@
 import React from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
+// =============================================================================
+// PAGINATION CONTROLS - L5 Design
+// =============================================================================
+
 interface PaginationControlsProps {
   currentPage: number;
   totalPages: number;
@@ -23,14 +27,38 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
   const startItem = (currentPage - 1) * itemsPerPage + 1;
   const endItem = Math.min(currentPage * itemsPerPage, totalItems);
 
+  // Generate page numbers to display
+  const getPageNumbers = () => {
+    const pages: (number | "...")[] = [];
+    
+    if (totalPages <= 7) {
+      // Show all pages if 7 or fewer
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else if (currentPage <= 3) {
+      // Near start
+      pages.push(1, 2, 3, 4, 5, "...", totalPages);
+    } else if (currentPage >= totalPages - 2) {
+      // Near end
+      pages.push(1, "...", totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+    } else {
+      // Middle
+      pages.push(1, "...", currentPage - 1, currentPage, currentPage + 1, "...", totalPages);
+    }
+    
+    return pages;
+  };
+
+  if (totalItems === 0) return null;
+
   return (
-    <div className="flex items-center justify-between py-3 border-t border-gray-700 mt-4">
-      <div className="flex items-center text-sm text-gray-400">
-        <span>Showing </span>
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-4 border-t border-gray-700/50 mt-4">
+      {/* Items per page & summary */}
+      <div className="flex items-center gap-2 text-sm text-gray-400">
+        <span>Show</span>
         <select
           value={itemsPerPage}
           onChange={(e) => onItemsPerPageChange(Number(e.target.value))}
-          className="border border-gray-700 rounded text-white px-2.5 py-1 pl-3.5 ml-3 mr-1.5 my-[unset]"
+          className="input py-1 px-2 text-sm w-16"
         >
           {itemsPerPageOptions.map((option) => (
             <option key={option} value={option}>
@@ -38,49 +66,62 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
             </option>
           ))}
         </select>
+        <span>per page</span>
+        <span className="text-gray-600 mx-2">•</span>
         <span>
-          items per page, {startItem}-{endItem} of {totalItems} items
+          {startItem}–{endItem} of {totalItems}
         </span>
       </div>
-      <div className="flex items-center space-x-2">
+
+      {/* Page navigation */}
+      <div className="flex items-center gap-1">
+        {/* Previous button */}
         <button
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}
-          className={`p-1 rounded-md ${currentPage === 1 ? "text-gray-600 cursor-not-allowed" : "text-gray-400 hover:bg-gray-700"}`}
+          className={`p-2 rounded-md transition-colors ${
+            currentPage === 1
+              ? "text-gray-600 cursor-not-allowed"
+              : "text-gray-400 hover:bg-gray-700 hover:text-white"
+          }`}
+          aria-label="Previous page"
         >
-          <ChevronLeft className="w-5 h-5" />
+          <ChevronLeft className="w-4 h-4" />
         </button>
 
-        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-          // Logic to show pages around current page
-          let pageNum;
-          if (totalPages <= 5) {
-            pageNum = i + 1;
-          } else if (currentPage <= 3) {
-            pageNum = i + 1;
-          } else if (currentPage >= totalPages - 2) {
-            pageNum = totalPages - 4 + i;
-          } else {
-            pageNum = currentPage - 2 + i;
-          }
-
-          return (
+        {/* Page numbers */}
+        {getPageNumbers().map((page, index) =>
+          page === "..." ? (
+            <span key={`ellipsis-${index}`} className="px-2 text-gray-500">
+              …
+            </span>
+          ) : (
             <button
-              key={pageNum}
-              onClick={() => onPageChange(pageNum)}
-              className={`w-8 h-8 flex items-center justify-center rounded-md ${currentPage === pageNum ? "bg-primary-500 text-white" : "text-gray-400 hover:bg-gray-700"}`}
+              key={page}
+              onClick={() => onPageChange(page)}
+              className={`min-w-[32px] h-8 px-2 rounded-md text-sm font-medium transition-colors ${
+                currentPage === page
+                  ? "bg-primary-500 text-white"
+                  : "text-gray-400 hover:bg-gray-700 hover:text-white"
+              }`}
             >
-              {pageNum}
+              {page}
             </button>
-          );
-        })}
+          )
+        )}
 
+        {/* Next button */}
         <button
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === totalPages}
-          className={`p-1 rounded-md ${currentPage === totalPages ? "text-gray-600 cursor-not-allowed" : "text-gray-400 hover:bg-gray-700"}`}
+          className={`p-2 rounded-md transition-colors ${
+            currentPage === totalPages
+              ? "text-gray-600 cursor-not-allowed"
+              : "text-gray-400 hover:bg-gray-700 hover:text-white"
+          }`}
+          aria-label="Next page"
         >
-          <ChevronRight className="w-5 h-5" />
+          <ChevronRight className="w-4 h-4" />
         </button>
       </div>
     </div>

@@ -7,25 +7,59 @@
 ## Current State (January 2026)
 
 ### Master Ingredient List ✅
-- [x] Ingredient CRUD
+- [x] Ingredient CRUD with full modal editor
 - [x] Multi-vendor support (umbrella items)
 - [x] Cost tracking per vendor
-- [x] Unit conversions
-- [x] Category assignment
+- [x] Unit conversions (purchase → recipe)
+- [x] Category assignment (Group → Category → Sub-Category)
+- [x] 21 standard allergens + 3 custom
+- [x] Storage area tracking
+- [x] L5 header with expandable info
+- [ ] **Import wizard** (exists but not wired in)
 
 ### Vendor Invoice Manager (VIM) ✅
 - [x] Two-stage processing (upload → review)
 - [x] GFS invoice parsing
 - [x] Flanagan Foodservice parsing
+- [x] CSV/PDF/Photo import options
 - [x] Date picker with L5 design
 - [x] Price variance detection
 - [x] Batch approval workflow
+- [x] L5 header with expandable info
 
 ### Food Inventory Review 🔄
-- [x] Basic inventory list
-- [ ] Count sheets
+- [x] Basic inventory list with DataTable
+- [x] L5 header with context-switching
+- [x] Review pipeline (database ready)
+- [ ] Count sheets generation
 - [ ] Variance reporting
 - [ ] Par level management
+
+### DataTable (formerly ExcelDataGrid) ✅
+- [x] Global search
+- [x] Column filtering
+- [x] Column reordering (drag & drop)
+- [x] Column visibility toggle
+- [x] Pagination with L5 styling
+- [x] Resizable columns
+- [x] localStorage persistence
+
+---
+
+## Immediate Priorities (January 2026)
+
+### Import Wizard L5 Refresh
+- [ ] Wire import button into MasterIngredientList header
+- [ ] Column mapping UI (user maps their columns → our fields)
+- [ ] Preview with actual DataTable component
+- [ ] Duplicate detection (by item_code or product name)
+- [ ] Merge vs Replace options
+- [ ] Progress indicator for large imports
+
+### Component Rename
+- [ ] Rename `ExcelDataGrid` → `DataTable`
+- [ ] Update all imports across codebase
+- [ ] Document in L5-BUILD-STRATEGY.md
 
 ---
 
@@ -33,17 +67,17 @@
 
 ### VIM Enhancements
 - [ ] Additional vendor formats (Sysco, US Foods)
-- [ ] OCR for scanned invoices
+- [ ] OCR improvements for scanned invoices
 - [ ] Price trend graphs per ingredient
-- [ ] Anomaly detection (unusual prices)
+- [ ] Anomaly detection (unusual price spikes)
 - [ ] Credit memo handling
 
 ### Inventory Counting
-- [ ] Mobile-friendly count interface
+- [ ] Mobile-friendly count interface (UserInventory)
 - [ ] Category-based count sheets
 - [ ] Blind counting option
 - [ ] Count history comparison
-- [ ] Storage location tracking
+- [ ] Storage location grouping
 
 ---
 
@@ -82,6 +116,74 @@
 
 ---
 
+## White Glove Onboarding (Future)
+
+### The Vision
+
+Getting a restaurant's ingredient database into ChefLife is **the #1 barrier to adoption**. Nobody's going to manually enter 300-500 ingredients.
+
+**What restaurants actually have:**
+- Vendor invoices (GFS, Sysco, Flanagan CSVs/PDFs)
+- Their own messy Excel tracking
+- POS item lists (if they're lucky)
+- Nothing organized (most common)
+
+### Proposed Hybrid Model
+
+#### Self-Service Path
+```
+Customer uploads CSV/Excel → Column mapping wizard → Preview → Import
+```
+- Good for: Tech-savvy operators, small ingredient lists
+- Friction points: Column mapping confusion, category assignment
+
+#### White Glove Path
+```
+Customer uploads anything → ChefLife processes → Customer reviews → Done
+```
+
+**Step 1: Intake Portal**
+- "Upload your last 3 months of vendor invoices (any format)"
+- Accept: CSV, Excel, PDF, photos
+- Support: GFS, Sysco, Flanagan, US Foods, local vendors
+
+**Step 2: ChefLife Processing**
+- Extract unique products across all invoices
+- Deduplicate (same product, different vendors)
+- Auto-categorize using AI + Memphis Fire category structure
+- Flag items needing attention (ambiguous categories, missing data)
+
+**Step 3: Customer Review**
+- Present clean list: "Here are your 347 ingredients"
+- Customer confirms categories, storage areas
+- One-click approve
+- Export to their ChefLife account
+
+**Step 4: Ongoing**
+- New items from future invoice imports auto-suggest
+- Customer just approves additions
+
+### Technical Components Needed
+
+| Component | Status | Work |
+|-----------|--------|------|
+| CSV column mapping | ✅ Exists (VIM) | Reuse patterns |
+| PDF/OCR extraction | ✅ Exists (VIM) | Reuse |
+| Master Ingredient import | 🔄 Exists, needs work | L5 refresh |
+| Duplicate detection | ❌ Missing | Build |
+| Auto-categorization | ❌ Missing | AI-assisted |
+| Intake portal | ❌ Missing | Build |
+| Review/approval UI | ❌ Missing | Build |
+
+### Revenue Model Consideration
+
+White glove onboarding could be:
+- **Included** for annual subscribers
+- **Add-on service** ($199-499 one-time)
+- **Partner opportunity** for consultants
+
+---
+
 ## Vendor Format Support
 
 ### Currently Supported
@@ -103,7 +205,12 @@
 
 ## Technical Debt & Polish
 
-- [ ] L5 design audit on Excel Imports page
+- [x] L5 design audit on MasterIngredientList
+- [x] L5 design audit on VendorInvoiceManager  
+- [x] L5 design audit on InventoryManagement
+- [x] L5 design audit on DataTable component
+- [ ] Rename ExcelDataGrid → DataTable
+- [ ] Delete legacy features/shared/components/ExcelDataGrid
 - [ ] Bulk ingredient update
 - [ ] CSV export for all lists
 - [ ] Historical price data retention policy
@@ -111,12 +218,28 @@
 
 ---
 
-## References
+## File References
 
-- `src/features/inventory/` - Inventory feature modules
-- `src/features/admin/components/sections/ExcelImports/`
+```
+src/features/admin/components/sections/
+├── recipe/MasterIngredientList/     # Ingredient database
+├── VendorInvoice/                   # VIM module
+├── InventoryManagement/             # Inventory & review
+└── ExcelImports.tsx                 # DEPRECATED - delete
+
+src/features/admin/components/
+└── ImportExcelModal/                # Import wizard
+
+src/shared/components/
+└── ExcelDataGrid/                   # DataTable (to rename)
+    ├── index.tsx
+    ├── PaginationControls.tsx
+    ├── ResizableHeader.tsx
+    └── ColumnFilter.tsx
+```
 
 ---
 
 *Created: January 8, 2026*
+*Updated: January 9, 2026 - Added White Glove Onboarding vision*
 *Section: Data Management*

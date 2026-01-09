@@ -517,6 +517,54 @@ const FormField = React.memo(({ value, onChange }) => (
 
 ---
 
+### Phase 6.5: Beyond Expectations
+**Time:** 1-2 hours (iterative)  
+**Goal:** Transform functional into delightful — the "wow" factor
+
+Phase 6 makes it work well. Phase 6.5 makes users *love* it.
+
+**Deliverables:**
+- [ ] Smart defaults that anticipate user needs
+- [ ] Contextual insights ("Your top 5...", "Most used...")
+- [ ] Bulk operations where repetition exists
+- [ ] Print-friendly / export views for offline use
+- [ ] Intelligent suggestions ("Items like X typically have Y")
+- [ ] Progressive enhancement (basic works, power features reward exploration)
+- [ ] Micro-celebrations (subtle success animations, not confetti)
+- [ ] Zero-state guidance (empty states that teach, not just inform)
+
+**Examples by Module:**
+
+| Module | Phase 6.5 Feature |
+|--------|-------------------|
+| Allergens | "Unassigned audit" — one-click to see items needing allergen review |
+| Allergens | Printable allergen matrix for health inspector |
+| Allergens | "Contains" vs "May contain" distinction |
+| Recipes | Auto-suggest allergens based on ingredients |
+| Team | "Coaching momentum" — streak tracking for managers |
+| Communications | "Best send time" suggestions based on open rates |
+| Inventory | Reorder alerts before you run out |
+
+**Philosophy:**
+
+> "Phase 6 respects the user's time. Phase 6.5 respects their craft."
+
+Restaurant operators are professionals. Phase 6.5 features acknowledge their expertise and make them better at their jobs — not just faster at tasks.
+
+**When to Invest in 6.5:**
+- Core workflow is stable (Phases 1-6 complete)
+- User feedback indicates friction points
+- Feature is used daily by operators
+- Competitive differentiation opportunity
+
+**Anti-patterns (not 6.5):**
+- Animations for animation's sake
+- Features that require explanation
+- "Clever" over "clear"
+- Gamification that feels patronizing
+
+---
+
 ## UX Cohesion Standards
 
 These standards ensure visual and interaction consistency across all ChefLife modules.
@@ -883,6 +931,13 @@ When starting a new feature, copy this template:
 - [ ] Omega diagnostics
 - [ ] Dropdown stability (no re-render closures)
 - [ ] Form state isolation
+
+### Phase 6.5: Beyond Expectations
+- [ ] Smart defaults
+- [ ] Contextual insights
+- [ ] Bulk operations
+- [ ] Print/export views
+- [ ] Intelligent suggestions
 ```
 
 ---
@@ -905,6 +960,14 @@ A feature is L5 complete when:
 12. **Floating save bar** — for any form with unsaved changes
 13. **Dropdown stability** — dropdowns don't close unexpectedly on re-renders
 14. **Form state isolation** — inputs don't cause full-page re-renders
+
+**Phase 6.5 (Beyond Expectations) Criteria:**
+
+15. **Contextual insights** — surface relevant stats/summaries
+16. **Bulk operations** — reduce repetitive actions
+17. **Print/export ready** — offline-friendly outputs where needed
+18. **Smart suggestions** — anticipate user needs based on context
+19. **Professional polish** — respects the user's expertise
 
 ---
 

@@ -1,6 +1,13 @@
-import React, { useState, useRef, useEffect } from "react";
-import { ArrowUp, ArrowDown, Filter } from "lucide-react";
+import React, { useRef, useCallback } from "react";
+import { ArrowUp, ArrowDown, GripVertical } from "lucide-react";
 import type { ExcelColumn } from "@/types";
+
+// =============================================================================
+// RESIZABLE HEADER - L5 Design
+// =============================================================================
+// Clickable header for sorting, draggable edge for resizing
+// Fixed: Stale closure bug, wider resize handle, visual feedback
+// =============================================================================
 
 interface ResizableHeaderProps {
   column: ExcelColumn;
@@ -12,6 +19,7 @@ interface ResizableHeaderProps {
   onDragStart?: () => void;
   onDragEnd?: () => void;
   onDragOver?: () => void;
+  className?: string;
 }
 
 export const ResizableHeader: React.FC<ResizableHeaderProps> = ({
@@ -20,78 +28,87 @@ export const ResizableHeader: React.FC<ResizableHeaderProps> = ({
   onSort,
   sortDirection,
   isFiltered,
-  onToggleFilter,
   onDragStart,
   onDragEnd,
   onDragOver,
+  className,
 }) => {
-  const [isResizing, setIsResizing] = useState(false);
   const headerRef = useRef<HTMLDivElement>(null);
   const startXRef = useRef<number>(0);
   const startWidthRef = useRef<number>(0);
+  const isResizingRef = useRef<boolean>(false);
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isResizingRef.current) return;
+    const delta = e.clientX - startXRef.current;
+    const newWidth = Math.max(50, startWidthRef.current + delta);
+    onResize(newWidth);
+  }, [onResize]);
+
+  const handleMouseUp = useCallback(() => {
+    isResizingRef.current = false;
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    document.removeEventListener("mousemove", handleMouseMove);
+    document.removeEventListener("mouseup", handleMouseUp);
+  }, [handleMouseMove]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
-    setIsResizing(true);
+    e.stopPropagation();
+    
+    isResizingRef.current = true;
     startXRef.current = e.clientX;
     startWidthRef.current = headerRef.current?.offsetWidth || column.width;
+    
+    // Visual feedback during resize
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
   };
 
-  const handleMouseMove = (e: MouseEvent) => {
-    if (!isResizing) return;
-    const width = startWidthRef.current + (e.clientX - startXRef.current);
-    if (width >= 50) {
-      // Minimum width
-      onResize(width);
-    }
-  };
-
-  const handleMouseUp = () => {
-    setIsResizing(false);
-    document.removeEventListener("mousemove", handleMouseMove);
-    document.removeEventListener("mouseup", handleMouseUp);
-  };
-
-  useEffect(() => {
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, []);
-
   return (
     <div
       ref={headerRef}
-      className="relative flex h-full cursor-pointer select-none justify-center items-center"
+      className={`relative flex h-full select-none group ${className || ""}`}
       style={{ width: `${column.width}px` }}
-      draggable={true}
+      draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onDragOver={onDragOver}
     >
-      <div
-        className="flex-1 flex items-center justify-center px-4 py-2 text-center"
+      {/* Header content - clickable for sorting */}
+      <button
+        type="button"
+        className="flex-1 flex items-center gap-1.5 px-4 py-3 text-left hover:bg-gray-800/50 transition-colors"
         onClick={onSort}
       >
-        <span className="font-medium text-center text-gray-300">
+        <span className={`font-medium text-sm ${isFiltered ? "text-primary-400" : "text-gray-300"}`}>
           {column.name}
         </span>
-        <div className="flex items-center">
-          {sortDirection === "asc" && (
-            <ArrowUp className="w-4 h-4 text-primary-400" />
-          )}
-          {sortDirection === "desc" && (
-            <ArrowDown className="w-4 h-4 text-primary-400" />
-          )}
-          {/* Filter icons removed as requested */}
-        </div>
-      </div>
+        
+        {/* Sort indicator */}
+        {sortDirection && (
+          <span className="text-primary-400">
+            {sortDirection === "asc" ? (
+              <ArrowUp className="w-3.5 h-3.5" />
+            ) : (
+              <ArrowDown className="w-3.5 h-3.5" />
+            )}
+          </span>
+        )}
+      </button>
+
+      {/* Resize handle - wider hit area, visible on hover */}
       <div
-        className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize"
+        className="absolute right-0 top-0 bottom-0 w-4 cursor-col-resize flex items-center justify-center
+                   opacity-0 group-hover:opacity-100 transition-opacity"
         onMouseDown={handleMouseDown}
-      />
+      >
+        <div className="w-0.5 h-4 bg-gray-600 group-hover:bg-primary-500 rounded-full transition-colors" />
+      </div>
     </div>
   );
 };

@@ -83,5 +83,41 @@ export const masterIngredientColumns: ExcelColumn[] = [
   },
 ];
 
+// Allergen-focused columns for Allergens tab
+export const allergenViewColumns: ExcelColumn[] = [
+  {
+    key: "product",
+    name: "Product Name",
+    type: "text",
+    width: 250,
+    sortable: true,
+    filterable: true,
+  },
+  {
+    key: "category_name",
+    name: "Category",
+    type: "text",
+    width: 150,
+    sortable: true,
+    filterable: true,
+  },
+  {
+    key: "id",
+    name: "Allergens",
+    type: "allergen",
+    width: 300,
+    sortable: false,
+    filterable: false,
+  },
+  {
+    key: "storage_area",
+    name: "Storage Area",
+    type: "text",
+    width: 150,
+    sortable: true,
+    filterable: true,
+  },
+];
+
 // For backward compatibility
 export const columns = masterIngredientColumns;

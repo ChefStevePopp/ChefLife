@@ -26,27 +26,16 @@ export const EditIngredientModal: React.FC<EditIngredientModalProps> = ({
   const { organization, user, isDev } = useAuth();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-  // Debug session info
-  React.useEffect(() => {
-    console.log("Auth debug:", {
-      organization,
-      orgId: organization?.id,
-      user,
-      metadata: user?.user_metadata,
-      isDev,
-    });
-  }, [organization, user, isDev]);
-
-  // Check user permissions
+  // Check user permissions - only after auth is loaded
+  // Note: Don't close modal if auth is still loading, only if explicitly denied
   React.useEffect(() => {
     const checkPermissions = async () => {
       // Skip permission check for dev users
       if (isDev) return;
 
+      // Wait for auth to load - don't close if still loading
       if (!organization?.id || !user?.id) {
-        toast.error("Missing organization or user information");
-        onClose();
-        return;
+        return; // Auth still loading, don't close yet
       }
 
       const { data: roles } = await supabase
@@ -65,24 +54,14 @@ export const EditIngredientModal: React.FC<EditIngredientModalProps> = ({
     checkPermissions();
   }, [organization?.id, user?.id, onClose, isDev]);
 
-  // Get the organization ID upfront
-  const orgId = React.useMemo(() => {
-    const id = organization?.id;
-    if (!id) {
-      console.warn("Organization ID not available");
-    }
-    return id;
-  }, [organization]);
+  // Get the organization ID - prefer initialIngredient's org_id for existing items
+  const orgId = initialIngredient.organization_id || organization?.id || "";
 
   const [formData, setFormData] = React.useState<MasterIngredient>(() => {
-    if (!orgId) {
-      console.error("No organization ID available for form initialization");
-    }
-
     return {
       id: initialIngredient.id || crypto.randomUUID(),
-      // Explicitly set organization_id from auth context
-      organization_id: orgId || "",
+      // Use existing org_id or fall back to auth context
+      organization_id: initialIngredient.organization_id || organization?.id || "",
       product: initialIngredient.product || "",
       major_group: initialIngredient.major_group || null,
       category: initialIngredient.category || null,
