@@ -8,6 +8,8 @@ import {
   Database,
   RotateCcw,
   Columns,
+  ChevronRight,
+  Pencil,
 } from "lucide-react";
 import type { ExcelColumn } from "@/types/excel";
 import { PaginationControls } from "./PaginationControls";
@@ -42,6 +44,12 @@ const getNestedValue = (obj: any, path: string) => {
   return path.split(".").reduce((prev, curr) => {
     return prev ? prev[curr] : null;
   }, obj);
+};
+
+// Helper to detect UUID strings (to filter them out of dropdowns)
+const isUUID = (str: string): boolean => {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
 };
 
 export function ExcelDataGrid<T>({
@@ -214,6 +222,127 @@ export function ExcelDataGrid<T>({
   const totalPages = Math.max(1, Math.ceil(filteredData.length / itemsPerPage));
 
   // ---------------------------------------------------------------------------
+  // UNIQUE VALUES FOR SMART FILTERS
+  // ---------------------------------------------------------------------------
+  // Compute unique values for each text column to enable smart dropdowns
+  const columnUniqueValues = useMemo(() => {
+    const uniqueMap: Record<string, string[]> = {};
+    
+    columns
+      .filter((col) => col.type === "text")
+      .forEach((col) => {
+        const values = new Set<string>();
+        data.forEach((item) => {
+          const value = getNestedValue(item, col.key);
+          if (value != null && String(value).trim() !== "") {
+            values.add(String(value));
+          }
+        });
+        // Sort alphabetically for better UX
+        uniqueMap[col.key] = Array.from(values).sort((a, b) => 
+          a.toLowerCase().localeCompare(b.toLowerCase())
+        );
+      });
+    
+    return uniqueMap;
+  }, [data, columns]);
+
+  // ---------------------------------------------------------------------------
+  // CASCADING CATEGORY FILTERS
+  // ---------------------------------------------------------------------------
+  // Major Group → Category → Sub Category (dependent dropdowns)
+  const cascadingCategoryOptions = useMemo(() => {
+    // Use _name fields (resolved text) over raw UUID fields
+    const selectedMajorGroup = filters["major_group_name"] || filters["major_group"];
+    const selectedCategory = filters["category_name"] || filters["category"];
+    
+    // Get all unique major groups (prefer _name field)
+    const majorGroups = new Set<string>();
+    data.forEach((item) => {
+      const value = getNestedValue(item, "major_group_name") || getNestedValue(item, "major_group");
+      if (value && String(value).trim() && !isUUID(String(value))) {
+        majorGroups.add(String(value));
+      }
+    });
+    
+    // Get categories filtered by selected major group
+    const categories = new Set<string>();
+    data.forEach((item) => {
+      const majorGroup = getNestedValue(item, "major_group_name") || getNestedValue(item, "major_group");
+      const category = getNestedValue(item, "category_name") || getNestedValue(item, "category");
+      
+      if (category && String(category).trim() && !isUUID(String(category))) {
+        // If no major group selected, show all categories
+        // If major group selected, only show categories within that major group
+        if (!selectedMajorGroup || majorGroup === selectedMajorGroup) {
+          categories.add(String(category));
+        }
+      }
+    });
+    
+    // Get sub-categories filtered by selected category
+    const subCategories = new Set<string>();
+    data.forEach((item) => {
+      const majorGroup = getNestedValue(item, "major_group_name") || getNestedValue(item, "major_group");
+      const category = getNestedValue(item, "category_name") || getNestedValue(item, "category");
+      const subCategory = getNestedValue(item, "sub_category_name") || getNestedValue(item, "sub_category");
+      
+      if (subCategory && String(subCategory).trim() && !isUUID(String(subCategory))) {
+        // Must match major group (if selected) AND category (if selected)
+        const majorGroupMatch = !selectedMajorGroup || majorGroup === selectedMajorGroup;
+        const categoryMatch = !selectedCategory || category === selectedCategory;
+        
+        if (majorGroupMatch && categoryMatch) {
+          subCategories.add(String(subCategory));
+        }
+      }
+    });
+    
+    return {
+      majorGroups: Array.from(majorGroups).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())),
+      categories: Array.from(categories).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())),
+      subCategories: Array.from(subCategories).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())),
+    };
+  }, [data, filters]);
+
+  // Detect which column keys are used for categories (some use _name suffix)
+  const categoryColumnKeys = useMemo(() => {
+    const keys = columns.map(c => c.key);
+    return {
+      majorGroup: keys.includes("major_group_name") ? "major_group_name" : "major_group",
+      category: keys.includes("category_name") ? "category_name" : "category",
+      subCategory: keys.includes("sub_category_name") ? "sub_category_name" : "sub_category",
+    };
+  }, [columns]);
+
+  // Check if this grid has category hierarchy columns
+  const hasCategoryHierarchy = useMemo(() => {
+    const keys = columns.map(c => c.key);
+    return (
+      (keys.includes("major_group") || keys.includes("major_group_name")) &&
+      (keys.includes("category") || keys.includes("category_name"))
+    );
+  }, [columns]);
+
+  // Columns to show in "Other Filters" (excluding category hierarchy and trimmed columns)
+  const otherFilterColumns = useMemo(() => {
+    const excludeKeys = [
+      "major_group", "major_group_name",
+      "category", "category_name", 
+      "sub_category", "sub_category_name",
+      "storage_area", "cost_per_recipe_unit", "recipe_unit_type", // Trimmed per Steve's request
+    ];
+    return columns.filter(
+      (col) => 
+        col.type !== "imageUrl" && 
+        col.type !== "allergen" &&
+        col.type !== "currency" && // Remove numeric filters for simplicity
+        col.type !== "number" &&
+        !excludeKeys.includes(col.key)
+    );
+  }, [columns]);
+
+  // ---------------------------------------------------------------------------
   // HANDLERS
   // ---------------------------------------------------------------------------
 
@@ -250,11 +379,50 @@ export function ExcelDataGrid<T>({
   };
 
   const handleFilterChange = (columnKey: string, value: any) => {
-    setFilters((prev) => ({ ...prev, [columnKey]: value }));
+    setFilters((prev) => {
+      const newFilters = { ...prev, [columnKey]: value };
+      
+      // Cascading clear: if Major Group changes, clear Category and Sub Category
+      if (columnKey === categoryColumnKeys.majorGroup || columnKey === "major_group" || columnKey === "major_group_name") {
+        newFilters[categoryColumnKeys.category] = null;
+        newFilters[categoryColumnKeys.subCategory] = null;
+        // Also clear alternate keys just in case
+        newFilters["category"] = null;
+        newFilters["category_name"] = null;
+        newFilters["sub_category"] = null;
+        newFilters["sub_category_name"] = null;
+      }
+      
+      // Cascading clear: if Category changes, clear Sub Category
+      if (columnKey === categoryColumnKeys.category || columnKey === "category" || columnKey === "category_name") {
+        newFilters[categoryColumnKeys.subCategory] = null;
+        newFilters["sub_category"] = null;
+        newFilters["sub_category_name"] = null;
+      }
+      
+      return newFilters;
+    });
+    
+    // Update active filters list
     if (value && !activeFilters.includes(columnKey)) {
       setActiveFilters((prev) => [...prev, columnKey]);
     } else if (!value && activeFilters.includes(columnKey)) {
       setActiveFilters((prev) => prev.filter((key) => key !== columnKey));
+    }
+    
+    // Also update active filters for cascaded clears
+    if (columnKey === categoryColumnKeys.majorGroup || columnKey === "major_group" || columnKey === "major_group_name") {
+      setActiveFilters((prev) => prev.filter((key) => 
+        ![
+          categoryColumnKeys.category, categoryColumnKeys.subCategory,
+          "category", "category_name", "sub_category", "sub_category_name"
+        ].includes(key)
+      ));
+    }
+    if (columnKey === categoryColumnKeys.category || columnKey === "category" || columnKey === "category_name") {
+      setActiveFilters((prev) => prev.filter((key) => 
+        ![categoryColumnKeys.subCategory, "sub_category", "sub_category_name"].includes(key)
+      ));
     }
   };
 
@@ -472,33 +640,92 @@ export function ExcelDataGrid<T>({
        * ======================================================================== */}
       {showFilterPanel && (
         <div className="bg-gray-800/30 rounded-lg border border-gray-700/50 p-4 mb-4">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm text-gray-400">Filter by column values</span>
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-sm font-medium text-gray-300">Filter by column values</span>
             {activeFilters.length > 0 && (
               <button
                 onClick={clearAllFilters}
-                className="text-xs text-gray-400 hover:text-white flex items-center gap-1"
+                className="text-xs text-primary-400 hover:text-primary-300 flex items-center gap-1 transition-colors"
               >
                 <RotateCcw className="w-3 h-3" />
-                Clear all
+                Clear all filters
               </button>
             )}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {columns
-              .filter((col) => col.type !== "imageUrl" && col.type !== "allergen")
-              .map((column) => (
-                <div key={column.key} className="space-y-1">
-                  <label className="text-xs text-gray-500">{column.name}</label>
+          
+          {/* Category Hierarchy - Cascading Dropdowns */}
+          {hasCategoryHierarchy && (
+            <div className="mb-5 pb-4 border-b border-gray-700/50">
+              <div className="text-sm font-semibold text-gray-300 mb-3">Category Hierarchy</div>
+              <div className="flex items-center gap-2">
+                {/* Major Group */}
+                <div className="flex-1 min-w-0">
+                  <label className="text-xs text-gray-500 mb-1 block">Major Group</label>
                   <ColumnFilter
-                    column={column}
-                    value={filters[column.key] || null}
-                    onChange={(value) => handleFilterChange(column.key, value)}
-                    onClear={() => handleFilterChange(column.key, null)}
+                    column={{ key: categoryColumnKeys.majorGroup, name: "Major Group", type: "text", width: 150 }}
+                    value={filters[categoryColumnKeys.majorGroup] || null}
+                    onChange={(value) => handleFilterChange(categoryColumnKeys.majorGroup, value)}
+                    onClear={() => handleFilterChange(categoryColumnKeys.majorGroup, null)}
+                    uniqueValues={cascadingCategoryOptions.majorGroups}
+                    forceDropdown
                   />
                 </div>
-              ))}
-          </div>
+                
+                <ChevronRight className="w-4 h-4 text-gray-600 flex-shrink-0 mt-5" />
+                
+                {/* Category */}
+                <div className="flex-1 min-w-0">
+                  <label className="text-xs text-gray-500 mb-1 block">Category</label>
+                  <ColumnFilter
+                    column={{ key: categoryColumnKeys.category, name: "Category", type: "text", width: 150 }}
+                    value={filters[categoryColumnKeys.category] || null}
+                    onChange={(value) => handleFilterChange(categoryColumnKeys.category, value)}
+                    onClear={() => handleFilterChange(categoryColumnKeys.category, null)}
+                    uniqueValues={cascadingCategoryOptions.categories}
+                    forceDropdown
+                  />
+                </div>
+                
+                <ChevronRight className="w-4 h-4 text-gray-600 flex-shrink-0 mt-5" />
+                
+                {/* Sub Category */}
+                <div className="flex-1 min-w-0">
+                  <label className="text-xs text-gray-500 mb-1 block">Sub Category</label>
+                  <ColumnFilter
+                    column={{ key: categoryColumnKeys.subCategory, name: "Sub Category", type: "text", width: 150 }}
+                    value={filters[categoryColumnKeys.subCategory] || null}
+                    onChange={(value) => handleFilterChange(categoryColumnKeys.subCategory, value)}
+                    onClear={() => handleFilterChange(categoryColumnKeys.subCategory, null)}
+                    uniqueValues={cascadingCategoryOptions.subCategories}
+                    forceDropdown
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Other Filters */}
+          {otherFilterColumns.length > 0 && (
+            <div>
+              {hasCategoryHierarchy && (
+                <div className="text-sm font-semibold text-gray-300 mb-3">Search Filters</div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {otherFilterColumns.map((column) => (
+                  <div key={column.key} className="space-y-1">
+                    <label className="text-xs text-gray-500">{column.name}</label>
+                    <ColumnFilter
+                      column={column}
+                      value={filters[column.key] || null}
+                      onChange={(value) => handleFilterChange(column.key, value)}
+                      onClear={() => handleFilterChange(column.key, null)}
+                      uniqueValues={columnUniqueValues[column.key] || []}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -595,6 +822,12 @@ export function ExcelDataGrid<T>({
                   </th>
                 );
               })}
+              {/* Edit column header - with tooltip for training */}
+              {onRowClick && (
+                <th className="px-3 py-2 text-sm font-medium text-center w-12" title="Click any row to edit">
+                  <Pencil className="w-3.5 h-3.5 text-gray-500 mx-auto" />
+                </th>
+              )}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-700/50">
@@ -602,7 +835,7 @@ export function ExcelDataGrid<T>({
               paginatedData.map((row, rowIndex) => (
                 <tr
                   key={rowIndex}
-                  className={`hover:bg-gray-800/50 transition-colors ${onRowClick ? "cursor-pointer" : ""}`}
+                  className={`hover:bg-gray-800/50 transition-colors group ${onRowClick ? "cursor-pointer" : ""}`}
                   onClick={() => onRowClick?.(row)}
                 >
                   {visibleColumnOrder.map((columnKey) => {
@@ -621,11 +854,22 @@ export function ExcelDataGrid<T>({
                       </td>
                     );
                   })}
+                  {/* Edit affordance - pencil only with tooltip */}
+                  {onRowClick && (
+                    <td className="px-3 py-3 text-center w-12">
+                      <span 
+                        className="inline-flex text-gray-600 group-hover:text-primary-400 transition-colors"
+                        title="Click to edit"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </span>
+                    </td>
+                  )}
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan={visibleColumnOrder.length} className="px-4 py-12">
+                <td colSpan={visibleColumnOrder.length + (onRowClick ? 1 : 0)} className="px-4 py-12">
                   <div className="flex flex-col items-center justify-center text-center">
                     <div className="w-12 h-12 rounded-full bg-gray-800 flex items-center justify-center mb-3">
                       <Database className="w-6 h-6 text-gray-600" />

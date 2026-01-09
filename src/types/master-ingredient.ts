@@ -3,10 +3,10 @@ export interface MasterIngredient {
   created_at: string;
   updated_at: string;
   organization_id: string;
-  item_code: string;
-  major_group: string;
-  category: string;
-  sub_category: string;
+  item_code: string | null;
+  major_group: string | null;
+  category: string | null;
+  sub_category: string | null;
   product: string;
   vendor: string;
   case_size: string;
@@ -19,8 +19,32 @@ export interface MasterIngredient {
   unit_of_measure: string;
   image_url: string | null;
   storage_area: string;
-  inventory_unit_cost?: number;
   archived?: boolean;
+  
+  // ---------------------------------------------------------------------------
+  // INVENTORY UNITS
+  // How we count this ingredient during inventory taking
+  // ---------------------------------------------------------------------------
+  inventory_unit_type?: string;        // WHAT unit we count in (LB, EACH, CASE, %)
+  // units_per_case already exists     // HOW MANY inventory units per purchase
+  inventory_unit_cost?: number;        // Auto-calculated: price ÷ units_per_case
+  
+  // ---------------------------------------------------------------------------
+  // REPORTING & TRACKING
+  // Dashboard visibility and inventory schedule participation
+  // ---------------------------------------------------------------------------
+  priority_level?: 'critical' | 'high' | 'standard' | 'low';
+  inventory_schedule?: string[];       // ['daily', 'weekly', 'monthly', 'spot']
+  show_on_dashboard?: boolean;
+  alert_price_change?: boolean;
+  alert_low_stock?: boolean;
+  par_level?: number;                  // Target stock (in inventory units)
+  reorder_point?: number;              // Alert threshold (in inventory units)
+  
+  // ---------------------------------------------------------------------------
+  // ALLERGENS - Contains (definite)
+  // "This ingredient IS the allergen"
+  // ---------------------------------------------------------------------------
   allergen_peanut: boolean;
   allergen_crustacean: boolean;
   allergen_treenut: boolean;
@@ -42,13 +66,53 @@ export interface MasterIngredient {
   allergen_hot_pepper: boolean;
   allergen_citrus: boolean;
   allergen_pork: boolean;
+  
+  // ---------------------------------------------------------------------------
+  // ALLERGENS - May Contain (supplier cross-contamination)
+  // "Supplier says: processed in facility that also handles..."
+  // ---------------------------------------------------------------------------
+  allergen_peanut_may_contain?: boolean;
+  allergen_crustacean_may_contain?: boolean;
+  allergen_treenut_may_contain?: boolean;
+  allergen_shellfish_may_contain?: boolean;
+  allergen_sesame_may_contain?: boolean;
+  allergen_soy_may_contain?: boolean;
+  allergen_fish_may_contain?: boolean;
+  allergen_wheat_may_contain?: boolean;
+  allergen_milk_may_contain?: boolean;
+  allergen_sulphite_may_contain?: boolean;
+  allergen_egg_may_contain?: boolean;
+  allergen_gluten_may_contain?: boolean;
+  allergen_mustard_may_contain?: boolean;
+  allergen_celery_may_contain?: boolean;
+  allergen_garlic_may_contain?: boolean;
+  allergen_onion_may_contain?: boolean;
+  allergen_nitrite_may_contain?: boolean;
+  allergen_mushroom_may_contain?: boolean;
+  allergen_hot_pepper_may_contain?: boolean;
+  allergen_citrus_may_contain?: boolean;
+  allergen_pork_may_contain?: boolean;
+  
+  // ---------------------------------------------------------------------------
+  // CUSTOM ALLERGENS
+  // User-defined allergens for specific dietary needs
+  // ---------------------------------------------------------------------------
   allergen_custom1_name: string | null;
   allergen_custom1_active: boolean;
+  allergen_custom1_may_contain?: boolean;
   allergen_custom2_name: string | null;
   allergen_custom2_active: boolean;
+  allergen_custom2_may_contain?: boolean;
   allergen_custom3_name: string | null;
   allergen_custom3_active: boolean;
+  allergen_custom3_may_contain?: boolean;
+  
+  // Allergen notes (free text)
   allergen_notes: string | null;
+  
+  // ---------------------------------------------------------------------------
+  // RESOLVED NAMES (from food_relationships join)
+  // ---------------------------------------------------------------------------
   major_group_name?: string;
   category_name?: string;
   sub_category_name?: string;
@@ -65,3 +129,33 @@ export interface MasterIngredientFormData
     | "category_name"
     | "sub_category_name"
   > {}
+
+// ---------------------------------------------------------------------------
+// ALLERGEN STATE TYPE
+// ---------------------------------------------------------------------------
+// For UI components to work with tri-state allergens
+export type AllergenState = "none" | "contains" | "may_contain";
+
+// Helper to derive state from two booleans
+export const getAllergenState = (
+  contains: boolean,
+  mayContain: boolean
+): AllergenState => {
+  if (contains) return "contains";
+  if (mayContain) return "may_contain";
+  return "none";
+};
+
+// Helper to convert state back to booleans
+export const setAllergenState = (
+  state: AllergenState
+): { contains: boolean; mayContain: boolean } => {
+  switch (state) {
+    case "contains":
+      return { contains: true, mayContain: false };
+    case "may_contain":
+      return { contains: false, mayContain: true };
+    default:
+      return { contains: false, mayContain: false };
+  }
+};

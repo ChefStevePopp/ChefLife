@@ -7,6 +7,7 @@ interface AllergenBadgeProps {
   type: AllergenType;
   size?: "sm" | "md" | "lg";
   showLabel?: boolean;
+  disableTooltip?: boolean;
   className?: string;
 }
 
@@ -14,6 +15,7 @@ export const AllergenBadge: React.FC<AllergenBadgeProps> = ({
   type,
   size = "md",
   showLabel = false,
+  disableTooltip = false,
   className = "",
 }) => {
   const allergen = ALLERGENS[type];
@@ -58,25 +60,27 @@ export const AllergenBadge: React.FC<AllergenBadgeProps> = ({
         <span className="ml-2 text-sm text-gray-300">{allergen.label}</span>
       )}
 
-      {/* Tooltip */}
-      <div
-        className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 rounded bg-gray-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10"
-        role="tooltip"
-      >
-        <div className="font-medium mb-1 flex items-center gap-2">
-          {allergen.label}
-          <span
-            className={`px-1.5 py-0.5 rounded-full text-xs bg-${severityColor}-500/20 text-${severityColor}-400`}
-          >
-            {allergen.severity}
-          </span>
-        </div>
-        <p className="text-gray-300 text-xs">{allergen.description}</p>
+      {/* Tooltip - only if not disabled */}
+      {!disableTooltip && (
         <div
-          className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full border-4 border-transparent border-t-gray-800"
-          aria-hidden="true"
-        />
-      </div>
+          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 rounded bg-gray-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
+          role="tooltip"
+        >
+          <div className="font-medium mb-1 flex items-center gap-2">
+            {allergen.label}
+            <span
+              className={`px-1.5 py-0.5 rounded-full text-xs bg-${severityColor}-500/20 text-${severityColor}-400`}
+            >
+              {allergen.severity}
+            </span>
+          </div>
+          <p className="text-gray-300 text-xs">{allergen.description}</p>
+          <div
+            className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full border-4 border-transparent border-t-gray-800"
+            aria-hidden="true"
+          />
+        </div>
+      )}
     </div>
   );
 };

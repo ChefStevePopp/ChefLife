@@ -46,9 +46,12 @@ export const RecipeUnits: React.FC<RecipeUnitsProps> = ({
       ? baseUnitCost / (formData.yield_percent / 100)
       : baseUnitCost;
 
+    // Round to 4 decimal places to match DB precision and avoid false "unsaved" detection
+    const roundedCost = Math.round(adjustedUnitCost * 10000) / 10000;
+
     // Only update if the value has actually changed
-    if (adjustedUnitCost !== formData.cost_per_recipe_unit) {
-      onChange({ cost_per_recipe_unit: adjustedUnitCost });
+    if (roundedCost !== formData.cost_per_recipe_unit) {
+      onChange({ cost_per_recipe_unit: roundedCost });
     }
   }, [
     formData.current_price,

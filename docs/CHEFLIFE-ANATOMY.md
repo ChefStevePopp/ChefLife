@@ -2,8 +2,9 @@
 ## A Living Restaurant System
 
 **Document Created:** January 8, 2026  
+**Last Updated:** January 9, 2026  
 **Authors:** Steve Popp (Creator) & Claude (Architecture Partner)  
-**Version:** 1.0 - The Revelation
+**Version:** 1.1 - The Triangle Model & Cascade System
 
 ---
 
@@ -465,6 +466,164 @@ Every independent restaurant deserves that visibility.
 
 ---
 
+## The Triangle Model (Ingredient Architecture)
+
+Every ingredient exists in THREE dimensions - how you buy it, how you count it, and how you use it:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        THE INGREDIENT TRIANGLE                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│                           PURCHASE UNIT                                     │
+│                          (How you BUY it)                                   │
+│                               ▲                                             │
+│                              /│\                                            │
+│                             / │ \                                           │
+│                            /  │  \                                          │
+│                           /   │   \                                         │
+│           $30.96         /    │    \        $30.96                          │
+│           ───────       /     │     \       ───────                         │
+│           5 LB         /      │      \      176.37 OZ                       │
+│           = $6.19/LB  /       │       \     = $0.1755/OZ                    │
+│                      /        │        \                                    │
+│                     /         │         \                                   │
+│                    ▼          │          ▼                                  │
+│            INVENTORY UNIT     │      RECIPE UNIT                            │
+│           (How you COUNT it)  │     (How you USE it)                        │
+│                               │                                             │
+│                               │                                             │
+│  EXAMPLE: MOLASSES (1 x 5LB JUG @ $30.96)                                  │
+│  ═══════════════════════════════════════════                               │
+│                                                                             │
+│  ┌─────────────────┬─────────────────┬─────────────────┐                   │
+│  │  PURCHASE       │  INVENTORY      │  RECIPE         │                   │
+│  ├─────────────────┼─────────────────┼─────────────────┤                   │
+│  │  Unit: 5LB JUG  │  Unit: LB       │  Unit: OZ       │                   │
+│  │  Price: $30.96  │  Units/Purch: 5 │  Units/Purch:   │                   │
+│  │                 │  Cost: $6.19/LB │  176.37         │                   │
+│  │                 │                 │  Cost: $0.1755  │                   │
+│  │                 │  Par: 3 LB      │                 │                   │
+│  │                 │  Reorder: 1 LB  │  Yield: 100%    │                   │
+│  └─────────────────┴─────────────────┴─────────────────┘                   │
+│                                                                             │
+│  WHY THREE UNITS?                                                          │
+│  ─────────────────                                                         │
+│  • You BUY a 5LB jug (that's what the invoice says)                       │
+│  • You COUNT by the pound ("we have about 3 LB left")                     │
+│  • You USE by the ounce (recipe calls for 4 OZ molasses)                  │
+│                                                                             │
+│  Each perspective serves a different business function.                    │
+│  ChefLife tracks all three and auto-converts between them.                │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## The Cascade System (Automatic Cost Propagation)
+
+When a price changes, EVERYTHING downstream updates automatically:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          THE PRICE CASCADE                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  VENDOR INVOICE UPLOADED                                                    │
+│  ══════════════════════                                                     │
+│  GFS Invoice: Brisket now $4.75/lb (was $4.50/lb)                          │
+│                          │                                                  │
+│                          ▼                                                  │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  TRIGGER 1: Update Master Ingredient                                │   │
+│  │  ─────────────────────────────────────────                          │   │
+│  │  master_ingredients.current_price = $4.75                           │   │
+│  │  master_ingredients.cost_per_recipe_unit = $4.75 ÷ 16 = $0.297/OZ  │   │
+│  │  master_ingredients.inventory_unit_cost = $4.75/LB                  │   │
+│  └────────────────────────────────┬────────────────────────────────────┘   │
+│                                   │                                         │
+│                                   ▼                                         │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  TRIGGER 2: Cascade to Recipe Ingredients                           │   │
+│  │  ─────────────────────────────────────────                          │   │
+│  │  UPDATE recipe_ingredients                                          │   │
+│  │  SET unit_cost = $0.297, total_cost = qty × $0.297                  │   │
+│  │  WHERE ingredient_id = [brisket]                                    │   │
+│  │                                                                     │   │
+│  │  47 recipes updated automatically                                   │   │
+│  └────────────────────────────────┬────────────────────────────────────┘   │
+│                                   │                                         │
+│                                   ▼                                         │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  TRIGGER 3: Roll Up Recipe Costs [FUTURE]                           │   │
+│  │  ─────────────────────────────────────────                          │   │
+│  │  recipes.total_cost = SUM(recipe_ingredients.total_cost)            │   │
+│  └────────────────────────────────┬────────────────────────────────────┘   │
+│                                   │                                         │
+│                                   ▼                                         │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  TRIGGER 4: Update Menu Item Margins [FUTURE]                       │   │
+│  │  ─────────────────────────────────────────                          │   │
+│  │  menu_items.food_cost = recipes.total_cost                          │
+│  │  menu_items.margin = (price - food_cost) ÷ price                    │   │
+│  └────────────────────────────────┬────────────────────────────────────┘   │
+│                                   │                                         │
+│                                   ▼                                         │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  DASHBOARD ALERT                                                    │   │
+│  │  ─────────────────                                                  │   │
+│  │  ⚠️ "Brisket Sandwich margin dropped: 68% → 62%"                   │   │
+│  │  ⚠️ "5 menu items now below target margin"                         │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  THE PHILOSOPHY                                                            │
+│  ══════════════                                                            │
+│  "When a price changes, EVERYTHING downstream updates automatically.      │
+│   No spreadsheet refresh. No manual recalculation. Just truth."           │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Inventory Tracking System
+
+### Priority Levels
+Not all ingredients are equal. ChefLife tracks priority for reporting:
+
+| Priority | Use Case | Dashboard Visibility |
+|----------|----------|---------------------|
+| **Critical** | High-value proteins, signature items | Always visible, daily tracking |
+| **High** | Key ingredients, frequent use | Weekly focus, prominent display |
+| **Standard** | Normal ingredients | Standard tracking |
+| **Low** | Stable dry goods, rare use | Minimal tracking |
+
+### Inventory Schedules
+Ingredients can participate in multiple count schedules:
+
+| Schedule | Frequency | Typical Items |
+|----------|-----------|---------------|
+| **Daily** | Every day | Proteins, high-value items, perishables |
+| **Weekly** | Once per week | Standard full inventory |
+| **Monthly** | Once per month | Stable dry goods, paper products |
+| **Spot Check** | Random audits | Variance investigation, theft prevention |
+
+### The Count Sheet Query
+```sql
+-- Generate today's count sheet (daily items)
+SELECT * FROM master_ingredients 
+WHERE inventory_schedule @> ARRAY['daily']
+ORDER BY storage_area, product;
+
+-- Critical items for dashboard
+SELECT * FROM master_ingredients 
+WHERE priority_level = 'critical' 
+AND show_on_dashboard = true;
+```
+
+---
+
 ## Technical Foundation
 
 ### Database Core
@@ -518,6 +677,16 @@ That's the vision. That's the mission. That's ChefLife.
 
 ---
 
-**Document Version:** 1.0  
+**Document Version:** 1.1  
 **Status:** Living Document  
+**Last Update:** January 9, 2026 - Added Triangle Model, Cascade System, Inventory Tracking  
 **Next Update:** As the body grows
+
+---
+
+## Version History
+
+| Version | Date | Changes |
+|---------|------|--------|
+| 1.0 | Jan 8, 2026 | Initial creation - The Revelation |
+| 1.1 | Jan 9, 2026 | Added Triangle Model (Purchase/Inventory/Recipe units), Cascade System (automatic cost propagation), Inventory Tracking (priorities & schedules) |

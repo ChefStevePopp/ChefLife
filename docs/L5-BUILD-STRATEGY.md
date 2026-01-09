@@ -791,6 +791,7 @@ ChefLife maintains a centralized CSS component library for reusable patterns. Al
 | `.tab.active` | Active tab state | White text, colored top bar |
 | `.expandable-info-section` | Collapsible info panel | Use with `.expanded` class toggle |
 | `.expandable-kanban-section` | Collapsible kanban panel | Alternative expandable style |
+| `.floating-action-bar` | Glowing action bar | For unsaved changes, bulk actions (see full docs below) |
 
 ### Animation Classes
 
@@ -816,6 +817,70 @@ ChefLife maintains a centralized CSS component library for reusable patterns. Al
 ```
 
 **Variants:** `.warning` (amber), `.danger` (rose), `.success` (emerald)
+
+### Floating Action Bar
+
+The glowing action bar for unsaved changes, bulk actions, and contextual controls. Animates in from bottom with a gradient glow ring.
+
+**When Steve says "action bar"** — this is what he means.
+
+```html
+<div class="floating-action-bar">           <!-- default: cyan/blue glow -->
+  <div class="floating-action-bar-inner">
+    <div class="floating-action-bar-content">
+      <!-- Your buttons and status here -->
+    </div>
+  </div>
+</div>
+```
+
+**Variants:**
+| Variant | Class | Glow Color | Use For |
+|---------|-------|------------|--------|
+| Default | (none) | Cyan/Blue | New items, general actions |
+| Warning | `.warning` | Amber | Unsaved changes |
+| Danger | `.danger` | Rose | Delete confirmations |
+| Success | `.success` | Emerald | Successful operations |
+
+**Example - Unsaved Changes:**
+```tsx
+{hasUnsavedChanges && (
+  <div className="floating-action-bar warning">
+    <div className="floating-action-bar-inner">
+      <div className="floating-action-bar-content">
+        <span className="flex items-center gap-1.5 text-sm text-amber-400">
+          <AlertTriangle className="w-4 h-4" />
+          Unsaved changes
+        </span>
+        <div className="w-px h-6 bg-gray-700" />  {/* Divider */}
+        <button className="btn-ghost text-sm py-1.5 px-4">Cancel</button>
+        <button className="btn-primary text-sm py-1.5 px-4">
+          <Save className="w-4 h-4 mr-1" /> Save
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+```
+
+**Anatomy:**
+```
+┌──────────────────────────────────────────────────────────────┐
+│  ═══════════ ANIMATED GRADIENT GLOW (outer, blurred) ══════  │
+│  ║══════════ ANIMATED GRADIENT RING (inner, sharp) ═══════║  │
+│  ║                                                        ║  │
+│  ║  ⚠ Status  │  Action 1  │  Action 2  │  [Primary]     ║  │
+│  ║                                                        ║  │
+│  ║════════════════════════════════════════════════════════║  │
+│  ═══════════════════════════════════════════════════════════  │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**CSS Location:** `src/index.css` → search for "FLOATING ACTION BAR"
+
+**Reference Implementations:**
+- `src/features/admin/components/sections/recipe/MasterIngredientList/IngredientDetailPage/index.tsx`
+- `src/features/team/components/TeamManagement/components/RosterBulkActions.tsx`
 
 ### Toggle Switch
 
@@ -1001,6 +1066,17 @@ A feature is L5 complete when:
 ---
 
 ## Changelog
+
+**Jan 9, 2026 (Session 2 - Route-Based Editing):**
+- **Documented Floating Action Bar** as standard component:
+  - Full usage guide with variants (default, warning, danger, success)
+  - Anatomy diagram showing glow layers
+  - Example code for unsaved changes pattern
+  - Added to CSS component library quick reference table
+  - Note: "When Steve says action bar, this is what he means"
+- Created `IngredientDetailPage` - route-based editing replacing modal
+- Added `ConfirmDialog` as standard for destructive confirmations
+- Routes: `/admin/data/ingredients/:id` and `/admin/data/ingredients/new`
 
 **Jan 9, 2026 (Late Night):**
 - **Documented L5 Header Pattern** with two variants:

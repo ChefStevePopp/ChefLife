@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import {
   Plus,
   Database,
@@ -14,13 +14,14 @@ import {
   AlertTriangle,
   CheckCircle,
   Printer,
+  Pencil,
 } from "lucide-react";
 import { CategoryStats } from "./CategoryStats";
 import { useMasterIngredientsStore } from "@/stores/masterIngredientsStore";
 import { useFoodRelationshipsStore } from "@/stores/foodRelationshipsStore";
 import { ExcelDataGrid } from "@/shared/components/ExcelDataGrid";
 import { masterIngredientColumns, allergenViewColumns } from "./columns";
-import { EditIngredientModal } from "./EditIngredientModal";
+import { ImportWizard } from "./ImportWizard";
 import { MasterIngredient } from "@/types/master-ingredient";
 import { useAuth } from "@/hooks/useAuth";
 import { useDiagnostics } from "@/hooks/useDiagnostics";
@@ -52,13 +53,12 @@ export const MasterIngredientList = () => {
   const { organization } = useAuth();
   const { showDiagnostics } = useDiagnostics();
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   // ---------------------------------------------------------------------------
   // STATE
   // ---------------------------------------------------------------------------
   const activeTab = (searchParams.get("tab") as TabId) || "ingredients";
-  const [newIngredient, setNewIngredient] = useState<MasterIngredient | null>(null);
-  const [editingIngredient, setEditingIngredient] = useState<MasterIngredient | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isInfoExpanded, setIsInfoExpanded] = useState(false);
@@ -185,54 +185,11 @@ export const MasterIngredientList = () => {
   };
 
   const handleCreateIngredient = () => {
-    setNewIngredient({
-      product: "",
-      major_group: null,
-      category: null,
-      sub_category: null,
-      vendor: "",
-      item_code: "",
-      case_size: "",
-      units_per_case: 0,
-      recipe_unit_type: "",
-      yield_percent: 100,
-      cost_per_recipe_unit: 0,
-      current_price: 0,
-      recipe_unit_per_purchase_unit: 0,
-      unit_of_measure: "",
-      storage_area: "",
-      image_url: null,
-      allergen_peanut: false,
-      allergen_crustacean: false,
-      allergen_treenut: false,
-      allergen_shellfish: false,
-      allergen_sesame: false,
-      allergen_soy: false,
-      allergen_fish: false,
-      allergen_wheat: false,
-      allergen_milk: false,
-      allergen_sulphite: false,
-      allergen_egg: false,
-      allergen_gluten: false,
-      allergen_mustard: false,
-      allergen_celery: false,
-      allergen_garlic: false,
-      allergen_onion: false,
-      allergen_nitrite: false,
-      allergen_mushroom: false,
-      allergen_hot_pepper: false,
-      allergen_citrus: false,
-      allergen_pork: false,
-      allergen_custom1_name: null,
-      allergen_custom1_active: false,
-      allergen_custom2_name: null,
-      allergen_custom2_active: false,
-      allergen_custom3_name: null,
-      allergen_custom3_active: false,
-      allergen_notes: null,
-      organization_id: organization?.id,
-      archived: false,
-    } as MasterIngredient);
+    navigate("/admin/data/ingredients/new");
+  };
+
+  const handleEditIngredient = (ingredient: MasterIngredient) => {
+    navigate(`/admin/data/ingredients/${ingredient.id}`);
   };
 
   const toggleAllergenFilter = (type: AllergenType) => {
@@ -308,6 +265,7 @@ export const MasterIngredientList = () => {
                   ingredients. Use the tabs to manage costs, track allergens for food safety, 
                   import from spreadsheets, or export reports.
                 </p>
+                
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                   {TABS.map((tab) => {
                     const Icon = tab.icon;
@@ -332,6 +290,16 @@ export const MasterIngredientList = () => {
                       </div>
                     );
                   })}
+                </div>
+
+                {/* Interaction hint - centered footnote below legend */}
+                <div className="pt-3 border-t border-gray-700/30 flex justify-center">
+                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <div className="w-5 h-5 rounded bg-gray-700/50 flex items-center justify-center">
+                      <Pencil className="w-3 h-3 text-gray-400" />
+                    </div>
+                    <span>Click any row to edit</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -396,7 +364,7 @@ export const MasterIngredientList = () => {
               <ExcelDataGrid
                 data={isRefreshing ? [] : filteredIngredients}
                 columns={masterIngredientColumns}
-                onRowClick={(row) => setEditingIngredient(row)}
+                onRowClick={handleEditIngredient}
                 onRefresh={handleRefresh}
                 isLoading={isRefreshing}
                 type="master-ingredients"
@@ -419,21 +387,73 @@ export const MasterIngredientList = () => {
               onToggleAllergen={toggleAllergenFilter}
               onSetFilterMode={setAllergenFilterMode}
               onClearFilters={() => setSelectedAllergens([])}
-              onEditIngredient={setEditingIngredient}
+              onEditIngredient={handleEditIngredient}
               getIngredientAllergens={getIngredientAllergens}
             />
           )}
 
           {/* ================================================================
-           * IMPORT TAB
+           * IMPORT TAB - Inline Wizard (No Modal)
            * ================================================================ */}
           {activeTab === "import" && (
-            <ImportTab
+            <ImportWizard
               organizationId={organization?.id}
-              ingredients={ingredients}
-              createIngredient={createIngredient}
-              updateIngredient={updateIngredient}
-              fetchIngredients={fetchIngredients}
+              existingIngredients={ingredients}
+              onImport={async (data) => {
+                if (!organization?.id) {
+                  toast.error("Organization not found");
+                  return;
+                }
+
+                let successCount = 0;
+                let errorCount = 0;
+
+                for (const row of data) {
+                  try {
+                    const existingByCode = row.item_code 
+                      ? ingredients.find(i => i.item_code === row.item_code) 
+                      : null;
+                    const existingByName = ingredients.find(
+                      i => i.product?.toLowerCase() === row.product?.toLowerCase()
+                    );
+                    const existing = existingByCode || existingByName;
+
+                    const ingredientData = {
+                      product: row.product || "",
+                      item_code: row.item_code || null,
+                      vendor: row.vendor || "",
+                      major_group: row.major_group || null,
+                      category: row.category || null,
+                      sub_category: row.sub_category || null,
+                      unit_of_measure: row.unit_of_measure || "",
+                      current_price: parseFloat(row.current_price) || 0,
+                      units_per_case: parseInt(row.units_per_case) || 0,
+                      recipe_unit_type: row.recipe_unit_type || "",
+                      recipe_unit_per_purchase_unit: parseFloat(row.recipe_unit_per_purchase_unit) || 0,
+                      yield_percent: parseFloat(row.yield_percent) || 100,
+                      storage_area: row.storage_area || "",
+                      organization_id: organization.id,
+                      archived: false,
+                    };
+
+                    if (existing) {
+                      await updateIngredient(existing.id, { ...existing, ...ingredientData });
+                    } else {
+                      await createIngredient(ingredientData as any);
+                    }
+                    successCount++;
+                  } catch (error) {
+                    console.error("Error importing row:", row, error);
+                    errorCount++;
+                  }
+                }
+
+                await fetchIngredients();
+
+                if (errorCount > 0) {
+                  toast.error(`Imported ${successCount} items, ${errorCount} failed`);
+                }
+              }}
             />
           )}
 
@@ -445,39 +465,6 @@ export const MasterIngredientList = () => {
           )}
         </div>
       </div>
-
-      {/* Edit/Create Modal */}
-      {(editingIngredient || newIngredient) && (
-        <EditIngredientModal
-          ingredient={editingIngredient || newIngredient}
-          onClose={() => (editingIngredient ? setEditingIngredient(null) : setNewIngredient(null))}
-          onSave={async (ingredient) => {
-            if (editingIngredient) {
-              await handleSaveIngredient(ingredient);
-            } else {
-              try {
-                if (!organization?.id) throw new Error("Organization ID is required");
-                const { id, created_at, updated_at, major_group_name, category_name, sub_category_name, ...rest } = ingredient;
-                await createIngredient({
-                  ...rest,
-                  organization_id: organization.id,
-                  vendor: rest.vendor || "",
-                  item_code: rest.item_code || "",
-                  created_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString(),
-                } as any);
-                setNewIngredient(null);
-                toast.success("Ingredient created successfully");
-              } catch (error) {
-                console.error("Error creating ingredient:", error);
-                toast.error("Failed to create ingredient");
-                throw error;
-              }
-            }
-          }}
-          isNew={!editingIngredient}
-        />
-      )}
     </div>
   );
 };
@@ -749,150 +736,6 @@ const AllergensTab: React.FC<AllergensTabProps> = ({
           Print Allergen Chart
         </button>
       </div>
-    </div>
-  );
-};
-
-// =============================================================================
-// IMPORT TAB COMPONENT
-// =============================================================================
-interface ImportTabProps {
-  organizationId?: string;
-  ingredients: MasterIngredient[];
-  createIngredient: (data: any) => Promise<void>;
-  updateIngredient: (id: string, data: any) => Promise<void>;
-  fetchIngredients: () => Promise<void>;
-}
-
-const ImportTab: React.FC<ImportTabProps> = ({
-  organizationId,
-  ingredients,
-  createIngredient,
-  updateIngredient,
-  fetchIngredients,
-}) => {
-  const [showImportModal, setShowImportModal] = useState(false);
-  
-  const ImportExcelModal = React.lazy(() => 
-    import("@/features/admin/components/ImportExcelModal").then(mod => ({ default: mod.ImportExcelModal }))
-  );
-
-  const handleImport = async (data: any[], sheetName: string) => {
-    if (!organizationId) {
-      toast.error("Organization not found");
-      return;
-    }
-
-    let successCount = 0;
-    let errorCount = 0;
-
-    for (const row of data) {
-      try {
-        const existingByCode = row.item_code ? ingredients.find(i => i.item_code === row.item_code) : null;
-        const existingByName = ingredients.find(i => i.product?.toLowerCase() === row.product?.toLowerCase());
-        const existing = existingByCode || existingByName;
-
-        const ingredientData = {
-          product: row.product || "",
-          item_code: row.item_code || null,
-          vendor: row.vendor || "",
-          major_group: row.major_group || null,
-          category: row.category || null,
-          sub_category: row.sub_category || null,
-          unit_of_measure: row.unit_of_measure || "",
-          current_price: parseFloat(row.current_price) || 0,
-          units_per_case: parseInt(row.units_per_case) || 0,
-          recipe_unit_type: row.recipe_unit_type || "",
-          recipe_unit_per_purchase_unit: parseFloat(row.recipe_unit_per_purchase_unit) || 0,
-          yield_percent: parseFloat(row.yield_percent) || 100,
-          storage_area: row.storage_area || "",
-          organization_id: organizationId,
-          archived: false,
-        };
-
-        if (existing) {
-          await updateIngredient(existing.id, { ...existing, ...ingredientData });
-        } else {
-          await createIngredient(ingredientData as any);
-        }
-        successCount++;
-      } catch (error) {
-        console.error("Error importing row:", row, error);
-        errorCount++;
-      }
-    }
-
-    await fetchIngredients();
-
-    if (errorCount > 0) {
-      toast.error(`Imported ${successCount} items, ${errorCount} failed`);
-    } else {
-      toast.success(`Successfully imported ${successCount} ingredients`);
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      {/* Import Instructions */}
-      <div className="bg-amber-500/10 rounded-lg p-6 border border-amber-500/20">
-        <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-lg bg-amber-500/20 flex items-center justify-center flex-shrink-0">
-            <Upload className="w-6 h-6 text-amber-400" />
-          </div>
-          <div>
-            <h3 className="text-lg font-medium text-white mb-2">Import from Spreadsheet</h3>
-            <p className="text-sm text-gray-400 mb-4">
-              Upload an Excel (.xlsx) or CSV file to bulk import ingredients. 
-              You'll be able to map your columns to our fields before importing.
-            </p>
-            <button onClick={() => setShowImportModal(true)} className="btn-primary">
-              <Upload className="w-4 h-4 mr-2" />
-              Select File to Import
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Tips */}
-      <div className="bg-gray-800/30 rounded-lg p-4 border border-gray-700/50">
-        <h4 className="text-sm font-medium text-white mb-3">Import Tips</h4>
-        <ul className="space-y-2 text-sm text-gray-400">
-          <li className="flex items-start gap-2">
-            <span className="text-amber-400">✓</span>
-            First row should contain column headers
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-amber-400">✓</span>
-            At minimum, include a "Product Name" column
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-amber-400">✓</span>
-            Existing items will be updated if matched by Item Code or Product Name
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-amber-400">✓</span>
-            Supported formats: .xlsx, .xls, .csv
-          </li>
-        </ul>
-      </div>
-
-      {/* Recent Imports - placeholder */}
-      <div>
-        <h4 className="text-sm font-medium text-gray-400 mb-3">Recent Imports</h4>
-        <div className="text-sm text-gray-500 italic">No imports yet</div>
-      </div>
-
-      {/* Import Modal */}
-      {showImportModal && (
-        <React.Suspense fallback={<div>Loading...</div>}>
-          <ImportExcelModal
-            isOpen={showImportModal}
-            onClose={() => setShowImportModal(false)}
-            onImport={handleImport}
-            type="master-ingredients"
-          />
-        </React.Suspense>
-      )}
     </div>
   );
 };

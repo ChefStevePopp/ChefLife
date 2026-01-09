@@ -24,6 +24,7 @@ import { Communications, TemplateEditor, TemplatePreview } from "../components/s
 import { Operations } from "../components/sections/Operations";
 // Data Management - proper routes instead of hash-based
 import { MasterIngredientList } from "../components/sections/recipe/MasterIngredientList";
+import { IngredientDetailPage } from "../components/sections/recipe/MasterIngredientList/IngredientDetailPage";
 import { InventoryManagement } from "../components/sections/InventoryManagement";
 
 export const AdminRoutes: React.FC = () => {
@@ -41,6 +42,8 @@ export const AdminRoutes: React.FC = () => {
         <Route path="help" element={<HelpSupport />} />
         {/* Data Management - proper routes */}
         <Route path="data/ingredients" element={<MasterIngredientList />} />
+        <Route path="data/ingredients/new" element={<IngredientDetailPage />} />
+        <Route path="data/ingredients/:id" element={<IngredientDetailPage />} />
         <Route path="data/invoices" element={<VendorInvoiceManager />} />
         <Route path="data/inventory" element={<InventoryManagement />} />
         <Route path="dev-management" element={<DevManagement />} />
