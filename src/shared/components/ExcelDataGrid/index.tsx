@@ -573,6 +573,12 @@ export function ExcelDataGrid<T>({
   };
 
   const renderCell = (column: ExcelColumn, row: T) => {
+    // Custom render function takes priority
+    if (column.type === "custom" && column.render) {
+      const value = getNestedValue(row, column.key);
+      return column.render(value, row);
+    }
+
     if (column.type === "allergen") {
       return <AllergenCell ingredient={row} />;
     }
@@ -909,7 +915,10 @@ export function ExcelDataGrid<T>({
                     return (
                       <td
                         key={`${rowIndex}-${column.key}`}
-                        className="px-4 py-3 text-sm text-gray-300"
+                        className={`px-4 py-3 text-sm text-gray-300 ${
+                          column.align === "center" ? "text-center" :
+                          column.align === "right" ? "text-right" : ""
+                        }`}
                         style={{
                           width: `${columnWidths[column.key] || column.width}px`,
                           minWidth: `${columnWidths[column.key] || column.width}px`,

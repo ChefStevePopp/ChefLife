@@ -6,7 +6,7 @@ import type { ExcelColumn } from "@/types";
 // RESIZABLE HEADER - L5 Design
 // =============================================================================
 // Clickable header for sorting, draggable edge for resizing
-// Fixed: Stale closure bug, wider resize handle, visual feedback
+// Supports column alignment via column.align property
 // =============================================================================
 
 interface ResizableHeaderProps {
@@ -69,6 +69,13 @@ export const ResizableHeader: React.FC<ResizableHeaderProps> = ({
     document.addEventListener("mouseup", handleMouseUp);
   };
 
+  // Determine alignment class
+  const alignClass = column.align === "center" 
+    ? "justify-center text-center" 
+    : column.align === "right" 
+    ? "justify-end text-right" 
+    : "text-left";
+
   return (
     <div
       ref={headerRef}
@@ -82,7 +89,7 @@ export const ResizableHeader: React.FC<ResizableHeaderProps> = ({
       {/* Header content - clickable for sorting */}
       <button
         type="button"
-        className="flex-1 flex items-center gap-1.5 px-4 py-3 text-left hover:bg-gray-800/50 transition-colors"
+        className={`flex-1 flex items-center gap-1.5 px-4 py-3 hover:bg-gray-800/50 transition-colors ${alignClass}`}
         onClick={onSort}
       >
         <span className={`font-medium text-sm ${isFiltered ? "text-primary-400" : "text-gray-300"}`}>
