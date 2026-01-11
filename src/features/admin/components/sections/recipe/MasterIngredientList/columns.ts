@@ -1,8 +1,23 @@
 import { MasterIngredient } from "@/types/master-ingredient";
 import type { ExcelColumn } from "@/types/excel";
 import { AllergenCell } from "./components/AllergenCell";
+import { StatusCell } from "./components/StatusCell";
 
 export const masterIngredientColumns: ExcelColumn[] = [
+  {
+    key: "status",
+    name: "Status",
+    type: "status",
+    width: 100,
+    sortable: true,
+    filterable: true,
+    cell: (info) => {
+      return {
+        component: StatusCell,
+        props: { ingredient: info.row.original },
+      };
+    },
+  },
   {
     key: "item_code",
     name: "Vendor ID",

@@ -22,6 +22,19 @@ export interface MasterIngredient {
   archived?: boolean;
   
   // ---------------------------------------------------------------------------
+  // INGREDIENT TYPE - Purchased vs Prep
+  // ---------------------------------------------------------------------------
+  ingredient_type: 'purchased' | 'prep';
+  source_recipe_id?: string | null;  // For prep: links to source recipe
+  
+  // ---------------------------------------------------------------------------
+  // COMMON NAME - Kitchen/User Language
+  // Links Code Groups (same vendor) and Umbrella Groups (all vendors)
+  // Example: Vendor says "Pork Back Ribs 32-38oz", common_name is "Back Ribs"
+  // ---------------------------------------------------------------------------
+  common_name?: string | null;
+  
+  // ---------------------------------------------------------------------------
   // INVENTORY UNITS
   // How we count this ingredient during inventory taking
   // ---------------------------------------------------------------------------

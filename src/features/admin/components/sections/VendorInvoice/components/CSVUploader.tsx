@@ -14,7 +14,7 @@ import {
 import Papa from "papaparse";
 
 interface Props {
-  onUpload: (data: any[], fileDate?: Date) => void;
+  onUpload: (data: any[], fileDate?: Date, sourceFile?: File) => void;
   hasTemplate?: boolean;
 }
 
@@ -198,8 +198,8 @@ export const CSVUploader: React.FC<Props> = ({
                 return;
               }
 
-              // Make sure we're passing the detected date to onUpload
-              onUpload(filteredData, possibleDate || detectedDate);
+              // Make sure we're passing the detected date and source file to onUpload
+              onUpload(filteredData, possibleDate || detectedDate, file);
               setShowDateConfirmation(false);
             },
             error: (error) => {

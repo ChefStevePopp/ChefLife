@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { 
-  ArrowLeft, 
   Package, 
   Circle, 
   AlertTriangle, 
@@ -38,6 +37,7 @@ interface PageHeaderProps {
   onBack: () => void;
   onChange: (updates: Partial<MasterIngredient>) => void;
   guidedModeToggle?: React.ReactNode;
+  backLabel?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -351,6 +351,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   onBack,
   onChange,
   guidedModeToggle,
+  backLabel = "Back to Ingredients",
 }) => {
   const [isBasicInfoExpanded, setIsBasicInfoExpanded] = useState(isNew);
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
@@ -372,15 +373,8 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
       <div className="bg-[#1a1f2b] rounded-lg shadow-lg">
         {/* Main Header */}
         <div className="p-4">
-          {/* Top Row: Back Link + Guided Toggle */}
-          <div className="flex items-center justify-between mb-4">
-            <button
-              onClick={onBack}
-              className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group"
-            >
-              <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-              <span className="text-sm">Back to Ingredients</span>
-            </button>
+          {/* Top Row: Guided Toggle (back button moved to nav bar) */}
+          <div className="flex items-center justify-end mb-4">
             {guidedModeToggle}
           </div>
 

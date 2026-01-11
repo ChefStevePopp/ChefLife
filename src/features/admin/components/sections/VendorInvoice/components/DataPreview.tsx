@@ -13,20 +13,26 @@ import {
   Umbrella,
   Trash2,
   Link,
+  Shield,
+  ChevronDown,
 } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { EditIngredientModal } from "@/features/admin/components/sections/recipe/MasterIngredientList/EditIngredientModal";
 import { LinkExistingIngredientModal } from "./LinkExistingIngredientModal";
+import { NewIngredientInline } from "./NewIngredientInline";
 import type { MasterIngredient } from "@/types/master-ingredient";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import toast from "react-hot-toast";
-import { useMasterIngredientsStore } from "@/stores/masterIngredientsStore";
+// Note: bulkUpdatePrices moved to vendorInvoiceAuditService for audit trail integrity
+import { processInvoiceWithAuditTrail, type InvoiceLineItem } from "@/lib/vendorInvoiceAuditService";
 
 interface Props {
   data: any[];
   vendorId: string;
   invoiceDate?: Date;
+  sourceFile?: File; // Source file for audit trail
+  importType?: 'csv_import' | 'pdf_import' | 'photo_import' | 'manual_entry';
   onConfirm: () => void;
   onCancel: () => void;
   onDateChange?: (date: Date) => void;
@@ -45,12 +51,13 @@ export const DataPreview: React.FC<Props> = ({
   data,
   vendorId,
   invoiceDate,
+  sourceFile,
+  importType = 'csv_import',
   onConfirm,
   onCancel,
   onDateChange,
 }) => {
   const { user } = useAuth();
-  const { bulkUpdatePrices } = useMasterIngredientsStore();
   const [priceChanges, setPriceChanges] = useState<PriceChange[]>([]);
   const [masterIngredients, setMasterIngredients] = useState<
     MasterIngredient[]
@@ -63,6 +70,9 @@ export const DataPreview: React.FC<Props> = ({
     useState<Partial<MasterIngredient> | null>(null);
   const [excludedItems, setExcludedItems] = useState<string[]>([]);
   const [dateConfirmed, setDateConfirmed] = useState<boolean>(true);
+  // Stage 2: Inline expansion state (replaces modal for new items)
+  const [expandedItemCode, setExpandedItemCode] = useState<string | null>(null);
+  const [skippedItems, setSkippedItems] = useState<string[]>([]);
 
   // Find price changes and existing items on component mount
   useEffect(() => {
@@ -128,12 +138,14 @@ export const DataPreview: React.FC<Props> = ({
       });
       const uniqueItems = Array.from(uniqueItemsMap.values());
 
-      // First ensure all items exist or are explicitly excluded
+      // First ensure all items exist or are explicitly handled (excluded or skipped)
       const unhandledItems = uniqueItems.filter(
         (row) =>
           !masterIngredients.find(
             (mi) => mi.item_code === row.item_code.toString(),
-          ) && !excludedItems.includes(row.item_code.toString()),
+          ) && 
+          !excludedItems.includes(row.item_code.toString()) &&
+          !skippedItems.includes(row.item_code.toString()),
       );
 
       if (unhandledItems.length > 0) {
@@ -141,114 +153,119 @@ export const DataPreview: React.FC<Props> = ({
         return;
       }
 
+      // Save skipped items to pending_import_items table
+      if (skippedItems.length > 0) {
+        const skippedItemsData = skippedItems.map((itemCode) => {
+          const row = uniqueItems.find((r) => r.item_code.toString() === itemCode);
+          return {
+            organization_id: user.user_metadata.organizationId,
+            vendor_id: vendorId,
+            item_code: itemCode,
+            product_name: row?.product_name || '',
+            unit_price: row ? parseFloat(row.unit_price) : null,
+            unit_of_measure: row?.unit_of_measure || null,
+            status: 'pending',
+            created_by: user.id,
+          };
+        });
+
+        const { error: pendingError } = await supabase
+          .from('pending_import_items')
+          .upsert(skippedItemsData, { 
+            onConflict: 'organization_id,vendor_id,item_code,status',
+            ignoreDuplicates: true 
+          });
+
+        if (pendingError) {
+          console.warn('Failed to save pending items (table may not exist yet):', pendingError);
+        }
+      }
+
+      if (!user?.user_metadata?.organizationId) {
+        toast.error("Organization ID is required");
+        return;
+      }
+
+      if (!user?.id) {
+        toast.error("User ID is required");
+        return;
+      }
+
       // Record approved price changes
       const approvedChanges = priceChanges.filter((change) => change.approved);
 
-      // Update all prices that were approved
-      if (approvedChanges.length > 0) {
-        try {
-          // Use the bulkUpdatePrices method from the store
-          const priceUpdates = approvedChanges.map((change) => ({
-            itemCode: change.itemCode,
-            newPrice: change.newPrice,
-          }));
+      // Prepare line items for audit service (excluding excluded items)
+      const lineItems: InvoiceLineItem[] = uniqueItems
+        .filter((item) => !excludedItems.includes(item.item_code.toString()))
+        .map((item) => ({
+          item_code: item.item_code.toString(),
+          product_name: item.product_name,
+          quantity: parseFloat(item.quantity) || 1,
+          unit_price: parseFloat(item.unit_price),
+          unit_of_measure: item.unit_of_measure,
+          original_description: item.product_name,
+        }));
 
-          await bulkUpdatePrices(priceUpdates);
+      // Generate invoice number from vendor + date + timestamp
+      const invoiceDateStr = invoiceDate 
+        ? invoiceDate.toISOString().split('T')[0] 
+        : new Date().toISOString().split('T')[0];
+      const invoiceNumber = sourceFile?.name 
+        ? sourceFile.name.replace(/\.[^/.]+$/, '') // Remove file extension
+        : `${vendorId}_${invoiceDateStr}_${Date.now()}`;
 
-          // Create price change records for history
-          const priceChangeRecords = approvedChanges.map((change) => {
-            // Find the matching ingredient to get its ID
-            const matchingIngredient = masterIngredients.find(
-              (mi) => mi.item_code === change.itemCode.toString(),
-            );
-
-            // Ensure percent_change is never null (default to 0 if calculation results in null/undefined/NaN)
-            const safePercentChange = isNaN(change.changePercent)
-              ? 0
-              : change.changePercent;
-
-            return {
-              organization_id: user?.user_metadata?.organizationId,
-              vendor_id: vendorId,
-              item_code: change.itemCode,
-              ingredient_id: matchingIngredient?.id,
-              invoice_date: invoiceDate
-                ? invoiceDate.toISOString()
-                : new Date().toISOString(),
-              old_price: change.oldPrice,
-              new_price: change.newPrice,
-              percent_change: safePercentChange,
-              approved: true,
-              approved_by: user?.id,
-              approved_at: new Date().toISOString(),
-            };
-          });
-
-          // Insert price changes into history
-          const { error: insertError } = await supabase
-            .from("vendor_price_changes")
-            .insert(priceChangeRecords);
-
-          if (insertError) throw insertError;
-        } catch (updateError) {
-          console.error("Error updating prices:", updateError);
-          toast.error("Failed to update ingredient prices");
-          throw updateError;
-        }
-      }
-
-      // Record the import in the vendor_imports table
-      try {
-        const importRecord = {
-          organization_id: user?.user_metadata?.organizationId,
-          vendor_id: vendorId,
-          import_type: "csv", // This could be dynamic based on the import type
-          file_name: `${vendorId.toLowerCase()}_import_${invoiceDate ? invoiceDate.toISOString().split("T")[0] : new Date().toISOString().split("T")[0]}.csv`,
-          items_count: uniqueItems.length, // Use unique items count instead of all data
-          price_changes: approvedChanges.length,
-          new_items: uniqueItems.filter(
-            (row) =>
-              !masterIngredients.find(
-                (mi) => mi.item_code === row.item_code.toString(),
-              ),
-          ).length,
-          status: "completed",
-          created_by: user?.id,
-        };
-
-        console.log("Inserting import record:", importRecord);
-        const { data: insertedRecord, error: insertError } = await supabase
-          .from("vendor_imports")
-          .insert([importRecord])
-          .select();
-
-        if (insertError) {
-          console.error("Error inserting import record:", insertError);
-          throw insertError;
-        }
-
-        console.log("Successfully inserted import record:", insertedRecord);
-      } catch (importError) {
-        console.error("Error recording import:", importError);
-        // Don't fail the whole operation if just the import record fails
-      }
+      // Process with full audit trail
+      const result = await processInvoiceWithAuditTrail(
+        {
+          organizationId: user.user_metadata.organizationId,
+          vendorId,
+          invoiceNumber,
+          invoiceDate: invoiceDate || new Date(),
+          lineItems,
+          sourceFile: sourceFile,
+          importType,
+          createdBy: user.id,
+        },
+        approvedChanges.map((change) => ({
+          itemCode: change.itemCode,
+          newPrice: change.newPrice,
+        }))
+      );
 
       onConfirm();
-      toast.success("Changes processed successfully");
-    } catch (error) {
-      console.error("Error processing changes:", error);
-      toast.error("Failed to process changes");
+      toast.success(
+        <div className="flex items-center gap-2">
+          <Shield className="w-4 h-4 text-emerald-400" />
+          <span>
+            Import complete with full audit trail
+            {result.priceChangesCount > 0 && (
+              <span className="text-emerald-400 ml-1">
+                ({result.priceChangesCount} price changes)
+              </span>
+            )}
+          </span>
+        </div>
+      );
+    } catch (error: any) {
+      console.error("Error processing with audit trail:", error);
+      toast.error(error.message || "Failed to process import");
     }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
+      {/* L5 Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-medium text-white">Review Import Data</h3>
-          <p className="text-sm text-gray-400">
-            Please verify the mapped data before proceeding
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-primary-500/20 flex items-center justify-center">
+            <Shield className="w-5 h-5 text-primary-400" />
+          </div>
+          <div>
+            <h3 className="text-lg font-medium text-white">Review Import Data</h3>
+            <p className="text-sm text-gray-400">
+              Verify mapped data before importing with audit trail
+            </p>
+          </div>
         </div>
         <div className="flex gap-2">
           <div className="flex items-center gap-2 mr-4">
@@ -270,19 +287,18 @@ export const DataPreview: React.FC<Props> = ({
                   if (!isNaN(newDate.getTime()) && onDateChange) {
                     onDateChange(newDate);
                     setDateConfirmed(false);
-                    // Set a small timeout to show the animation after user selects a date
                     setTimeout(() => setDateConfirmed(true), 300);
                   }
                 }}
               />
               {dateConfirmed && (
                 <motion.div
-                  className="ml-2 flex items-center justify-center h-6 w-6 rounded-full bg-emerald-500/20 text-emerald-400"
+                  className="ml-2 w-6 h-6 rounded-lg bg-emerald-500/20 flex items-center justify-center"
                   initial={{ opacity: 0, scale: 0 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.3, type: "spring", stiffness: 200 }}
                 >
-                  <Check className="w-4 h-4" />
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
                 </motion.div>
               )}
             </div>
@@ -290,7 +306,6 @@ export const DataPreview: React.FC<Props> = ({
           <button
             onClick={async () => {
               try {
-                // Fetch all master ingredients from the view
                 const { data: ingredients, error } = await supabase
                   .from("master_ingredients_with_categories")
                   .select("*");
@@ -298,7 +313,6 @@ export const DataPreview: React.FC<Props> = ({
                 if (error) throw error;
                 setMasterIngredients(ingredients || []);
 
-                // Remove duplicate item codes, keeping only the first occurrence
                 const uniqueItemsMap = new Map();
                 data.forEach((item) => {
                   if (!uniqueItemsMap.has(item.item_code)) {
@@ -307,26 +321,16 @@ export const DataPreview: React.FC<Props> = ({
                 });
                 const uniqueItems = Array.from(uniqueItemsMap.values());
 
-                // Recalculate price changes
                 const changes = uniqueItems
                   .map((item) => {
                     const current = ingredients?.find(
                       (p) => p.item_code === item.item_code.toString(),
                     );
-
                     if (!current) return null;
-
                     const oldPrice = current.current_price;
                     const newPrice = parseFloat(item.unit_price);
-                    const changePercent =
-                      ((newPrice - oldPrice) / oldPrice) * 100;
-
-                    return {
-                      itemCode: item.item_code,
-                      oldPrice,
-                      newPrice,
-                      changePercent,
-                    };
+                    const changePercent = ((newPrice - oldPrice) / oldPrice) * 100;
+                    return { itemCode: item.item_code, oldPrice, newPrice, changePercent };
                   })
                   .filter(Boolean);
 
@@ -337,13 +341,20 @@ export const DataPreview: React.FC<Props> = ({
                 toast.error("Failed to refresh data");
               }
             }}
-            className="btn-ghost"
+            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg transition-colors"
           >
-            <RefreshCw className="w-4 h-4 mr-2" />
+            <div className="w-5 h-5 rounded bg-gray-700/50 flex items-center justify-center">
+              <RefreshCw className="w-3 h-3" />
+            </div>
             Refresh
           </button>
-          <button onClick={onCancel} className="btn-ghost">
-            <X className="w-4 h-4 mr-2" />
+          <button 
+            onClick={onCancel} 
+            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg transition-colors"
+          >
+            <div className="w-5 h-5 rounded bg-gray-700/50 flex items-center justify-center">
+              <X className="w-3 h-3" />
+            </div>
             Cancel
           </button>
         </div>
@@ -400,14 +411,19 @@ export const DataPreview: React.FC<Props> = ({
                   row.item_code.toString(),
                 );
 
+                const isExpanded = expandedItemCode === row.item_code.toString();
+                const isSkipped = skippedItems.includes(row.item_code.toString());
+
                 return (
+                  <React.Fragment key={index}>
                   <tr
-                    key={index}
                     className={`
                       ${isExisting ? "bg-gray-800/50" : ""} 
                       ${hasChange ? "bg-amber-500/5" : ""} 
                       ${nameMismatch ? "bg-blue-500/5" : ""}
                       ${isExcluded ? "bg-gray-900/80 opacity-60" : ""}
+                      ${isExpanded ? "bg-emerald-500/5 border-l-2 border-l-emerald-500" : ""}
+                      ${isSkipped ? "bg-amber-500/5" : ""}
                     `}
                   >
                     <td
@@ -427,6 +443,11 @@ export const DataPreview: React.FC<Props> = ({
                       {isExcluded && (
                         <div className="text-xs text-rose-400 mt-1">
                           Excluded from import
+                        </div>
+                      )}
+                      {isSkipped && !isExcluded && (
+                        <div className="text-xs text-amber-400 mt-1">
+                          Skipped for now
                         </div>
                       )}
                     </td>
@@ -485,8 +506,9 @@ export const DataPreview: React.FC<Props> = ({
                                 `Item ${row.item_code} restored to import`,
                               );
                             }}
-                            className="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors"
+                            className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors"
                           >
+                            <RefreshCw className="w-3 h-3" />
                             Restore
                           </button>
                         ) : isExisting ? (
@@ -505,13 +527,14 @@ export const DataPreview: React.FC<Props> = ({
                                   ),
                                 )
                               }
-                              className={`p-1 rounded-lg transition-colors ${
+                              className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
                                 priceChange?.approved
                                   ? "bg-emerald-500/20 text-emerald-400"
-                                  : "hover:bg-emerald-500/10 text-gray-400 hover:text-emerald-400"
+                                  : "bg-gray-800/50 hover:bg-emerald-500/10 text-gray-400 hover:text-emerald-400"
                               }`}
+                              title="Approve price change"
                             >
-                              <Check className="w-4 h-4" />
+                              <Check className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() =>
@@ -527,56 +550,96 @@ export const DataPreview: React.FC<Props> = ({
                                   ),
                                 )
                               }
-                              className={`p-1 rounded-lg transition-colors ${
+                              className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
                                 priceChange?.rejected
                                   ? "bg-rose-500/20 text-rose-400"
-                                  : "hover:bg-rose-500/10 text-gray-400 hover:text-rose-400"
+                                  : "bg-gray-800/50 hover:bg-rose-500/10 text-gray-400 hover:text-rose-400"
                               }`}
+                              title="Reject price change"
                             >
-                              <Ban className="w-4 h-4" />
+                              <Ban className="w-3.5 h-3.5" />
                             </button>
                           </>
                         ) : (
                           <div className="flex gap-2">
-                            {/* Option 1: Add (Single Ingredient Import) */}
+                            {/* Option 1: Quick Add (Inline Expansion) */}
                             <button
                               onClick={() => {
-                                setNewIngredient({
-                                  product: row.product_name,
-                                  item_code: row.item_code,
-                                  current_price: parseFloat(row.unit_price),
-                                  unit_of_measure: row.unit_of_measure,
-                                  organization_id: user?.organization_id,
-                                });
+                                setExpandedItemCode(
+                                  expandedItemCode === row.item_code.toString()
+                                    ? null
+                                    : row.item_code.toString()
+                                );
                               }}
-                              className="p-1 rounded-lg transition-colors hover:bg-emerald-500/20 text-gray-400 hover:text-emerald-400"
-                              title="Add as Single Ingredient"
+                              className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+                                expandedItemCode === row.item_code.toString()
+                                  ? "bg-emerald-500/20 text-emerald-400"
+                                  : "bg-gray-800/50 hover:bg-emerald-500/20 text-gray-400 hover:text-emerald-400"
+                              }`}
+                              title="Quick Add Ingredient"
                             >
-                              <Plus className="w-4 h-4" />
+                              <Plus className={`w-3.5 h-3.5 transition-transform ${
+                                expandedItemCode === row.item_code.toString() ? "rotate-45" : ""
+                              }`} />
                             </button>
 
                             {/* Option for Discard */}
                             <button
                               onClick={() => {
-                                // Add this item to the excluded items list
                                 setExcludedItems((prev) => [
                                   ...prev,
                                   row.item_code.toString(),
                                 ]);
+                                setExpandedItemCode(null);
                                 toast.success(
                                   `Item ${row.item_code} excluded from import`,
                                 );
                               }}
-                              className="p-1 rounded-lg transition-colors hover:bg-rose-500/20 text-gray-400 hover:text-rose-400"
+                              className="w-7 h-7 rounded-lg flex items-center justify-center bg-gray-800/50 hover:bg-rose-500/20 text-gray-400 hover:text-rose-400 transition-colors"
                               title="Discard Item"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         )}
                       </div>
                     </td>
                   </tr>
+                  
+                  {/* Inline Quick-Add Expansion */}
+                  {isExpanded && !isExisting && !isExcluded && (
+                    <NewIngredientInline
+                      invoiceData={{
+                        item_code: row.item_code.toString(),
+                        product_name: row.product_name,
+                        unit_price: row.unit_price,
+                        unit_of_measure: row.unit_of_measure,
+                      }}
+                      vendorId={vendorId}
+                      onAdd={(newIngredient) => {
+                        // Add to master ingredients list so it shows as existing
+                        setMasterIngredients((prev) => [...prev, newIngredient]);
+                        setExpandedItemCode(null);
+                        // Remove from skipped if it was skipped before
+                        setSkippedItems((prev) =>
+                          prev.filter((code) => code !== row.item_code.toString())
+                        );
+                      }}
+                      onSkip={() => {
+                        // Mark as skipped for now (Stage 3 will handle pending queue)
+                        setSkippedItems((prev) => [
+                          ...prev,
+                          row.item_code.toString(),
+                        ]);
+                        setExpandedItemCode(null);
+                        toast("Skipped for now - you can add this later from the MIL", {
+                          icon: "⏭️",
+                        });
+                      }}
+                      onCancel={() => setExpandedItemCode(null)}
+                    />
+                  )}
+                  </React.Fragment>
                 );
               });
             })().filter(Boolean)}
@@ -584,50 +647,82 @@ export const DataPreview: React.FC<Props> = ({
         </table>
       </div>
 
-      <div className="bg-gray-800/50 rounded-lg p-4">
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-gray-400">Total Records:</span>
-          <span className="text-white font-medium">
-            {new Set(data.map((item) => item.item_code)).size}
-            {data.length > new Set(data.map((item) => item.item_code)).size && (
-              <span className="text-xs text-gray-500 ml-2">
-                ({data.length} total with{" "}
-                {data.length - new Set(data.map((item) => item.item_code)).size}{" "}
-                duplicates removed)
-              </span>
-            )}
-          </span>
-        </div>
-        <div className="flex items-center justify-between text-sm mt-2">
-          <span className="text-gray-400">Excluded Items:</span>
-          <span className="text-rose-400 font-medium">
-            {excludedItems.length}
-          </span>
-        </div>
-        <div className="flex justify-end mt-4">
-          <button
-            onClick={handleConfirm}
-            className="btn-primary"
-            disabled={data.some(
-              (row) =>
-                !masterIngredients.find(
-                  (mi) => mi.item_code === row.item_code.toString(),
-                ) && !excludedItems.includes(row.item_code.toString()),
-            )}
-            title={
-              data.some(
-                (row) =>
-                  !masterIngredients.find(
-                    (mi) => mi.item_code === row.item_code.toString(),
-                  ) && !excludedItems.includes(row.item_code.toString()),
-              )
-                ? "Please handle all new items before confirming"
-                : ""
-            }
-          >
-            <Save className="w-4 h-4 mr-2" />
-            Confirm Import
-          </button>
+      {/* Floating Action Bar with Summary */}
+      <div className="floating-action-bar">
+        <div className="floating-action-bar-inner">
+          <div className="floating-action-bar-content">
+            {/* Summary Stats */}
+            <div className="flex items-center gap-6 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500">Records:</span>
+                <span className="text-white font-medium">
+                  {new Set(data.map((item) => item.item_code)).size}
+                </span>
+              </div>
+              
+              {excludedItems.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500">Excluded:</span>
+                  <span className="text-rose-400 font-medium">{excludedItems.length}</span>
+                </div>
+              )}
+              
+              {skippedItems.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500">Skipped:</span>
+                  <span className="text-amber-400 font-medium">{skippedItems.length}</span>
+                </div>
+              )}
+              
+              {priceChanges.filter(p => p.approved).length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500">Price Updates:</span>
+                  <span className="text-emerald-400 font-medium">
+                    {priceChanges.filter(p => p.approved).length}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="w-px h-6 bg-gray-700" />
+
+            {/* Actions */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onCancel}
+                className="btn-ghost text-sm py-1.5 px-4"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirm}
+                className="btn-primary text-sm py-1.5 px-4"
+                disabled={data.some(
+                  (row) =>
+                    !masterIngredients.find(
+                      (mi) => mi.item_code === row.item_code.toString(),
+                    ) && 
+                    !excludedItems.includes(row.item_code.toString()) &&
+                    !skippedItems.includes(row.item_code.toString()),
+                )}
+                title={
+                  data.some(
+                    (row) =>
+                      !masterIngredients.find(
+                        (mi) => mi.item_code === row.item_code.toString(),
+                      ) && 
+                      !excludedItems.includes(row.item_code.toString()) &&
+                      !skippedItems.includes(row.item_code.toString()),
+                  )
+                    ? "Handle all new items first"
+                    : ""
+                }
+              >
+                <Save className="w-4 h-4 mr-1" />
+                Confirm Import
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 

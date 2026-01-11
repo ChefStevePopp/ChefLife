@@ -8,6 +8,24 @@
 
 ## Philosophy
 
+### The Core Promise: Tech That Works For You, Not Against You
+
+Before any design decision, ask:
+
+> **"Does this work FOR the user or make them work for IT?"**
+
+See: [PROMISE-Core-Philosophy.md](promises/PROMISE-Core-Philosophy.md)
+
+This manifests as:
+- **We Remember** — Filter settings persist, navigation knows context, history survives
+- **We Learn** — Patterns improve suggestions, expertise trains the system
+- **We Protect** — Audit trails build automatically, documentation is a byproduct
+- **We Respect** — Don't block workflows, don't require perfection, don't waste time
+
+---
+
+### Design Principles
+
 > "Let the color of the headline draw the eye... it's not quite the vibe until it's subtle."
 
 ChefLife's L5 design language prioritizes:
@@ -16,6 +34,51 @@ ChefLife's L5 design language prioritizes:
 - **Symmetry and rhythm** — consistent spacing, card grids that flow
 - **Power user respect** — keyboard shortcuts, bulk actions, smart defaults
 - **Real-time feedback** — floating action bars, optimistic updates, live previews
+
+### L6 — Respect the User's Time
+
+L6 goes beyond polish. It's the difference between software that makes you work and software that works *for you*.
+
+> "Phase 6 respects the user's craft. L6 respects their time."
+
+**L6 Patterns:**
+- **Filter-aware navigation** — Filter a list to 6 items, navigate through those 6 without losing context
+- **Context preservation** — Filters persist across detail page visits (URL params or store)
+- **One-click workflows** — Reduce multi-step processes to single actions where possible
+- **Smart batch operations** — "Update all Dairy items" not "Click 85 times"
+- **Non-blocking workflows** — Don't require perfection before progress (e.g., "Skip for Now")
+
+**Reference Implementation:** Ingredient navigation system
+- ExcelDataGrid exposes `onFilteredDataChange` callback
+- Navigation store tracks filtered list context
+- Detail page shows "3 of 6" with ← → buttons and keyboard arrows
+- Guided mode explains the feature to new users
+
+**The Test:** If a user filtered to 6 butter items, edited one, then had to re-filter to find the next — that's L5. If they just press → and stay in their butter context — that's L6.
+
+---
+
+### L7 (Future) — The System Learns
+
+L7 is where ChefLife becomes intelligent. The system captures expertise and gives it back.
+
+> "Teach it once, never again."
+
+**L7 Patterns:**
+- **Training data capture** — Every categorization, every mapping, every decision trains the model
+- **Suggestions** — "47 similar items were categorized this way"
+- **Auto-classification** — High-confidence items processed automatically
+- **Corrections improve the model** — Wrong suggestions get corrected, system learns
+
+**Reference Implementation:** VIM Import ML Training (in progress)
+- `ml_training_mappings` captures vendor description → Common Name mappings
+- `ml_training_feedback` logs accepted/corrected suggestions
+- Confidence builds with repetition
+- 5-year backfill creates initial training dataset
+
+**The Test:** If the 100th "Chicken Thighs" categorization takes as long as the first — that's L6. If the system suggests "Chicken Thighs" with 95% confidence — that's L7.
+
+See: [PROMISE-System-Learns.md](promises/PROMISE-System-Learns.md)
 
 ---
 
@@ -1061,11 +1124,20 @@ A feature is L5 complete when:
 
 ---
 
-*Last updated: January 9, 2026*
+*Last updated: January 10, 2026*
 
 ---
 
 ## Changelog
+
+**Jan 10, 2026 (L6 Navigation):**
+- **Added L6 — Respect the User's Time** philosophy section:
+  - Filter-aware navigation preserves user context
+  - Reference implementation: Ingredient navigation with `onFilteredDataChange`
+  - "The Test": Re-filtering = L5, arrow key through filtered set = L6
+- ExcelDataGrid now exposes filtered data via callback
+- Navigation store (`ingredientNavigationStore.ts`) tracks filtered list context
+- Guided mode tip explains navigation to new users
 
 **Jan 9, 2026 (Session 2 - Route-Based Editing):**
 - **Documented Floating Action Bar** as standard component:
@@ -1077,6 +1149,26 @@ A feature is L5 complete when:
 - Created `IngredientDetailPage` - route-based editing replacing modal
 - Added `ConfirmDialog` as standard for destructive confirmations
 - Routes: `/admin/data/ingredients/:id` and `/admin/data/ingredients/new`
+
+**Jan 10, 2026 (Session 36):**
+- **Triage Workflow** - New tab in VIM (Import → Triage → History)
+  - Unified view: Skipped items (0%) + Incomplete ingredients (partial %)
+  - Icon-only table with expandable legend
+  - Icons: Ghost (skipped), AlertTriangle (incomplete), ShoppingCart (purchased), ChefHat (prep)
+- **Ingredient Types** - Purchased vs Prep distinction
+  - `ingredient_type: 'purchased' | 'prep'` column
+  - `source_recipe_id` for prep → recipe link
+  - Type detection: numeric code = purchased, empty/- = prep
+- **Friendly ID System** (`src/lib/friendly-id.ts`)
+  - Base58 UUID encoding: `7f3a2b1c...` → `Xk9mR2pQ`
+  - Deterministic, reversible, URL-safe
+  - Future: prep item codes link to source recipes
+- **Contextual Back Navigation**
+  - `returnTo` field in ingredientNavigationStore
+  - Triage → Edit → Back returns to Triage
+  - MIL → Edit → Back returns to MIL
+  - Dynamic back label: "Back to Triage" vs "Back to Ingredients"
+- **Migration Ready** (not yet run): `20250110_ingredient_type.sql`
 
 **Jan 9, 2026 (Late Night):**
 - **Documented L5 Header Pattern** with two variants:

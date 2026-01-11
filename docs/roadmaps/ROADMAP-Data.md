@@ -15,7 +15,13 @@
 - [x] 21 standard allergens + 3 custom
 - [x] Storage area tracking
 - [x] L5 header with expandable info
-- [ ] **Import wizard** (exists but not wired in)
+- [x] Route-based detail page (replaced modal)
+- [x] **L6 Navigation** — Filter-aware prev/next through filtered lists
+- [x] **Guided mode** — Training tips for new users
+- [x] Allergens tab with severity groupings
+- [x] Import tab with wizard
+- [x] Export tab with column selection
+- [ ] **Import wizard polish** (column mapping UX)
 
 ### Vendor Invoice Manager (VIM) ✅
 - [x] Two-stage processing (upload → review)
@@ -26,6 +32,13 @@
 - [x] Price variance detection
 - [x] Batch approval workflow
 - [x] L5 header with expandable info
+- [x] **Audit Trail System** — Enterprise-grade price tracking (Jan 10, 2026)
+  - [x] Schema migrations for full audit chain
+  - [x] vendor_invoices → vendor_invoice_items → vendor_price_history linkage
+  - [x] Source file retention in Supabase storage (SHA256 hashed)
+  - [x] Legacy data marked as `legacy_import` with cutoff documentation
+  - [x] `vendor_price_audit_trail` view for comprehensive reporting
+  - [x] `processInvoiceWithAuditTrail()` service for all imports
 
 ### Food Inventory Review 🔄
 - [x] Basic inventory list with DataTable
@@ -43,20 +56,48 @@
 - [x] Pagination with L5 styling
 - [x] Resizable columns
 - [x] localStorage persistence
+- [x] **`onFilteredDataChange` callback** — Exposes internal filtered data to parent
+- [x] Cascading category filters (Major Group → Category → Sub Category)
 
 ---
 
 ## Immediate Priorities (January 2026)
 
+### ✅ Completed This Sprint
+- [x] Route-based Ingredient Detail Page (replaced modal)
+- [x] L6 filter-aware navigation with prev/next
+- [x] Guided mode for training new users
+- [x] ExcelDataGrid `onFilteredDataChange` callback
+- [x] Allergens tab with severity-based groupings
+- [x] Import/Export tabs integrated into MasterIngredientList
+
 ### Import Wizard L5 Refresh
-- [ ] Wire import button into MasterIngredientList header
 - [ ] Column mapping UI (user maps their columns → our fields)
 - [ ] Preview with actual DataTable component
 - [ ] Duplicate detection (by item_code or product name)
 - [ ] Merge vs Replace options
 - [ ] Progress indicator for large imports
 
-### Component Rename
+### 🎯 Next Up: VIM Import Workflow Enhancement
+- [ ] **"Review Later" queue** — Don't block imports for new items
+- [ ] **Code Group suggestions** — Fuzzy match on vendor + product name
+- [ ] **MIL "Needs Attention" filter** — Surface items pending review
+- [ ] **One-click Code Group linking** — Quick action during review
+
+### 🎯 Code Groups: The Magic in the Walls
+> **The Problem:** Vendors like GFS, Sysco, and US Foods change product codes every 18-24 months on commodity items. Private label "rebrands" reset price history, making it impossible to track true cost trends.
+>
+> **The Solution:** Code Groups maintain product continuity across code changes. When GFS changes your chicken thighs from code 1402739 to 1408821 to 1415567, ChefLife sees it as the same product with 3+ years of unbroken price history.
+>
+> **Why It Matters:** This is how vendors hide cumulative price increases from large chains. ChefLife exposes the true cost trajectory.
+
+- [ ] **Import-time suggestions** — "This new code might belong to Code Group: Chicken Thighs BLS"
+- [ ] **Code Group price trend chart** — Continuous history across all codes
+- [ ] **Active/Inactive code tracking** — Clear status on which code is current
+- [ ] **Rebrand detection** — Flag products with multiple code changes
+- [ ] **Vendor negotiation report** — "This product has increased 34% over 3 years despite 2 'new product' claims"
+
+### Component Rename (Deferred)
 - [ ] Rename `ExcelDataGrid` → `DataTable`
 - [ ] Update all imports across codebase
 - [ ] Document in L5-BUILD-STRATEGY.md
@@ -241,5 +282,5 @@ src/shared/components/
 ---
 
 *Created: January 8, 2026*
-*Updated: January 9, 2026 - Added White Glove Onboarding vision*
+*Updated: January 10, 2026 - Master Ingredient List L5/L6 complete, VIM next*
 *Section: Data Management*

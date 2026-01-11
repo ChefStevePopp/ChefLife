@@ -8,6 +8,7 @@
 
 | Date | Handoff File | Focus Area |
 |------|--------------|------------|
+| 2026-01-10 | `HANDOFF-2026-01-10-Import-Flow-Stage1-Complete.md` | Common Name, ML infrastructure, Stage 1 complete |
 | 2026-01-08 | `HANDOFF-2026-01-08-OrgSettings-HealthInspections.md` | Company Settings L5, Health Inspections, Roadmap reorg |
 | 2026-01-07 | `HANDOFF-2026-01-07-Communications-RealData.md` | Communications real data integration |
 | 2026-01-07 | `HANDOFF-2026-01-07-FieldRegistry.md` | Merge field architecture |
@@ -26,6 +27,8 @@ Transcripts are stored in `/mnt/transcripts/` and contain full conversation hist
 
 | Date | Transcript | Description |
 |------|------------|-------------|
+| 2026-01-10 | `2026-01-10-18-28-53-vim-audit-trail-day2-complete-promises-system.txt` | VIM audit trail Day 2, PROMISES, Code Groups, ML training |
+| 2026-01-10 | `2026-01-10-02-17-32-vim-l5-review-sub-header-decision.txt` | VIM L5 review, sub-header decision |
 | 2026-01-08 | `2026-01-08-21-03-12-company-settings-corporate-address-l5-polish.txt` | Company Settings corporate address, L5 polish |
 
 ---
@@ -37,8 +40,14 @@ Transcripts are stored in `/mnt/transcripts/` and contain full conversation hist
 - `ONBOARDING-PHILOSOPHY.md` — First-run UX principles
 - `UTILS.md` — Utility function reference
 
+### Promises
+- `promises/README.md` — Promise documentation system
+- `promises/PROMISE-Core-Philosophy.md` — "Tech that works FOR you" manifesto
+- `promises/PROMISE-Code-Groups.md` — Vendor code change protection
+- `promises/PROMISE-Audit-Trail.md` — Accounting-grade documentation
+- `promises/PROMISE-System-Learns.md` — ML training philosophy
+
 ### Roadmaps
-- `ROADMAP.md` — Master index & quarterly overview
 - `roadmaps/ROADMAP-Organization.md` — Company Settings, Operations, Integrations
 - `roadmaps/ROADMAP-Kitchen.md` — Recipe Manager, HACCP, Task Manager
 - `roadmaps/ROADMAP-Team.md` — Team Performance, Communications, Roster
@@ -54,14 +63,38 @@ Transcripts are stored in `/mnt/transcripts/` and contain full conversation hist
 - ✅ Health Inspections (L5 with real DB)
 - ✅ Communications (templates, batch send)
 - ✅ Team Performance (7-tab gold standard)
+- ✅ VIM Audit Trail (accounting-grade chain)
+- ✅ MIL Common Name field (Stage 1 of Import Flow)
 
 ### In Progress
-- 🔄 Data Management (next session)
+- 🔄 VIM Import Flow Enhancement (Stage 2-5 pending)
+  - Stage 2: Inline Quick-Add
+  - Stage 3: Skip for Now + Pending Queue
+  - Stage 4: MIL Pending Items Integration
+  - Stage 5: ML Suggestions
+- 🔄 5-year backfill preparation
 
 ### Upcoming
+- 📋 Code Groups UI
 - 📋 Kitchen section L5 audit
 - 📋 Mobile responsive pass
-- 📋 International address support (future)
+
+---
+
+## Import Flow Stages (Current Project)
+
+| Stage | Description | Status |
+|-------|-------------|--------|
+| 1 | MIL Common Name Field | ✅ Complete |
+| 2 | VIM New Item Quick-Add | ✅ Complete |
+| 3 | Skip for Now + Pending Queue | ✅ Complete |
+| 4 | Triage Tab (Skipped + Incomplete) | ✅ Complete |
+| 5 | Ingredient Types (Purchased/Prep) | ✅ Migration Ready |
+| 6 | Contextual Back Navigation | ✅ Complete |
+| 7 | Friendly ID for Prep Items | ✅ Utility Ready |
+| 8 | Recipe → Ingredient Creation | ⏳ Next |
+| 9 | ML Suggestions | ⏳ Planned |
+| 10 | NEXUS Integration (Activity Logs) | ⏳ Planned |
 
 ---
 
@@ -79,4 +112,4 @@ YYYY-MM-DD-HH-MM-SS-[description].txt
 
 ---
 
-*Last updated: January 8, 2026*
+*Last updated: January 10, 2026 (Session 36)*

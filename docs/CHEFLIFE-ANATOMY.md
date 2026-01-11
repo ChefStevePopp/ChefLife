@@ -2,9 +2,9 @@
 ## A Living Restaurant System
 
 **Document Created:** January 8, 2026  
-**Last Updated:** January 9, 2026  
+**Last Updated:** January 10, 2026  
 **Authors:** Steve Popp (Creator) & Claude (Architecture Partner)  
-**Version:** 1.1 - The Triangle Model & Cascade System
+**Version:** 1.2 - L6 Philosophy
 
 ---
 
@@ -438,6 +438,19 @@ Efficiency matters, but not at the cost of humanity. Every feature should ask: "
 ### Compassion Over Commerce
 Independent restaurants are communities. They're someone's dream. They're the third place between home and work. ChefLife is built to protect that dream, not exploit it.
 
+### L6 — Respect the User's Time
+
+Beyond L5 polish, there's L6: features that respect operators' time by preserving context.
+
+> "L5 respects the user's craft. L6 respects their time."
+
+When a user filters 522 ingredients down to 6 butter items, edits one, and needs to move to the next — do they re-filter? Re-search? Start over?
+
+**L5 Answer:** They navigate back, filters are preserved, they click the next item.  
+**L6 Answer:** They press → and stay in their butter context. No re-filtering. No lost work. The system remembers what they were doing.
+
+L6 is the difference between software that makes you work and software that works *for you*.
+
 ---
 
 ## The Vision
@@ -643,6 +656,45 @@ organizations
                                     └── revenue_channels (how we sell it)
 ```
 
+### Ingredient Types: Purchased vs Prep
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  PURCHASED INGREDIENTS              PREP INGREDIENTS            │
+│  (From Vendor)                      (Made In-House)             │
+├─────────────────────────────────────────────────────────────────┤
+│  item_code: "1410441"               item_code: "Xk9mR2pQ"       │
+│  ingredient_type: 'purchased'       ingredient_type: 'prep'     │
+│  source_recipe_id: null             source_recipe_id: UUID      │
+│                                                                 │
+│  Cost: Vendor price                 Cost: Calculated from       │
+│        (VIM import)                       sub-recipe            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Friendly ID System:** Prep items use Base58-encoded UUIDs as item codes:
+- UUID: `7f3a2b1c-4d5e-6f7a-8b9c-0d1e2f3a4b5c` (36 chars)
+- Friendly: `Xk9mR2pQ` (8 chars)
+- Deterministic, reversible, URL-safe
+
+### Triage Workflow: The Cleanup Queue
+
+VIM import creates items that need attention. Triage surfaces them:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  VIM IMPORT → TRIAGE → COMPLETE → MIL                          │
+├─────────────────────────────────────────────────────────────────┤
+│  SKIPPED (👻 Ghost)        - 0% complete, parked during import │
+│  INCOMPLETE (⚠️ Alert)     - Partial %, needs required fields  │
+├─────────────────────────────────────────────────────────────────┤
+│  PURCHASED (🛒 Cart)       - From vendor (numeric item_code)   │
+│  PREP (👨‍🍳 ChefHat)         - Made in kitchen (no vendor code)  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Location: VIM → Triage tab (cyan, between Import and History)
+
 ### The Par System (To Be Built)
 ```sql
 -- Added to master_ingredients:
@@ -677,9 +729,9 @@ That's the vision. That's the mission. That's ChefLife.
 
 ---
 
-**Document Version:** 1.1  
+**Document Version:** 1.2  
 **Status:** Living Document  
-**Last Update:** January 9, 2026 - Added Triangle Model, Cascade System, Inventory Tracking  
+**Last Update:** January 10, 2026 - Added L6 Philosophy  
 **Next Update:** As the body grows
 
 ---
@@ -690,3 +742,5 @@ That's the vision. That's the mission. That's ChefLife.
 |---------|------|--------|
 | 1.0 | Jan 8, 2026 | Initial creation - The Revelation |
 | 1.1 | Jan 9, 2026 | Added Triangle Model (Purchase/Inventory/Recipe units), Cascade System (automatic cost propagation), Inventory Tracking (priorities & schedules) |
+| 1.2 | Jan 10, 2026 | Added L6 Philosophy - "Respect the User's Time" - filter-aware navigation that preserves context |
+| 1.3 | Jan 10, 2026 | Added Triage Workflow, Ingredient Types (purchased/prep), Friendly ID system, Contextual Back Navigation |

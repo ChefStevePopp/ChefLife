@@ -148,6 +148,51 @@ Form and data validation utilities.
 
 ---
 
+## Shared UI Components
+
+Reusable UI components live in `src/components/ui/` and `src/shared/components/`.
+
+### Destructive Action Protection
+
+| Component | Location | Use Case |
+|-----------|----------|----------|
+| `ConfirmDialog` | `@/shared/components/ConfirmDialog` | Modal confirmation for major actions |
+| `TwoStageButton` | `@/components/ui/TwoStageButton` | Inline "click twice" protection |
+
+#### TwoStageButton
+
+Lightweight inline protection for destructive actions. First click expands to show confirmation, second click executes.
+
+```typescript
+import { TwoStageButton } from "@/components/ui/TwoStageButton";
+import { Trash2, X } from "lucide-react";
+
+// Cancel button
+<TwoStageButton
+  onConfirm={() => handleCancel()}
+  icon={X}
+  confirmText="Sure?"
+  variant="danger"
+/>
+
+// Delete button
+<TwoStageButton
+  onConfirm={() => handleDelete()}
+  icon={Trash2}
+  confirmText="Delete?"
+  variant="danger"
+/>
+```
+
+**Props:**
+- `onConfirm` — Action to execute on second click
+- `icon` — Lucide icon (default: X)
+- `confirmText` — Text shown in confirm state (default: "Sure?")
+- `variant` — `"danger"` | `"warning"` | `"neutral"`
+- `timeout` — Auto-reset time in ms (default: 2000)
+
+---
+
 ## Adding New Utilities
 
 When adding new date-related utilities:
@@ -159,6 +204,77 @@ For other utilities:
 1. Add to appropriate existing module or create new file
 2. Export from `index.ts` if broadly used
 3. Document here
+
+---
+
+## Friendly ID (Base58 UUID Encoding)
+
+**File:** `src/lib/friendly-id.ts`
+
+Converts UUIDs to short, URL-safe, readable codes - like Bitly but deterministic.
+
+```
+UUID:     7f3a2b1c-4d5e-6f7a-8b9c-0d1e2f3a4b5c (36 chars)
+Friendly: Xk9mR2pQ (8 chars)
+```
+
+**Functions:**
+
+```typescript
+import { 
+  toFriendlyId, 
+  fromFriendlyId, 
+  generatePrepItemCode,
+  isPrepItemCode 
+} from "@/lib/friendly-id";
+
+// Convert UUID to friendly code
+const code = toFriendlyId(recipe.id);     // "Xk9mR2pQ"
+
+// Convert back to UUID
+const uuid = fromFriendlyId(code);        // "7f3a2b1c-4d5e-..."
+
+// Generate item code for prep ingredient
+const itemCode = generatePrepItemCode(recipe.id);
+
+// Check if item code is a prep item (vs vendor code)
+const isPrep = isPrepItemCode("Xk9mR2pQ");  // true
+const isVendor = isPrepItemCode("1410441"); // false
+```
+
+**Use Cases:**
+- Prep ingredient item codes (links to source recipe)
+- URL-safe recipe slugs
+- Scannable/printable codes
+- One ID everywhere: MIL, Triage, Labels, URLs
+
+**Ingredient Type Determination:**
+
+```typescript
+import { 
+  determineIngredientType, 
+  isPrepIngredient,
+  isPurchasedIngredient 
+} from "@/lib/friendly-id";
+
+// Determine type from available signals
+const type = determineIngredientType({
+  item_code: ingredient.item_code,
+  source_recipe_id: ingredient.source_recipe_id,
+});
+// Returns: 'purchased' | 'prep'
+
+// Convenience checks
+if (isPrepIngredient({ item_code: null })) { /* true */ }
+if (isPurchasedIngredient({ item_code: "1410441" })) { /* true */ }
+```
+
+**Decision Tree:**
+1. `source_recipe_id` is set → **PREP** (100% certain)
+2. `item_code` is Base58 (friendly ID) → **PREP** (we generated it)
+3. `item_code` is numeric → **PURCHASED** (vendor code)
+4. `item_code` is null/empty/"-" → **PREP** (no vendor source)
+5. Default → **PURCHASED**
 
 ---
 

@@ -15,11 +15,15 @@ import {
   CheckCircle,
   Printer,
   Pencil,
+  ChefHat,
+  ExternalLink,
+  X,
 } from "lucide-react";
 import { CategoryStats } from "./CategoryStats";
 import { useMasterIngredientsStore } from "@/stores/masterIngredientsStore";
+import { useIngredientNavigationStore } from "@/stores/ingredientNavigationStore";
 import { useFoodRelationshipsStore } from "@/stores/foodRelationshipsStore";
-import { ExcelDataGrid } from "@/shared/components/ExcelDataGrid";
+import { ExcelDataGrid, type GridFilterState } from "@/shared/components/ExcelDataGrid";
 import { masterIngredientColumns, allergenViewColumns } from "./columns";
 import { ImportWizard } from "./ImportWizard";
 import { MasterIngredient } from "@/types/master-ingredient";
@@ -49,6 +53,28 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
+// Status types for ingredient setup completeness
+type IngredientStatus = "complete" | "incomplete";
+
+// Helper to compute ingredient status
+function computeIngredientStatus(ingredient: MasterIngredient): IngredientStatus {
+  // Check setup completeness
+  if (!ingredient.recipe_unit_type || ingredient.recipe_unit_type === "") {
+    return "incomplete";
+  }
+  if (!ingredient.recipe_unit_per_purchase_unit || ingredient.recipe_unit_per_purchase_unit === 0) {
+    return "incomplete";
+  }
+  if (!ingredient.major_group || !ingredient.category) {
+    return "incomplete";
+  }
+  if (!ingredient.cost_per_recipe_unit || ingredient.cost_per_recipe_unit === 0) {
+    return "incomplete";
+  }
+  
+  return "complete";
+}
+
 export const MasterIngredientList = () => {
   const { organization } = useAuth();
   const { showDiagnostics } = useDiagnostics();
@@ -60,12 +86,27 @@ export const MasterIngredientList = () => {
   // ---------------------------------------------------------------------------
   const activeTab = (searchParams.get("tab") as TabId) || "ingredients";
   const [showArchived, setShowArchived] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<IngredientStatus | "all">("all");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isInfoExpanded, setIsInfoExpanded] = useState(false);
   
   // Allergen tab state
   const [selectedAllergens, setSelectedAllergens] = useState<AllergenType[]>([]);
   const [allergenFilterMode, setAllergenFilterMode] = useState<"any" | "all">("any");
+  
+  // Track grid-filtered data for navigation context
+  const [gridFilteredIngredients, setGridFilteredIngredients] = useState<MasterIngredient[]>([]);
+  
+  // Prep item warning state
+  const [selectedPrepItem, setSelectedPrepItem] = useState<MasterIngredient | null>(null);
+  
+  // Get saved filter state from navigation store (persists across edit/return)
+  const savedFilterState = useIngredientNavigationStore((state) => state.gridFilterState);
+  const setGridFilterState = useIngredientNavigationStore((state) => state.setGridFilterState);
+  
+  // Allergens tab filter state (separate from main ingredients grid)
+  const savedAllergensFilterState = useIngredientNavigationStore((state) => state.allergensGridFilterState);
+  const setAllergensGridFilterState = useIngredientNavigationStore((state) => state.setAllergensGridFilterState);
 
   // ---------------------------------------------------------------------------
   // STORES
@@ -83,12 +124,33 @@ export const MasterIngredientList = () => {
   // ---------------------------------------------------------------------------
   // FILTERED DATA - Ingredients Tab
   // ---------------------------------------------------------------------------
+  // Compute status for each ingredient and apply filters
+  const ingredientsWithStatus = useMemo(() => {
+    return ingredients.map((ingredient) => ({
+      ...ingredient,
+      _status: computeIngredientStatus(ingredient),
+    }));
+  }, [ingredients]);
+
   const filteredIngredients = useMemo(() => {
-    return ingredients.filter((ingredient) => {
+    return ingredientsWithStatus.filter((ingredient) => {
+      // Archive filter
       if (!showArchived && ingredient.archived) return false;
+      // Status filter
+      if (statusFilter !== "all" && ingredient._status !== statusFilter) return false;
       return true;
     });
-  }, [ingredients, showArchived]);
+  }, [ingredientsWithStatus, showArchived, statusFilter]);
+
+  // Status counts for filter pills
+  const statusCounts = useMemo(() => {
+    const nonArchived = ingredientsWithStatus.filter((i) => !i.archived || showArchived);
+    return {
+      all: nonArchived.length,
+      complete: nonArchived.filter((i) => i._status === "complete").length,
+      incomplete: nonArchived.filter((i) => i._status === "incomplete").length,
+    };
+  }, [ingredientsWithStatus, showArchived]);
 
   // ---------------------------------------------------------------------------
   // FILTERED DATA - Allergens Tab
@@ -188,7 +250,34 @@ export const MasterIngredientList = () => {
     navigate("/admin/data/ingredients/new");
   };
 
-  const handleEditIngredient = (ingredient: MasterIngredient) => {
+  const handleEditIngredient = (ingredient: MasterIngredient, sourceList?: MasterIngredient[]) => {
+    // Check if this is a prep item (made from recipe, not purchased)
+    // Use explicit signals: ingredient_type field or source_recipe_id
+    // Do NOT infer from item_code patterns - manual vendor codes vary widely
+    const isPrepItem = 
+      (ingredient as any).ingredient_type === 'prep' || 
+      !!(ingredient as any).source_recipe_id;
+    
+    if (isPrepItem) {
+      // Show floating action bar warning
+      setSelectedPrepItem(ingredient);
+      return;
+    }
+    
+    // Set navigation context from the current filtered list
+    // Priority: explicit sourceList > grid-filtered (if populated) > archive-filtered
+    const listToUse = sourceList 
+      || (gridFilteredIngredients.length > 0 ? gridFilteredIngredients : null)
+      || filteredIngredients;
+    const ids = listToUse.map(i => i.id);
+    const index = ids.indexOf(ingredient.id);
+    
+    useIngredientNavigationStore.getState().setNavigationContext(
+      ids,
+      `${ids.length} ingredients`
+    );
+    useIngredientNavigationStore.getState().setCurrentIndex(index);
+    
     navigate(`/admin/data/ingredients/${ingredient.id}`);
   };
 
@@ -341,6 +430,46 @@ export const MasterIngredientList = () => {
               {/* Category Stats */}
               <CategoryStats ingredients={ingredients} />
 
+              {/* Status Filter Pills */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500 mr-2">Status:</span>
+                <button
+                  onClick={() => setStatusFilter("all")}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                    statusFilter === "all"
+                      ? "bg-gray-600 text-white"
+                      : "bg-gray-800/50 text-gray-400 hover:bg-gray-700/50"
+                  }`}
+                >
+                  All
+                  <span className="text-gray-500">({statusCounts.all})</span>
+                </button>
+                <button
+                  onClick={() => setStatusFilter("complete")}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                    statusFilter === "complete"
+                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                      : "bg-gray-800/50 text-gray-400 hover:bg-gray-700/50"
+                  }`}
+                >
+                  <CheckCircle className="w-3 h-3" />
+                  Complete
+                  <span className={statusFilter === "complete" ? "text-emerald-400/70" : "text-gray-500"}>({statusCounts.complete})</span>
+                </button>
+                <button
+                  onClick={() => setStatusFilter("incomplete")}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                    statusFilter === "incomplete"
+                      ? "bg-rose-500/20 text-rose-400 border border-rose-500/30"
+                      : "bg-gray-800/50 text-gray-400 hover:bg-gray-700/50"
+                  }`}
+                >
+                  <AlertTriangle className="w-3 h-3" />
+                  Incomplete
+                  <span className={statusFilter === "incomplete" ? "text-rose-400/70" : "text-gray-500"}>({statusCounts.incomplete})</span>
+                </button>
+              </div>
+
               {/* Archive Toggle - Minimal, no duplicate search */}
               <div className="flex items-center justify-between">
                 <div className="text-sm text-gray-500">
@@ -364,10 +493,13 @@ export const MasterIngredientList = () => {
               <ExcelDataGrid
                 data={isRefreshing ? [] : filteredIngredients}
                 columns={masterIngredientColumns}
-                onRowClick={handleEditIngredient}
+                onRowClick={(row) => handleEditIngredient(row)}
                 onRefresh={handleRefresh}
                 isLoading={isRefreshing}
                 type="master-ingredients"
+                onFilteredDataChange={setGridFilteredIngredients}
+                initialFilterState={savedFilterState}
+                onFilterStateChange={setGridFilterState}
               />
             </div>
           )}
@@ -389,6 +521,8 @@ export const MasterIngredientList = () => {
               onClearFilters={() => setSelectedAllergens([])}
               onEditIngredient={handleEditIngredient}
               getIngredientAllergens={getIngredientAllergens}
+              savedGridFilterState={savedAllergensFilterState}
+              onGridFilterStateChange={setAllergensGridFilterState}
             />
           )}
 
@@ -465,6 +599,44 @@ export const MasterIngredientList = () => {
           )}
         </div>
       </div>
+
+      {/* =======================================================================
+       * FLOATING ACTION BAR - Prep Item Warning
+       * ======================================================================= */}
+      {selectedPrepItem && (
+        <div className="floating-action-bar warning">
+          <div className="floating-action-bar-inner">
+            <div className="floating-action-bar-content">
+              <div className="flex items-center gap-2">
+                <ChefHat className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                <span className="text-sm">
+                  <span className="text-white font-medium">{selectedPrepItem.product}</span>
+                  <span className="text-gray-400"> — Edit in Recipe Editor</span>
+                </span>
+              </div>
+              <div className="w-px h-5 bg-gray-700" />
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSelectedPrepItem(null)}
+                  className="btn-ghost text-xs py-1 px-2"
+                >
+                  Dismiss
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedPrepItem(null);
+                    navigate('/admin/recipes');
+                  }}
+                  className="btn-primary text-xs py-1 px-3"
+                >
+                  <ExternalLink className="w-3 h-3 mr-1" />
+                  Open Recipes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -483,8 +655,11 @@ interface AllergensTabProps {
   onToggleAllergen: (type: AllergenType) => void;
   onSetFilterMode: (mode: "any" | "all") => void;
   onClearFilters: () => void;
-  onEditIngredient: (ingredient: MasterIngredient) => void;
+  onEditIngredient: (ingredient: MasterIngredient, sourceList?: MasterIngredient[]) => void;
   getIngredientAllergens: (ingredient: MasterIngredient) => AllergenType[];
+  // Filter state persistence
+  savedGridFilterState: GridFilterState | null;
+  onGridFilterStateChange: (state: GridFilterState) => void;
 }
 
 const AllergensTab: React.FC<AllergensTabProps> = ({
@@ -500,11 +675,16 @@ const AllergensTab: React.FC<AllergensTabProps> = ({
   onClearFilters,
   onEditIngredient,
   getIngredientAllergens,
+  savedGridFilterState,
+  onGridFilterStateChange,
 }) => {
   // ---------------------------------------------------------------------------
   // STATE
   // ---------------------------------------------------------------------------
   const [isFilterExpanded, setIsFilterExpanded] = useState(true);
+  
+  // Track grid-filtered data for navigation (captures grid's internal search/filter)
+  const [gridFilteredData, setGridFilteredData] = useState<MasterIngredient[]>([]);
 
   // Group allergens by severity
   const highSeverity: AllergenType[] = ["peanut", "crustacean", "treenut", "shellfish", "sesame"];
@@ -721,8 +901,11 @@ const AllergensTab: React.FC<AllergensTabProps> = ({
       <ExcelDataGrid
         data={filteredIngredients}
         columns={allergenViewColumns}
-        onRowClick={(row) => onEditIngredient(row)}
+        onRowClick={(row) => onEditIngredient(row, gridFilteredData.length > 0 ? gridFilteredData : filteredIngredients)}
         type="allergens"
+        onFilteredDataChange={setGridFilteredData}
+        initialFilterState={savedGridFilterState}
+        onFilterStateChange={onGridFilterStateChange}
       />
 
       {/* Quick Actions */}

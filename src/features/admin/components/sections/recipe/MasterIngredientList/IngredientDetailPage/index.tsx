@@ -11,6 +11,8 @@ import {
   Scale,
   Calculator,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Sparkles,
   HelpCircle,
   ShieldAlert,
@@ -26,6 +28,7 @@ import { MasterIngredient } from "@/types/master-ingredient";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useOperationsStore } from "@/stores/operationsStore";
+import { useIngredientNavigationStore } from "@/stores/ingredientNavigationStore";
 import { AllergenSection } from "../EditIngredientModal/AllergenSection";
 import { PageHeader } from "./PageHeader";
 import { ConfirmDialog } from "@/shared/components/ConfirmDialog";
@@ -55,6 +58,7 @@ const normalizeIngredient = (data: MasterIngredient): MasterIngredient => {
     product: data.product ?? "",
     vendor: data.vendor ?? "",
     item_code: data.item_code ?? null,
+    common_name: data.common_name ?? null,
     case_size: data.case_size ?? "",
     unit_of_measure: data.unit_of_measure ?? "",
     recipe_unit_type: data.recipe_unit_type ?? "",
@@ -136,6 +140,7 @@ const createEmptyIngredient = (organizationId: string): MasterIngredient => ({
   sub_category: null,
   vendor: "",
   item_code: null,
+  common_name: null,
   case_size: "",
   units_per_case: 0,
   recipe_unit_type: "",
@@ -532,14 +537,14 @@ const CostCalculator: React.FC<CostCalculatorProps> = ({
 
   return (
     <div className={`bg-[#1a1f2b] rounded-lg shadow-lg overflow-hidden ${
-      isCalculable ? "ring-1 ring-emerald-500/30" : ""
+      isCalculable ? "ring-1 ring-purple-500/30" : ""
     }`}>
       {/* Header */}
       <div className="px-4 py-3 flex items-center gap-3">
         <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-          isCalculable ? "bg-emerald-500/20" : "bg-gray-800/50"
+          isCalculable ? "bg-purple-500/20" : "bg-gray-800/50"
         }`}>
-          <Calculator className={`w-4 h-4 ${isCalculable ? "text-emerald-400" : "text-gray-500"}`} />
+          <Calculator className={`w-4 h-4 ${isCalculable ? "text-purple-400" : "text-gray-500"}`} />
         </div>
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-medium text-gray-300">Cost per Recipe Unit</h2>
@@ -572,9 +577,9 @@ const CostCalculator: React.FC<CostCalculatorProps> = ({
                 </>
               )}
               <div className="text-lg text-gray-600">=</div>
-              <div className="text-center px-3 py-1.5 bg-emerald-500/20 rounded-lg border border-emerald-500/30">
-                <div className="text-xl sm:text-2xl font-bold text-emerald-400">${finalCost.toFixed(4)}</div>
-                <div className="text-xs text-emerald-400/70">per {unitType || "unit"}</div>
+              <div className="text-center px-3 py-1.5 bg-purple-500/20 rounded-lg border border-purple-500/30">
+                <div className="text-xl sm:text-2xl font-bold text-purple-400">${finalCost.toFixed(4)}</div>
+                <div className="text-xs text-purple-400/70">per {unitType || "unit"}</div>
               </div>
             </div>
 
@@ -584,7 +589,7 @@ const CostCalculator: React.FC<CostCalculatorProps> = ({
                 <Sparkles className="w-3.5 h-3.5 text-primary-400" />
                 <span className="text-gray-400">
                   Recipe calls for <span className="text-white">{exampleQty} {unitType}</span>? 
-                  That's <span className="text-emerald-400">${exampleCost.toFixed(2)}</span>
+                  That's <span className="text-purple-400">${exampleCost.toFixed(2)}</span>
                 </span>
               </div>
             )}
@@ -641,7 +646,25 @@ export const IngredientDetailPage: React.FC = () => {
   const { showDiagnostics } = useDiagnostics();
   const { settings, fetchSettings } = useOperationsStore();
   
+  // Navigation store for prev/next and contextual back
+  const { 
+    ingredientIds, 
+    setCurrentIndex, 
+    getPrevId, 
+    getNextId, 
+    getPosition,
+    returnTo,
+  } = useIngredientNavigationStore();
+  
   const isNew = id === "new";
+  const position = getPosition();
+  const prevId = getPrevId();
+  const nextId = getNextId();
+  
+  // Derive back button label from returnTo path
+  const backLabel = returnTo.includes("triage") 
+    ? "Back to Triage" 
+    : "Back to Ingredients";
   
   // Guided mode state
   const [isGuided, setIsGuided] = useState(() => {
@@ -728,10 +751,32 @@ export const IngredientDetailPage: React.FC = () => {
         e.preventDefault();
         if (formData?.product && !isSaving) handleSave();
       }
+      // Arrow key navigation (only if no unsaved changes)
+      if (e.key === "ArrowLeft" && prevId && !hasUnsavedChanges()) {
+        e.preventDefault();
+        navigateToPrev();
+      }
+      if (e.key === "ArrowRight" && nextId && !hasUnsavedChanges()) {
+        e.preventDefault();
+        navigateToNext();
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [formData, isSaving]);
+  }, [formData, isSaving, prevId, nextId, hasUnsavedChanges]);
+
+  // Navigation handlers
+  const navigateToPrev = () => {
+    if (prevId && !hasUnsavedChanges()) {
+      navigate(`/admin/data/ingredients/${prevId}`);
+    }
+  };
+
+  const navigateToNext = () => {
+    if (nextId && !hasUnsavedChanges()) {
+      navigate(`/admin/data/ingredients/${nextId}`);
+    }
+  };
 
   // Permission check
   useEffect(() => {
@@ -767,6 +812,11 @@ export const IngredientDetailPage: React.FC = () => {
         return;
       }
       if (!id || !organization?.id) return;
+      
+      // Update navigation index
+      const index = ingredientIds.indexOf(id);
+      if (index >= 0) setCurrentIndex(index);
+      
       setIsLoading(true);
       setError(null);
       try {
@@ -789,7 +839,7 @@ export const IngredientDetailPage: React.FC = () => {
       }
     };
     loadIngredient();
-  }, [id, isNew, organization?.id]);
+  }, [id, isNew, organization?.id, ingredientIds, setCurrentIndex]);
 
   // Auto-calculate cost
   useEffect(() => {
@@ -823,7 +873,7 @@ export const IngredientDetailPage: React.FC = () => {
         toast.success("Ingredient saved successfully");
       }
       setOriginalData(dataToSave);
-      navigate("/admin/data/ingredients");
+      navigate(returnTo);
     } catch (err) {
       console.error("Error saving ingredient:", err);
       toast.error("Failed to save ingredient");
@@ -839,7 +889,7 @@ export const IngredientDetailPage: React.FC = () => {
       const { error: deleteError } = await supabase.from("master_ingredients").delete().eq("id", formData.id).eq("organization_id", organization?.id);
       if (deleteError) throw deleteError;
       toast.success("Ingredient deleted");
-      navigate("/admin/data/ingredients");
+      navigate(returnTo);
     } catch (err) {
       console.error("Error deleting ingredient:", err);
       toast.error("Failed to delete ingredient");
@@ -863,7 +913,7 @@ export const IngredientDetailPage: React.FC = () => {
     }
   };
 
-  const handleBack = () => safeNavigate("/admin/data/ingredients");
+  const handleBack = () => safeNavigate(returnTo);
 
   const handleDiscardAndNavigate = () => {
     setShowUnsavedDialog(false);
@@ -872,7 +922,37 @@ export const IngredientDetailPage: React.FC = () => {
 
   // Loading/Error states
   if (isLoading || hasPermission === null) {
-    return <div className="flex items-center justify-center h-96"><Loader2 className="w-8 h-8 text-primary-400 animate-spin" /></div>;
+    return (
+      <div className="max-w-3xl mx-auto pb-24">
+        {/* Skeleton Loading */}
+        <div className="animate-pulse space-y-4">
+          {/* Navigation bar skeleton */}
+          <div className="flex items-center justify-between">
+            <div className="h-8 w-32 bg-gray-800 rounded-lg" />
+            <div className="h-6 w-24 bg-gray-800 rounded-lg" />
+          </div>
+          {/* Header skeleton */}
+          <div className="bg-[#1a1f2b] rounded-lg p-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-gray-800 rounded-lg" />
+              <div className="flex-1 space-y-2">
+                <div className="h-6 w-48 bg-gray-800 rounded" />
+                <div className="h-4 w-32 bg-gray-800/50 rounded" />
+              </div>
+            </div>
+          </div>
+          {/* Section skeletons */}
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="bg-[#1a1f2b] rounded-lg p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-gray-800 rounded-lg" />
+                <div className="h-4 w-40 bg-gray-800 rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
   if (error) {
     return (
@@ -898,6 +978,68 @@ export const IngredientDetailPage: React.FC = () => {
             src/features/admin/.../IngredientDetailPage/index.tsx
           </div>
         )}
+
+        {/* Navigation Bar - Always show back button, show prev/next only when multiple items */}
+        <div className="mb-4">
+          {/* Navigation Guidance Tip - only when multiple items */}
+          {isGuided && position && ingredientIds.length > 1 && (
+            <div className="flex items-start gap-3 p-3 rounded-lg border bg-primary-500/10 border-primary-500/20 mb-3">
+              <Sparkles className="w-4 h-4 mt-0.5 flex-shrink-0 text-primary-400" />
+              <div className="text-sm text-gray-300">
+                <span className="font-medium text-white">Quick Navigation:</span> You're viewing a filtered set from the list page. 
+                Use the <span className="text-primary-400">← →</span> buttons or <span className="text-primary-400">arrow keys</span> to 
+                move through your {position.total} items without going back. Changes must be saved first.
+              </div>
+            </div>
+          )}
+          
+          <div className="flex items-center justify-between">
+            <button
+              onClick={handleBack}
+              className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              {backLabel}
+            </button>
+            
+            {/* Prev/Next only when multiple items */}
+            {position && ingredientIds.length > 1 && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">
+                  {position.current} of {position.total}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={navigateToPrev}
+                    disabled={!prevId || hasUnsavedChanges()}
+                    aria-label="Previous ingredient"
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
+                      prevId && !hasUnsavedChanges()
+                        ? "bg-gray-800/50 text-gray-400 hover:bg-gray-700 hover:text-white"
+                        : "bg-gray-800/20 text-gray-700 cursor-not-allowed"
+                    }`}
+                    title={hasUnsavedChanges() ? "Save changes first" : prevId ? "Previous (←)" : "No previous"}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={navigateToNext}
+                    disabled={!nextId || hasUnsavedChanges()}
+                    aria-label="Next ingredient"
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
+                      nextId && !hasUnsavedChanges()
+                        ? "bg-gray-800/50 text-gray-400 hover:bg-gray-700 hover:text-white"
+                        : "bg-gray-800/20 text-gray-700 cursor-not-allowed"
+                    }`}
+                    title={hasUnsavedChanges() ? "Save changes first" : nextId ? "Next (→)" : "No next"}
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* Dialogs */}
         <ConfirmDialog
@@ -930,6 +1072,7 @@ export const IngredientDetailPage: React.FC = () => {
           onBack={handleBack}
           onChange={handleChange}
           guidedModeToggle={<GuidedModeToggle />}
+          backLabel={backLabel}
         />
 
         {/* =======================================================================
@@ -991,6 +1134,18 @@ export const IngredientDetailPage: React.FC = () => {
                     />
                   </Field>
                 </div>
+
+                {/* Purchase Unit Cost Display */}
+                {formData.current_price > 0 && (
+                  <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap py-4">
+                    <div className="text-center px-3 py-1.5 bg-green-500/20 rounded-lg border border-green-500/30">
+                      <div className="text-xl sm:text-2xl font-bold text-green-400">
+                        ${formData.current_price.toFixed(2)}
+                      </div>
+                      <div className="text-xs text-green-400/70">per {formData.unit_of_measure || formData.case_size || "purchase unit"}</div>
+                    </div>
+                  </div>
+                )}
               </div>
             </ExpandableSection>
           </div>
@@ -999,8 +1154,8 @@ export const IngredientDetailPage: React.FC = () => {
           <div className="relative" style={{ zIndex: 35 }}>
             <ExpandableSection
               icon={Package}
-              iconColor="text-cyan-400"
-              iconBg="bg-cyan-500/20"
+              iconColor="text-amber-400"
+              iconBg="bg-amber-500/20"
               title="Inventory Units"
               subtitle="How you count this on the shelf"
               helpText="Define how this ingredient is counted during inventory taking. This is separate from recipe units - you might use OZ in recipes but count by the LB on the shelf."
@@ -1045,22 +1200,22 @@ export const IngredientDetailPage: React.FC = () => {
 
                 {/* Inventory Cost Calculator - Read-only result */}
                 {formData.current_price > 0 && formData.units_per_case > 0 && (
-                  <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap p-4 bg-cyan-500/10 rounded-lg border border-cyan-500/20">
+                  <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap py-4">
                     <div className="text-center min-w-[50px]">
-                      <div className="text-lg font-bold text-white">${formData.current_price.toFixed(2)}</div>
+                      <div className="text-lg sm:text-xl font-bold text-white">${formData.current_price.toFixed(2)}</div>
                       <div className="text-xs text-gray-500">Price</div>
                     </div>
                     <div className="text-lg text-gray-600">÷</div>
                     <div className="text-center min-w-[50px]">
-                      <div className="text-lg font-bold text-white">{formData.units_per_case}</div>
+                      <div className="text-lg sm:text-xl font-bold text-white">{formData.units_per_case}</div>
                       <div className="text-xs text-gray-500">Units</div>
                     </div>
                     <div className="text-lg text-gray-600">=</div>
-                    <div className="text-center px-3 py-1.5 bg-cyan-500/20 rounded-lg border border-cyan-500/30">
-                      <div className="text-xl font-bold text-cyan-400">
+                    <div className="text-center px-3 py-1.5 bg-amber-500/20 rounded-lg border border-amber-500/30">
+                      <div className="text-xl sm:text-2xl font-bold text-amber-400">
                         ${(formData.current_price / formData.units_per_case).toFixed(4)}
                       </div>
-                      <div className="text-xs text-cyan-400/70">per {formData.inventory_unit_type || "unit"}</div>
+                      <div className="text-xs text-amber-400/70">per {formData.inventory_unit_type || "unit"}</div>
                     </div>
                   </div>
                 )}
@@ -1102,8 +1257,8 @@ export const IngredientDetailPage: React.FC = () => {
           <div className="relative" style={{ zIndex: 30 }}>
             <ExpandableSection
               icon={Scale}
-              iconColor="text-amber-400"
-              iconBg="bg-amber-500/20"
+              iconColor="text-rose-400"
+              iconBg="bg-rose-500/20"
               title="Recipe Units"
               subtitle="Conversion and yield"
               helpText="Define how this ingredient is measured in your recipes and the conversion from purchase units."
@@ -1173,8 +1328,8 @@ export const IngredientDetailPage: React.FC = () => {
           <div className="relative" style={{ zIndex: 15 }}>
             <ExpandableSection
               icon={BarChart3}
-              iconColor="text-gray-400"
-              iconBg="bg-gray-500/20"
+              iconColor="text-lime-400"
+              iconBg="bg-lime-500/20"
               title="Reporting & Tracking"
               subtitle="Dashboard visibility and inventory schedules"
               helpText="Control which inventories this item appears in and whether it's highlighted on the admin dashboard."
@@ -1319,8 +1474,8 @@ export const IngredientDetailPage: React.FC = () => {
           <div className="relative" style={{ zIndex: 10 }}>
             <ExpandableSection
               icon={ShieldAlert}
-              iconColor="text-rose-400"
-              iconBg="bg-rose-500/20"
+              iconColor="text-red-400"
+              iconBg="bg-red-500/20"
               title="Allergen Information"
               subtitle="Food safety and dietary compliance"
               helpText="Mark allergens present in this ingredient. This data flows through to recipe costing and menu labeling."

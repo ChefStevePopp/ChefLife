@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   FileSpreadsheet,
   History,
@@ -11,11 +11,13 @@ import {
   CircleDollarSign,
   Info,
   ChevronUp,
+  ClipboardList,
 } from "lucide-react";
 import { CSVUploader } from "./components/CSVUploader";
 import { ImportSettings } from "./components/ImportSettings";
 import { PriceHistory } from "./components/PriceHistory";
 import { VendorSelector } from "./components/VendorSelector";
+import { ImportHeader } from "./components/ImportHeader";
 import { PDFUploader } from "./components/PDFUploader";
 import { PhotoUploader } from "./components/PhotoUploader";
 import { DataPreview } from "./components/DataPreview";
@@ -23,9 +25,13 @@ import { ItemCodeGroupManager } from "./components/ItemCodeGroupManager";
 import { UmbrellaIngredientManager } from "./components/UmbrellaIngredientManager";
 import { VendorAnalytics } from "./components/VendorAnalytics";
 import { ImportHistory } from "./components/ImportHistory";
+import { TriagePanel } from "./components/TriagePanel";
 import { useVendorTemplatesStore } from "@/stores/vendorTemplatesStore";
 import { ManualInvoiceForm } from "./components/ManualInvoiceForm";
+import { useSearchParams } from "react-router-dom";
 import { useDiagnostics } from "@/hooks/useDiagnostics";
+import { useVariantTesting } from "@/hooks/useVariantTesting";
+import { VariantToggle } from "@/components/ui/VariantToggle";
 import { ocrService } from "@/lib/ocr-service";
 import toast from "react-hot-toast";
 
@@ -36,7 +42,7 @@ import toast from "react-hot-toast";
 // Location: Admin → Data Management → Vendor Invoices
 // =============================================================================
 
-type TabId = "dashboard" | "analytics" | "codes" | "umbrella" | "import" | "history" | "settings";
+type TabId = "dashboard" | "analytics" | "codes" | "umbrella" | "import" | "triage" | "history" | "settings";
 
 interface Tab {
   id: TabId;
@@ -51,17 +57,23 @@ const TABS: Tab[] = [
   { id: "codes", label: "Code Groups", icon: Boxes, color: "amber" },
   { id: "umbrella", label: "Umbrella Items", icon: Umbrella, color: "rose" },
   { id: "import", label: "Import", icon: FileSpreadsheet, color: "purple" },
+  { id: "triage", label: "Triage", icon: ClipboardList, color: "cyan" },
   { id: "history", label: "History", icon: History, color: "lime" },
   { id: "settings", label: "Settings", icon: Settings, color: "red" },
 ];
 
 export const VendorInvoiceManager = () => {
   const { showDiagnostics } = useDiagnostics();
+  const [searchParams, setSearchParams] = useSearchParams();
   
   // ---------------------------------------------------------------------------
   // STATE
   // ---------------------------------------------------------------------------
-  const [activeTab, setActiveTab] = useState<TabId>("dashboard");
+  // Read initial tab from URL query param, default to "dashboard"
+  const initialTab = (searchParams.get("tab") as TabId) || "dashboard";
+  const [activeTab, setActiveTab] = useState<TabId>(
+    TABS.some(t => t.id === initialTab) ? initialTab : "dashboard"
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [csvData, setCSVData] = useState<any[] | null>(null);
   const [invoiceDate, setInvoiceDate] = useState<Date | null>(null);
@@ -69,11 +81,42 @@ export const VendorInvoiceManager = () => {
   const [manualVendorId, setManualVendorId] = useState("");
   const [isInfoExpanded, setIsInfoExpanded] = useState(false);
   const [importType, setImportType] = useState<"csv" | "pdf" | "photo" | "manual">("csv");
+  const [sourceFile, setSourceFile] = useState<File | null>(null); // For audit trail
+
+  // A/B Testing: Compare header variants (dev/omega users only)
+  const {
+    activeVariant: headerVariant,
+    setVariant: setHeaderVariant,
+    showToggle: showHeaderToggle,
+    variants: headerVariants,
+  } = useVariantTesting("VendorSelector", ["original", "compact"] as const, "original");
 
   // ---------------------------------------------------------------------------
   // STORES
   // ---------------------------------------------------------------------------
   const { templates, fetchTemplates } = useVendorTemplatesStore();
+
+  // ---------------------------------------------------------------------------
+  // SYNC TAB WITH URL
+  // ---------------------------------------------------------------------------
+  // When URL changes (browser back/forward), sync tab state
+  useEffect(() => {
+    const urlTab = searchParams.get("tab") as TabId;
+    if (urlTab && TABS.some(t => t.id === urlTab) && urlTab !== activeTab) {
+      setActiveTab(urlTab);
+    }
+  }, [searchParams]);
+
+  // When tab changes via click, update URL (optional, for bookmarkability)
+  const handleTabChange = (tabId: TabId) => {
+    setActiveTab(tabId);
+    // Update URL without full navigation
+    if (tabId === "dashboard") {
+      setSearchParams({});  // Remove param for default tab
+    } else {
+      setSearchParams({ tab: tabId });
+    }
+  };
 
   // ---------------------------------------------------------------------------
   // EFFECTS
@@ -87,7 +130,7 @@ export const VendorInvoiceManager = () => {
   // ---------------------------------------------------------------------------
   // HANDLERS
   // ---------------------------------------------------------------------------
-  const handleUpload = async (data: any[] | File, fileDate?: Date) => {
+  const handleUpload = async (data: any[] | File, fileDate?: Date, uploadedFile?: File) => {
     if (!selectedVendor) {
       toast.error("Please select a vendor first");
       return;
@@ -101,7 +144,7 @@ export const VendorInvoiceManager = () => {
           <div className="flex flex-col gap-2">
             <span>No CSV template found for this vendor</span>
             <button
-              onClick={() => setActiveTab("settings")}
+              onClick={() => handleTabChange("settings")}
               className="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded-lg transition-colors"
             >
               Set up template
@@ -153,6 +196,11 @@ export const VendorInvoiceManager = () => {
         unit_price: parseFloat(row[vendorTemplate.column_mapping.unit_price]) || 0,
         unit_of_measure: row[vendorTemplate.column_mapping.unit_of_measure],
       }));
+
+      // Store source file for audit trail
+      if (uploadedFile) {
+        setSourceFile(uploadedFile);
+      }
 
       setCSVData(transformedData);
     } catch (error) {
@@ -249,7 +297,7 @@ export const VendorInvoiceManager = () => {
       toast.success("Data imported and prices updated successfully");
       setCSVData(null);
       setSelectedVendor("");
-      setActiveTab("history");
+      handleTabChange("triage"); // Go to Triage to handle any pending items
     } catch (error) {
       console.error("Error in import confirmation:", error);
       toast.error("There was an error completing the import");
@@ -293,7 +341,7 @@ export const VendorInvoiceManager = () => {
             <div className="flex gap-2">
               <button
                 onClick={() => {
-                  setActiveTab("import");
+                  handleTabChange("import");
                   setTimeout(() => setImportType("manual"), 50);
                 }}
                 className="btn-ghost text-primary-400 hover:text-primary-300 border border-primary-500/30"
@@ -303,7 +351,7 @@ export const VendorInvoiceManager = () => {
               </button>
               <button
                 onClick={() => {
-                  setActiveTab("import");
+                  handleTabChange("import");
                   setTimeout(() => {
                     if (importType === "manual") setImportType("csv");
                   }, 50);
@@ -374,7 +422,7 @@ export const VendorInvoiceManager = () => {
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => handleTabChange(tab.id)}
                   className={`tab ${tab.color} ${isActive ? "active" : ""}`}
                 >
                   <Icon className="w-4 h-4" />
@@ -390,12 +438,31 @@ export const VendorInvoiceManager = () => {
           {/* Vendor Selection - Only visible for import tab */}
           {activeTab === "import" && (
             <div className="mb-6">
-              <VendorSelector
-                selectedVendor={selectedVendor}
-                onVendorChange={setSelectedVendor}
-                fileType={importType}
-                onFileTypeChange={(type) => setImportType(type as "csv" | "pdf" | "photo" | "manual")}
-              />
+              {/* A/B Testing: Dev/omega users can compare variants */}
+              {showHeaderToggle && (
+                <VariantToggle
+                  componentName="VendorSelector"
+                  variants={[...headerVariants]}
+                  activeVariant={headerVariant}
+                  onVariantChange={setHeaderVariant}
+                  labels={{ original: "Original", compact: "Compact" }}
+                />
+              )}
+              
+              {headerVariant === "compact" ? (
+                <ImportHeader
+                  selectedVendor={selectedVendor}
+                  onVendorChange={setSelectedVendor}
+                  onSettingsClick={() => setActiveTab("settings")}
+                />
+              ) : (
+                <VendorSelector
+                  selectedVendor={selectedVendor}
+                  onVendorChange={setSelectedVendor}
+                  fileType={importType}
+                  onFileTypeChange={(type) => setImportType(type as "csv" | "pdf" | "photo" | "manual")}
+                />
+              )}
             </div>
           )}
 
@@ -417,11 +484,14 @@ export const VendorInvoiceManager = () => {
               data={csvData}
               vendorId={manualVendorId || selectedVendor}
               invoiceDate={invoiceDate || new Date()}
+              sourceFile={sourceFile || undefined}
+              importType={importType === "manual" ? "manual_entry" : `${importType}_import` as any}
               onDateChange={(date) => setInvoiceDate(date)}
               onConfirm={handleImportComplete}
               onCancel={() => {
                 setCSVData(null);
                 setSelectedVendor("");
+                setSourceFile(null);
               }}
             />
           ) : (
@@ -466,6 +536,7 @@ export const VendorInvoiceManager = () => {
                 </>
               )}
               {activeTab === "history" && <ImportHistory />}
+              {activeTab === "triage" && <TriagePanel />}
               {activeTab === "settings" && <ImportSettings />}
             </>
           )}

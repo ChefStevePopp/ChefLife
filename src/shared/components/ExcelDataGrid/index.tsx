@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Search,
   Filter,
@@ -16,6 +16,7 @@ import { PaginationControls } from "./PaginationControls";
 import { ColumnFilter } from "./ColumnFilter";
 import { ResizableHeader } from "./ResizableHeader";
 import { AllergenCell } from "@/features/admin/components/sections/recipe/MasterIngredientList/components/AllergenCell";
+import { StatusCell } from "@/features/admin/components/sections/recipe/MasterIngredientList/components/StatusCell";
 import { PriceChangeCell } from "@/features/admin/components/sections/VendorInvoice/components/PriceHistory/PriceChangeCell";
 import { ImageWithFallback } from "@/shared/components/ImageWithFallback";
 import { useDiagnostics } from "@/hooks/useDiagnostics";
@@ -26,7 +27,20 @@ import toast from "react-hot-toast";
 // =============================================================================
 // Reusable data grid with filtering, sorting, pagination, and column management.
 // Used by: MasterIngredientList, VendorInvoiceManager, InventoryManagement
+//
+// Filter State Persistence:
+// Supports restoring filter state when returning from detail views via
+// initialFilterState prop and onFilterStateChange callback.
 // =============================================================================
+
+// Filter state type - exported for use by parent components
+export interface GridFilterState {
+  filters: Record<string, any>;
+  activeFilters: string[];
+  globalFilter: string;
+  sortColumn: string | null;
+  sortDirection: "asc" | "desc" | null;
+}
 
 interface ExcelDataGridProps<T> {
   columns: ExcelColumn[];
@@ -37,6 +51,12 @@ interface ExcelDataGridProps<T> {
   onRowClick?: (row: T) => void;
   onRefresh?: () => void;
   isLoading?: boolean;
+  /** Optional callback fired when filtered data changes (for navigation context, etc.) */
+  onFilteredDataChange?: (filteredData: T[]) => void;
+  /** Optional initial filter state to restore (e.g., when returning from detail view) */
+  initialFilterState?: GridFilterState | null;
+  /** Optional callback fired when filter state changes (for persistence) */
+  onFilterStateChange?: (state: GridFilterState) => void;
 }
 
 // Helper to get nested value from object
@@ -61,8 +81,14 @@ export function ExcelDataGrid<T>({
   onRowClick,
   onRefresh,
   isLoading = false,
+  onFilteredDataChange,
+  initialFilterState,
+  onFilterStateChange,
 }: ExcelDataGridProps<T>) {
   const { showDiagnostics } = useDiagnostics();
+  
+  // Track if we've initialized from props (to avoid re-applying on every render)
+  const hasInitialized = useRef(false);
 
   // ---------------------------------------------------------------------------
   // STATE
@@ -72,15 +98,28 @@ export function ExcelDataGrid<T>({
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  // Sorting
-  const [sortColumn, setSortColumn] = useState<string | null>(null);
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>(null);
+  // Sorting - initialize from props if provided
+  const [sortColumn, setSortColumn] = useState<string | null>(
+    initialFilterState?.sortColumn ?? null
+  );
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>(
+    initialFilterState?.sortDirection ?? null
+  );
 
-  // Filtering
-  const [filters, setFilters] = useState<Record<string, any>>({});
-  const [activeFilters, setActiveFilters] = useState<string[]>([]);
-  const [showFilterPanel, setShowFilterPanel] = useState(false);
-  const [globalFilter, setGlobalFilter] = useState("");
+  // Filtering - initialize from props if provided
+  const [filters, setFilters] = useState<Record<string, any>>(
+    initialFilterState?.filters ?? {}
+  );
+  const [activeFilters, setActiveFilters] = useState<string[]>(
+    initialFilterState?.activeFilters ?? []
+  );
+  const [showFilterPanel, setShowFilterPanel] = useState(
+    // Auto-expand filter panel if returning with active filters
+    (initialFilterState?.activeFilters?.length ?? 0) > 0
+  );
+  const [globalFilter, setGlobalFilter] = useState(
+    initialFilterState?.globalFilter ?? ""
+  );
 
   // Column customization
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
@@ -130,6 +169,23 @@ export function ExcelDataGrid<T>({
       return prev;
     });
   }, [columns, type]);
+
+  // Notify parent of filter state changes (for persistence across navigation)
+  useEffect(() => {
+    // Skip the initial render to avoid overwriting restored state
+    if (!hasInitialized.current) {
+      hasInitialized.current = true;
+      return;
+    }
+    
+    onFilterStateChange?.({
+      filters,
+      activeFilters,
+      globalFilter,
+      sortColumn,
+      sortDirection,
+    });
+  }, [filters, activeFilters, globalFilter, sortColumn, sortDirection, onFilterStateChange]);
 
   // ---------------------------------------------------------------------------
   // FILTERED & SORTED DATA
@@ -212,6 +268,11 @@ export function ExcelDataGrid<T>({
 
     return result;
   }, [data, columns, categoryFilter, globalFilter, filters, sortColumn, sortDirection]);
+
+  // Notify parent of filtered data changes (for navigation context, etc.)
+  useEffect(() => {
+    onFilteredDataChange?.(filteredData);
+  }, [filteredData, onFilteredDataChange]);
 
   // Paginated data
   const paginatedData = useMemo(() => {
@@ -514,6 +575,10 @@ export function ExcelDataGrid<T>({
   const renderCell = (column: ExcelColumn, row: T) => {
     if (column.type === "allergen") {
       return <AllergenCell ingredient={row} />;
+    }
+
+    if (column.type === "status") {
+      return <StatusCell ingredient={row as any} />;
     }
 
     if (column.type === "percent" || column.key.includes("change") || column.key.includes("_percent")) {

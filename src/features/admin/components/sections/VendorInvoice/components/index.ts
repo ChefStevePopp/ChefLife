@@ -19,3 +19,5 @@ export * from "./AddInvoiceModal";
 export * from "./ImportHistory";
 export * from "./LoadingState";
 export * from "./ManualInvoiceForm";
+export * from "./NewIngredientInline";
+export * from "./ImportHeader";

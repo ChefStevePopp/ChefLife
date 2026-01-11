@@ -89,7 +89,9 @@ Each module works independently. No module requires another module.
 - [ ] Organization: Smart Tax ID validation (CA/US formats)
 - [ ] Kitchen: Recipe versioning, HACCP completion
 - [ ] Team: Weekly report automation, Communications triggers
+- [x] Data: **Master Ingredient List L5/L6 complete**
 - [ ] Data: Sysco/US Foods invoice support
+- [ ] Data: Vendor Invoice Manager L5 refresh
 
 ### Q2 2026
 - [ ] Organization: Square POS, QuickBooks integrations
@@ -137,6 +139,13 @@ All features follow the 6-phase L5 build process:
 4. **Pagination** — Handle scale
 5. **Core Feature** — Main functionality
 6. **Polish** — Keyboard shortcuts, animations, diagnostics
+
+**L6 — Respect the User's Time**
+
+Beyond L5 polish, L6 features preserve user context:
+- Filter-aware navigation (stay in filtered context across pages)
+- Smart batch operations (update 85 items, not 85 clicks)
+- Context preservation (filters persist across navigation)
 
 Reference: `docs/L5-BUILD-STRATEGY.md`
 
@@ -197,5 +206,6 @@ Standard for modules with multiple concerns:
 
 ---
 
-*Last updated: January 8, 2026*
+*Last updated: January 10, 2026*
 *Roadmap structure reorganized: January 8, 2026*
+*L6 concept added: January 10, 2026*
