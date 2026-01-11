@@ -281,3 +281,101 @@ if (isPurchasedIngredient({ item_code: "1410441" })) { /* true */ }
 ## Index Exports
 
 `src/utils/index.ts` re-exports commonly used utilities. Check this file to see what's available via `@/utils`.
+
+---
+
+## ExcelColumn Type System
+
+**Location:** `src/types/excel.ts`
+
+The `ExcelColumn` interface defines column behavior for `ExcelDataGrid`.
+
+```typescript
+import type { ExcelColumn } from "@/types/excel";
+
+export interface ExcelColumn {
+  key: string;           // Data field path (supports dot notation)
+  name: string;          // Column header text
+  type: "text" | "currency" | "percent" | "imageUrl" | "number" | 
+        "boolean" | "date" | "allergen" | "status" | "custom";
+  width: number;         // Column width in pixels
+  sortable?: boolean;    // Enable sorting (default: true)
+  filterable?: boolean;  // Enable filtering (default: false)
+  align?: "left" | "center" | "right";  // Header and cell alignment
+  render?: (value: any, row: any) => React.ReactNode;  // Custom cell renderer
+  filterOptions?: { value: string; label: string }[];  // Dropdown filter values
+}
+```
+
+### Custom Column Rendering
+
+Use `type: "custom"` with `render` function for complex cell content:
+
+```typescript
+const columns: ExcelColumn[] = [
+  {
+    key: "source",
+    name: "Source",
+    type: "custom",
+    width: 90,
+    align: "center",
+    render: (value: string) => (
+      <div className="flex justify-center">
+        {value === "skipped" ? (
+          <Ghost className="w-4 h-4 text-amber-400" />
+        ) : (
+          <AlertTriangle className="w-4 h-4 text-rose-400" />
+        )}
+      </div>
+    ),
+  },
+  {
+    key: "unit_price",
+    name: "Price",
+    type: "custom",
+    width: 100,
+    align: "right",
+    render: (value: number | null) => (
+      <span>{value != null ? `${value.toFixed(2)}` : "-"}</span>
+    ),
+  },
+  {
+    key: "percent_complete",
+    name: "% Complete",
+    type: "custom",
+    width: 140,
+    align: "center",
+    render: (value: number) => (
+      <div className="flex items-center gap-2">
+        <div className="w-16 h-2 bg-gray-700 rounded-full overflow-hidden">
+          <div className={`h-full ${value < 50 ? "bg-rose-500" : "bg-emerald-500"}`} 
+               style={{ width: `${value}%` }} />
+        </div>
+        <span className="text-xs">{value}%</span>
+      </div>
+    ),
+  },
+];
+```
+
+### Standard Type Behaviors
+
+| Type | Rendering | Notes |
+|------|-----------|-------|
+| `text` | String value | Searchable, filterable |
+| `currency` | `$X.XX` format | Numeric sorting |
+| `percent` | `X.X%` format | Numeric sorting |
+| `number` | Raw number | Numeric sorting |
+| `date` | Locale date string | Date sorting |
+| `boolean` | "Yes"/"No" | - |
+| `imageUrl` | `ImageWithFallback` | Not sortable |
+| `allergen` | `AllergenCell` component | Special MIL component |
+| `status` | `StatusCell` component | Special MIL component |
+| `custom` | Uses `render` function | Full control |
+
+### Reference Implementation
+
+- **Triage Panel:** `src/features/admin/components/sections/VendorInvoice/components/TriagePanel.tsx`
+  - Icon columns, progress bars, action buttons
+- **MasterIngredientList:** `src/features/admin/components/sections/recipe/MasterIngredientList/index.tsx`
+  - Standard columns with allergen/status special types

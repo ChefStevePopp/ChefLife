@@ -39,6 +39,15 @@
   - [x] Legacy data marked as `legacy_import` with cutoff documentation
   - [x] `vendor_price_audit_trail` view for comprehensive reporting
   - [x] `processInvoiceWithAuditTrail()` service for all imports
+- [x] **Triage Tab** — Unified pending items view (Jan 10, 2026)
+  - [x] Import → Triage → History tabbed workflow
+  - [x] Shows skipped items (0% complete) + incomplete ingredients (partial %)
+  - [x] StatBar with muted gray palette for contextual stats
+  - [x] ExcelDataGrid standard with full L5 features
+  - [x] Icon legend (Ghost=skipped, AlertTriangle=incomplete)
+  - [x] Type icons (ShoppingCart=purchased, ChefHat=prep)
+  - [x] Edit navigates to IngredientDetailPage with Triage context
+  - [x] "Back to Triage" preserves workflow continuity
 
 ### Food Inventory Review 🔄
 - [x] Basic inventory list with DataTable
@@ -58,6 +67,8 @@
 - [x] localStorage persistence
 - [x] **`onFilteredDataChange` callback** — Exposes internal filtered data to parent
 - [x] Cascading category filters (Major Group → Category → Sub Category)
+- [x] **`align` column property** — "left" | "center" | "right" for headers and cells
+- [x] **`type: "custom"` with render function** — Custom cell rendering for icons, progress bars, action buttons
 
 ---
 
@@ -70,6 +81,9 @@
 - [x] ExcelDataGrid `onFilteredDataChange` callback
 - [x] Allergens tab with severity-based groupings
 - [x] Import/Export tabs integrated into MasterIngredientList
+- [x] **Triage Panel L5 Refactor** — Custom table → ExcelDataGrid standard
+- [x] **ExcelColumn `align` property** — Header/cell alignment support
+- [x] **Custom render functions** — `type: "custom"` for icon columns
 
 ### Import Wizard L5 Refresh
 - [ ] Column mapping UI (user maps their columns → our fields)
@@ -282,5 +296,5 @@ src/shared/components/
 ---
 
 *Created: January 8, 2026*
-*Updated: January 10, 2026 - Master Ingredient List L5/L6 complete, VIM next*
+*Updated: January 10, 2026 - Triage Panel L5 Refactor, ExcelDataGrid align/custom render support*
 *Section: Data Management*

@@ -853,7 +853,7 @@ export function ExcelDataGrid<T>({
                 return (
                   <th
                     key={column.key}
-                    className="p-0 text-sm font-medium text-left"
+                    className="p-0 text-sm font-medium"
                     style={{
                       width: `${columnWidths[column.key] || column.width}px`,
                       minWidth: `${columnWidths[column.key] || column.width}px`,

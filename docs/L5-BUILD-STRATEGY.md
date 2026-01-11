@@ -1130,6 +1130,46 @@ A feature is L5 complete when:
 
 ## Changelog
 
+**Jan 10, 2026 (Session 40 - Triage Panel L5 Refactor):**
+- **Triage Panel refactored to ExcelDataGrid standard**:
+  - Replaced custom 300+ line table with ExcelDataGrid component
+  - Gained: search, pagination, column filters, sorting, export, column visibility - all free
+  - Custom rendering via `type: "custom"` + `render` function for icons/progress bars
+  - StatBar integration with muted gray palette for contextual stats
+- **ExcelColumn type extended**:
+  - Added `align?: "left" | "center" | "right"` property
+  - `type: "custom"` with `render?: (value, row) => ReactNode`
+  - Both headers and cells now respect alignment
+- **ResizableHeader updated**:
+  - Respects `column.align` for header text alignment
+- **Currency formatting**:
+  - Triage Panel uses custom render for `$X.XX` display
+  - Pattern: `render: (value) => value != null ? `${value.toFixed(2)}` : "-"`
+- **Duplicate edit column removed**:
+  - `onRowClick` no longer passed when Actions column has edit button
+  - Actions column now centered with edit/delete buttons
+
+**L5 Refactor Pattern (Triage Example):**
+```tsx
+// Custom column with icon rendering
+{
+  key: "source",
+  name: "Source",
+  type: "custom",
+  width: 90,
+  align: "center",
+  render: (value: string) => (
+    <div className="flex justify-center">
+      {value === "skipped" ? (
+        <Ghost className="w-4 h-4 text-amber-400" />
+      ) : (
+        <AlertTriangle className="w-4 h-4 text-rose-400" />
+      )}
+    </div>
+  ),
+}
+```
+
 **Jan 10, 2026 (L6 Navigation):**
 - **Added L6 — Respect the User's Time** philosophy section:
   - Filter-aware navigation preserves user context

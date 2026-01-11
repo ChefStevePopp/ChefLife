@@ -12,6 +12,7 @@ import {
   Info,
   ChevronUp,
   Inbox,
+  BookOpen,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
@@ -80,7 +81,7 @@ const getTriageColumns = (
     sortable: true,
     align: "center",
     render: (value: string) => (
-      <div className="flex justify-center">
+      <div className="w-full flex justify-center">
         {value === "skipped" ? (
           <div 
             className="w-7 h-7 rounded-lg bg-amber-500/20 flex items-center justify-center"
@@ -108,7 +109,7 @@ const getTriageColumns = (
     sortable: true,
     align: "center",
     render: (value: string) => (
-      <div className="flex justify-center">
+      <div className="w-full flex justify-center">
         {value === "prep" ? (
           <div 
             className="w-7 h-7 rounded-lg bg-purple-500/20 flex items-center justify-center"
@@ -159,8 +160,8 @@ const getTriageColumns = (
     sortable: true,
     align: "right",
     render: (value: number | null) => (
-      <span className="text-gray-300">
-        {value != null ? `$${value.toFixed(2)}` : "-"}
+      <span className="text-gray-300 font-medium">
+        <span className="text-emerald-400">$</span> {value != null ? value.toFixed(2) : "-"}
       </span>
     ),
   },
@@ -172,8 +173,8 @@ const getTriageColumns = (
     sortable: true,
     align: "center",
     render: (value: number) => (
-      <div className="flex items-center justify-center gap-2">
-        <div className="w-16 h-2 bg-gray-700 rounded-full overflow-hidden">
+      <div className="w-full flex items-center justify-center gap-2">
+        <div className="flex-1 h-2 bg-gray-700 rounded-full overflow-hidden">
           <div
             className={`h-full rounded-full transition-all ${
               value === 0
@@ -187,7 +188,7 @@ const getTriageColumns = (
             style={{ width: `${value}%` }}
           />
         </div>
-        <span className={`text-xs font-medium w-8 ${
+        <span className={`text-xs font-medium w-8 text-right ${
           value === 0
             ? "text-gray-500"
             : value < 50
@@ -210,7 +211,7 @@ const getTriageColumns = (
     filterable: false,
     align: "center",
     render: (_: any, row: PendingItem) => (
-      <div className="flex justify-center gap-2">
+      <div className="w-full flex justify-center gap-2">
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -298,6 +299,7 @@ export const TriagePanel: React.FC = () => {
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLegendExpanded, setIsLegendExpanded] = useState(false);
+  const [prepWarningItem, setPrepWarningItem] = useState<PendingItem | null>(null);
 
   // ---------------------------------------------------------------------------
   // FETCH DATA
@@ -435,6 +437,12 @@ export const TriagePanel: React.FC = () => {
   };
 
   const handleEdit = (item: PendingItem) => {
+    // If it's a prep item, show warning instead of navigating
+    if (item.ingredient_type === "prep") {
+      setPrepWarningItem(item);
+      return;
+    }
+
     const incompleteIds = pendingItems
       .filter(i => i.source === "incomplete" && i.ingredient_id)
       .map(i => i.ingredient_id!);
@@ -450,6 +458,11 @@ export const TriagePanel: React.FC = () => {
     } else if (item.source === "skipped") {
       navigate(`/admin/data/ingredients/new?item_code=${item.item_code}&product=${encodeURIComponent(item.product_name)}&price=${item.unit_price || ""}&pending_id=${item.id}`);
     }
+  };
+
+  const handleGoToRecipeManager = () => {
+    setPrepWarningItem(null);
+    navigate("/admin/recipes");
   };
 
   // ---------------------------------------------------------------------------
@@ -556,6 +569,49 @@ export const TriagePanel: React.FC = () => {
       {pendingItems.length > 0 && (
         <div className="text-xs text-gray-500 text-center">
           Click the edit button to complete setup. Use column filters to narrow down items.
+        </div>
+      )}
+
+      {/* Prep Item Warning Action Bar - L5 Standard */}
+      {prepWarningItem && (
+        <div className="floating-action-bar warning">
+          <div className="floating-action-bar-inner">
+            <div className="floating-action-bar-content">
+              {/* Status indicator */}
+              <div className="flex items-center gap-2 text-amber-400">
+                <ChefHat className="w-4 h-4" />
+                <span className="text-sm font-medium">Prep Item</span>
+              </div>
+
+              {/* Divider */}
+              <div className="w-px h-6 bg-gray-700" />
+
+              {/* Message */}
+              <span className="text-sm text-gray-300">
+                <span className="text-white font-medium">{prepWarningItem.product_name}</span>
+                <span className="text-gray-500 mx-2">—</span>
+                Edit in Recipe Manager
+              </span>
+
+              {/* Divider */}
+              <div className="w-px h-6 bg-gray-700" />
+
+              {/* Actions */}
+              <button
+                onClick={() => setPrepWarningItem(null)}
+                className="btn-ghost text-sm py-1.5"
+              >
+                Dismiss
+              </button>
+              <button
+                onClick={handleGoToRecipeManager}
+                className="btn-ghost text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 text-sm py-1.5"
+              >
+                <BookOpen className="w-4 h-4" />
+                Recipes
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

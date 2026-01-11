@@ -392,6 +392,17 @@ select::-ms-expand {
   }
 }
 
+@keyframes slideInUpCentered {
+  from {
+    transform: translateX(-50%) translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+}
+
 @keyframes slideInRight {
   from {
     transform: translateX(100%);
@@ -457,7 +468,7 @@ select::-ms-expand {
   left: 50%;
   transform: translateX(-50%);
   z-index: 50;
-  animation: slideInUp 0.3s ease-out forwards;
+  animation: slideInUpCentered 0.3s ease-out forwards;
 }
 
 .floating-action-bar-inner {

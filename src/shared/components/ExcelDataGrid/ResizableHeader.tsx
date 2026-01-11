@@ -79,8 +79,7 @@ export const ResizableHeader: React.FC<ResizableHeaderProps> = ({
   return (
     <div
       ref={headerRef}
-      className={`relative flex h-full select-none group ${className || ""}`}
-      style={{ width: `${column.width}px` }}
+      className={`relative flex w-full h-full select-none group ${className || ""}`}
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
