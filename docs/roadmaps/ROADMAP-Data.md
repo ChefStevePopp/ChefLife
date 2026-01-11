@@ -84,6 +84,7 @@
 - [x] **Triage Panel L5 Refactor** — Custom table → ExcelDataGrid standard
 - [x] **ExcelColumn `align` property** — Header/cell alignment support
 - [x] **Custom render functions** — `type: "custom"` for icon columns
+- [x] **Mobile Quick Invoice** — L6 fast entry replacing OCR photo gymnastics (Jan 11)
 
 ### Import Wizard L5 Refresh
 - [ ] Column mapping UI (user maps their columns → our fields)
@@ -97,6 +98,19 @@
 - [ ] **Code Group suggestions** — Fuzzy match on vendor + product name
 - [ ] **MIL "Needs Attention" filter** — Surface items pending review
 - [ ] **One-click Code Group linking** — Quick action during review
+
+### 📱 Mobile Quick Invoice (L6 Priority) ✅
+> *"Fast entry beats photo gymnastics"* — See [Promise](../promises/PROMISE-Fast-Entry-Not-Photo-Gymnastics.md)
+
+- [x] **Mobile-first invoice entry** — Vendor picker → filtered MIL items → qty/price → save
+- [x] **Recent vendors** — One-tap access to frequent suppliers (sorted by last invoice)
+- [x] **Vendor-filtered MIL** — Show only that vendor's products (via primary_vendor_id + invoice history)
+- [x] **Photo audit trail** — Attach receipt photo as proof (not OCR source)
+- [x] **Frequent items per vendor** — Shows top 6 most-purchased items as quick-add chips
+- [x] **Three-step flow** — Vendor → Items (with cart) → Review & Submit
+- [x] **Running total** — Cart summary with item count and total
+- [x] **Price entry modal** — Mobile-friendly qty/price entry with +/- buttons
+- [ ] **Draft status** — `vendor_invoices.status = 'draft'` for photo-captured, not-yet-entered (future)
 
 ### 🎯 Code Groups: The Magic in the Walls
 > **The Problem:** Vendors like GFS, Sysco, and US Foods change product codes every 18-24 months on commodity items. Private label "rebrands" reset price history, making it impossible to track true cost trends.
@@ -122,7 +136,7 @@
 
 ### VIM Enhancements
 - [ ] Additional vendor formats (Sysco, US Foods)
-- [ ] OCR improvements for scanned invoices
+- [ ] ~~OCR improvements for scanned invoices~~ **DEPRIORITIZED** — See [Promise: Fast Entry, Not Photo Gymnastics](../promises/PROMISE-Fast-Entry-Not-Photo-Gymnastics.md)
 - [ ] Price trend graphs per ingredient
 - [ ] Anomaly detection (unusual price spikes)
 - [ ] Credit memo handling
@@ -296,5 +310,5 @@ src/shared/components/
 ---
 
 *Created: January 8, 2026*
-*Updated: January 10, 2026 - Triage Panel L5 Refactor, ExcelDataGrid align/custom render support*
+*Updated: January 11, 2026 - Mobile Quick Invoice (L6) BUILT, OCR deprioritized*
 *Section: Data Management*

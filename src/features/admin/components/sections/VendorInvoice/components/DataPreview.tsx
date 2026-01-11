@@ -32,7 +32,7 @@ interface Props {
   vendorId: string;
   invoiceDate?: Date;
   sourceFile?: File; // Source file for audit trail
-  importType?: 'csv_import' | 'pdf_import' | 'photo_import' | 'manual_entry';
+  importType?: 'csv_import' | 'pdf_import' | 'mobile_import' | 'manual_entry';
   onConfirm: () => void;
   onCancel: () => void;
   onDateChange?: (date: Date) => void;

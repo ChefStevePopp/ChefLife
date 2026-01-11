@@ -7,6 +7,7 @@ import {
   Info,
   Calendar,
   Edit,
+  Smartphone,
 } from "lucide-react";
 import { useOperationsStore } from "@/stores/operationsStore";
 import { useVendorTemplatesStore } from "@/stores/vendorTemplatesStore";
@@ -16,8 +17,8 @@ import { format } from "date-fns";
 interface Props {
   selectedVendor: string;
   onVendorChange: (vendor: string) => void;
-  fileType: "csv" | "pdf" | "photo" | "manual";
-  onFileTypeChange: (type: "csv" | "pdf" | "photo" | "manual") => void;
+  fileType: "csv" | "pdf" | "mobile" | "manual";
+  onFileTypeChange: (type: "csv" | "pdf" | "mobile" | "manual") => void;
 }
 
 export const VendorSelector: React.FC<Props> = ({
@@ -134,28 +135,28 @@ export const VendorSelector: React.FC<Props> = ({
               />
               CSV
             </button>
-            {/* 
-    <button
-      type="button"
-      onClick={() => onFileTypeChange("pdf")}
-      className={`tab green ${fileType === "pdf" ? "active" : ""} text-sm`}
-    >
-      <FileText
-        className={`w-5 h-5 mr-1 ${fileType === "pdf" ? "text-green-400" : ""}`}
-      />
-      PDF
-    </button>
-    <button
-      type="button"
-      onClick={() => onFileTypeChange("photo")}
-      className={`tab amber ${fileType === "photo" ? "active" : ""} text-sm`}
-    >
-      <Camera
-        className={`w-5 h-5 mr-1 ${fileType === "photo" ? "text-amber-400" : ""}`}
-      />
-      Photo
-    </button>
-    */}
+            <button
+              type="button"
+              onClick={() => onFileTypeChange("mobile")}
+              className={`tab amber ${fileType === "mobile" ? "active" : ""} text-sm`}
+            >
+              <Smartphone
+                className={`w-5 h-5 mr-1 ${fileType === "mobile" ? "text-amber-400" : ""}`}
+              />
+              Mobile
+            </button>
+            {/* PDF - Coming Soon
+            <button
+              type="button"
+              onClick={() => onFileTypeChange("pdf")}
+              className={`tab green ${fileType === "pdf" ? "active" : ""} text-sm`}
+            >
+              <FileText
+                className={`w-5 h-5 mr-1 ${fileType === "pdf" ? "text-green-400" : ""}`}
+              />
+              PDF
+            </button>
+            */}
             <button
               type="button"
               onClick={() => onFileTypeChange("manual")}

@@ -69,6 +69,7 @@ Which ChefLife modules/features deliver this promise?
 │
 ├── ⏱️ Time
 │   ├── The system learns, so you do less
+│   ├── Fast entry, not photo gymnastics
 │   └── [Future promises...]
 │
 ├── 📈 Intelligence
@@ -97,6 +98,7 @@ Which ChefLife modules/features deliver this promise?
 | Promise | Status |
 |---------|--------|
 | [The System Learns, So You Do Less](PROMISE-System-Learns.md) | Building 🔄 |
+| [Fast Entry, Not Photo Gymnastics](PROMISE-Fast-Entry-Not-Photo-Gymnastics.md) | Documented ✅ |
 
 ---
 
@@ -143,5 +145,5 @@ If a feature requires users to:
 ---
 
 *Created: January 10, 2026*
-*Updated: January 10, 2026 - Core Philosophy added*
+*Updated: January 11, 2026 - Fast Entry promise added*
 *Section: Product Philosophy*

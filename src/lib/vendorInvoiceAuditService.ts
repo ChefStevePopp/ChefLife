@@ -32,7 +32,7 @@ export interface CreateInvoiceParams {
   invoiceDate: Date;
   lineItems: InvoiceLineItem[];
   sourceFile?: File;
-  importType: 'csv_import' | 'pdf_import' | 'photo_import' | 'manual_entry';
+  importType: 'csv_import' | 'pdf_import' | 'mobile_import' | 'manual_entry';
   createdBy: string;
 }
 

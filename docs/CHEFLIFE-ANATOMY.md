@@ -2,9 +2,9 @@
 ## A Living Restaurant System
 
 **Document Created:** January 8, 2026  
-**Last Updated:** January 10, 2026  
+**Last Updated:** January 11, 2026  
 **Authors:** Steve Popp (Creator) & Claude (Architecture Partner)  
-**Version:** 1.2 - L6 Philosophy
+**Version:** 1.5 - L6 Mobile Invoice Example
 
 ---
 
@@ -451,6 +451,12 @@ When a user filters 522 ingredients down to 6 butter items, edits one, and needs
 
 L6 is the difference between software that makes you work and software that works *for you*.
 
+**Another L6 Example: Mobile Invoice Entry**
+
+Other apps promise "just snap a photo!" for receipt capture. Reality: contort your phone for a flat shot, wait for OCR, verify line-by-line, fix the errors anyway. 3+ minutes of frustration.
+
+**L6 Answer:** Pick vendor → see their items → tap qty/price → done. 30 seconds. No photo gymnastics, no robot homework to audit. Your time matters more than a gimmick.
+
 ---
 
 ## The Vision
@@ -745,3 +751,4 @@ That's the vision. That's the mission. That's ChefLife.
 | 1.2 | Jan 10, 2026 | Added L6 Philosophy - "Respect the User's Time" - filter-aware navigation that preserves context |
 | 1.3 | Jan 10, 2026 | Added Triage Workflow, Ingredient Types (purchased/prep), Friendly ID system |
 | 1.4 | Jan 10, 2026 | Triage Panel L5 Refactor - ExcelDataGrid standard, StatBar, custom render |
+| 1.5 | Jan 11, 2026 | Added L6 Mobile Invoice Entry example - "fast entry beats photo gymnastics" |

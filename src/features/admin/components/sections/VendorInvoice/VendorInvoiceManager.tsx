@@ -20,6 +20,7 @@ import { VendorSelector } from "./components/VendorSelector";
 import { ImportHeader } from "./components/ImportHeader";
 import { PDFUploader } from "./components/PDFUploader";
 import { PhotoUploader } from "./components/PhotoUploader";
+import { MobileInvoice } from "./components/MobileInvoice";
 import { DataPreview } from "./components/DataPreview";
 import { ItemCodeGroupManager } from "./components/ItemCodeGroupManager";
 import { UmbrellaIngredientManager } from "./components/UmbrellaIngredientManager";
@@ -80,7 +81,7 @@ export const VendorInvoiceManager = () => {
   const [selectedVendor, setSelectedVendor] = useState("");
   const [manualVendorId, setManualVendorId] = useState("");
   const [isInfoExpanded, setIsInfoExpanded] = useState(false);
-  const [importType, setImportType] = useState<"csv" | "pdf" | "photo" | "manual">("csv");
+  const [importType, setImportType] = useState<"csv" | "pdf" | "mobile" | "manual">("csv");
   const [sourceFile, setSourceFile] = useState<File | null>(null); // For audit trail
 
   // A/B Testing: Compare header variants (dev/omega users only)
@@ -161,9 +162,8 @@ export const VendorInvoiceManager = () => {
       try {
         if (importType === "pdf") {
           await processPDFUpload(data);
-        } else if (importType === "photo") {
-          await processPhotoUpload(data);
         }
+        // Note: "mobile" type uses MobileInvoice component directly, not file upload
       } catch (error: any) {
         console.error(`Error processing ${importType.toUpperCase()}:`, error);
         toast.error(`Failed to process ${importType.toUpperCase()} file: ${error.message}`);
@@ -381,7 +381,7 @@ export const VendorInvoiceManager = () => {
             <div className="expandable-info-content">
               <div className="p-4 pt-2 space-y-3">
                 <p className="text-sm text-gray-400">
-                  Import vendor invoices via CSV, PDF, or photo to automatically update 
+                  Import vendor invoices via CSV, Mobile quick-entry, or PDF to automatically update 
                   ingredient prices. Track price history, analyze vendor performance, 
                   and manage umbrella items that aggregate costs across vendors.
                 </p>
@@ -460,7 +460,7 @@ export const VendorInvoiceManager = () => {
                   selectedVendor={selectedVendor}
                   onVendorChange={setSelectedVendor}
                   fileType={importType}
-                  onFileTypeChange={(type) => setImportType(type as "csv" | "pdf" | "photo" | "manual")}
+                  onFileTypeChange={(type) => setImportType(type as "csv" | "pdf" | "mobile" | "manual")}
                 />
               )}
             </div>
@@ -510,7 +510,24 @@ export const VendorInvoiceManager = () => {
                     />
                   )}
                   {importType === "pdf" && <PDFUploader onUpload={handleUpload} />}
-                  {importType === "photo" && <PhotoUploader onUpload={handleUpload} />}
+                  {importType === "mobile" && (
+                    <MobileInvoice
+                      selectedVendorId={selectedVendor || undefined}
+                      onSubmit={(data, date, photoFile) => {
+                        // Store photo for audit trail if provided
+                        if (photoFile) {
+                          setSourceFile(photoFile);
+                        }
+                        setCSVData(data);
+                        setInvoiceDate(date);
+                        setManualVendorId(selectedVendor);
+                      }}
+                      onCancel={() => {
+                        setSelectedVendor("");
+                        setImportType("csv");
+                      }}
+                    />
+                  )}
                   {importType === "manual" && (
                     <div className="space-y-6">
                       {selectedVendor ? (
