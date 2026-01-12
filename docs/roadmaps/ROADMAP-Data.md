@@ -37,6 +37,7 @@
   - [x] vendor_invoices → vendor_invoice_items → vendor_price_history linkage
   - [x] Source file retention in Supabase storage (SHA256 hashed)
   - [x] Legacy data marked as `legacy_import` with cutoff documentation
+  - [x] **Price Source Tracking** — Shows invoice source for prices with override protection (Jan 12)
   - [x] `vendor_price_audit_trail` view for comprehensive reporting
   - [x] `processInvoiceWithAuditTrail()` service for all imports
 - [x] **Triage Tab** — Unified pending items view (Jan 10, 2026)
@@ -320,5 +321,5 @@ src/shared/components/
 ---
 
 *Created: January 8, 2026*
-*Updated: January 11, 2026 - Mobile Quick Invoice built, parked for Mobile Admin section*
+*Updated: January 12, 2026 - Price Source Tracking with override protection*
 *Section: Data Management*

@@ -13,6 +13,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { nexus } from '@/lib/nexus';
 
 // Types
 export interface InvoiceLineItem {
@@ -34,6 +35,10 @@ export interface CreateInvoiceParams {
   sourceFile?: File;
   importType: 'csv_import' | 'pdf_import' | 'mobile_import' | 'manual_entry';
   createdBy: string;
+  // Supersede tracking
+  isSupersede?: boolean;
+  supersededFilename?: string;
+  versionNumber?: number;
 }
 
 export interface AuditedPriceChange {
@@ -211,7 +216,8 @@ async function createPriceHistory(
   changes: AuditedPriceChange[],
   sourceType: string,
   effectiveDate: Date,
-  createdBy: string
+  createdBy: string,
+  vendorImportId: string // Add vendor_import_id for joining to vendor_imports
 ): Promise<void> {
   const historyRecords = changes.map(change => ({
     organization_id: organizationId,
@@ -220,7 +226,8 @@ async function createPriceHistory(
     price: change.newPrice,
     previous_price: change.previousPrice,
     effective_date: effectiveDate.toISOString(),
-    invoice_item_id: change.invoiceItemId, // THE AUDIT LINK
+    invoice_item_id: change.invoiceItemId, // THE AUDIT LINK to line item
+    vendor_import_id: vendorImportId, // THE LINK to vendor_imports for invoice_date
     source_type: sourceType,
     created_by: createdBy,
   }));
@@ -268,6 +275,7 @@ async function recordImportBatch(params: {
   itemsCount: number;
   priceChanges: number;
   newItems: number;
+  invoiceDate?: Date;
   createdBy: string;
 }): Promise<string> {
   const { data, error } = await supabase
@@ -281,6 +289,7 @@ async function recordImportBatch(params: {
       items_count: params.itemsCount,
       price_changes: params.priceChanges,
       new_items: params.newItems,
+      invoice_date: params.invoiceDate ? params.invoiceDate.toISOString().split('T')[0] : null,
       status: 'completed',
       created_by: params.createdBy,
     })
@@ -366,6 +375,7 @@ export async function processInvoiceWithAuditTrail(
       itemsCount: lineItems.length,
       priceChanges: approvedChanges.length,
       newItems: 0, // TODO: Calculate from unmatched items
+      invoiceDate,
       createdBy,
     });
 
@@ -438,7 +448,8 @@ export async function processInvoiceWithAuditTrail(
         auditedChanges,
         importType,
         invoiceDate,
-        createdBy
+        createdBy,
+        importId // Pass the import ID for linking
       );
 
       // Step 7: Update master ingredient prices
@@ -452,6 +463,51 @@ export async function processInvoiceWithAuditTrail(
 
     // Step 8: Mark invoice as processed
     await verifyInvoice(invoiceId, createdBy);
+
+    // Step 9: Log to NEXUS for audit trail
+    // Get vendor name for the notification
+    const { data: vendorData } = await supabase
+      .from('vendors')
+      .select('name')
+      .eq('id', vendorId)
+      .single();
+    const vendorName = vendorData?.name || vendorId;
+
+    if (params.isSupersede) {
+      // Log supersede event (critical audit event)
+      await nexus({
+        organization_id: organizationId,
+        user_id: createdBy,
+        activity_type: 'invoice_superseded',
+        details: {
+          vendor: vendorName,
+          vendor_id: vendorId,
+          filename: sourceFile?.name || invoiceNumber,
+          superseded_filename: params.supersededFilename,
+          version: params.versionNumber || 2,
+          invoice_date: invoiceDate.toISOString().split('T')[0],
+          item_count: lineItems.length,
+          price_changes: auditedChanges.length,
+          import_id: importId,
+        },
+      });
+    } else {
+      // Log standard import event
+      await nexus({
+        organization_id: organizationId,
+        user_id: createdBy,
+        activity_type: 'invoice_imported',
+        details: {
+          vendor: vendorName,
+          vendor_id: vendorId,
+          filename: sourceFile?.name || invoiceNumber,
+          invoice_date: invoiceDate.toISOString().split('T')[0],
+          item_count: lineItems.length,
+          price_changes: auditedChanges.length,
+          import_id: importId,
+        },
+      });
+    }
 
     return {
       invoiceId,

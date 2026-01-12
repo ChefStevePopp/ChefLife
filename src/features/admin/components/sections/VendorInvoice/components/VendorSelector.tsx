@@ -7,11 +7,13 @@ import {
   Calendar,
   Edit,
   ChevronUp,
+  FileCheck2,
+  FileX2,
 } from "lucide-react";
 import { useOperationsStore } from "@/stores/operationsStore";
 import { useVendorTemplatesStore } from "@/stores/vendorTemplatesStore";
 import { useVendorInvoiceStore } from "@/stores/vendorInvoiceStore";
-import { format } from "date-fns";
+import { formatDateForDisplay } from "@/utils/dateUtils";
 
 interface Props {
   selectedVendor: string;
@@ -28,7 +30,7 @@ export const VendorSelector: React.FC<Props> = ({
 }) => {
   const { settings, fetchSettings } = useOperationsStore();
   const { templates } = useVendorTemplatesStore();
-  const { fetchLastInvoice, lastInvoice } = useVendorInvoiceStore();
+  const { fetchLastInvoice, lastInvoice, lastUpload } = useVendorInvoiceStore();
   const vendors = settings?.vendors || [];
   const [isInfoExpanded, setIsInfoExpanded] = useState(false);
 
@@ -144,26 +146,66 @@ export const VendorSelector: React.FC<Props> = ({
 
         {/* Status Badges */}
         {selectedVendor && (
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-shrink-0">
+            {/* Template Status */}
             {fileType !== "manual" && (
               hasTemplate ? (
-                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 text-emerald-400 rounded-lg">
-                  <Info className="w-3.5 h-3.5" />
-                  <span className="text-xs font-medium">Template ready</span>
+                <div className="flex items-center gap-2 px-2.5 py-1.5 bg-gray-800/50 rounded-lg border border-gray-700/50">
+                  <FileCheck2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                  <div className="flex flex-col text-xs leading-relaxed">
+                    <span className="text-gray-300">
+                      <span className="text-gray-500">CSV Template:</span>{" "}
+                      <span className="font-medium text-emerald-400">Ready</span>
+                    </span>
+                    <span className="text-gray-500">Column mapping configured</span>
+                  </div>
                 </div>
               ) : (
-                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-rose-500/10 text-rose-400 rounded-lg">
-                  <Info className="w-3.5 h-3.5" />
-                  <span className="text-xs font-medium">No template</span>
+                <div className="flex items-center gap-2 px-2.5 py-1.5 bg-gray-800/50 rounded-lg border border-rose-500/30">
+                  <FileX2 className="w-4 h-4 text-rose-400 flex-shrink-0" />
+                  <div className="flex flex-col text-xs leading-relaxed">
+                    <span className="text-gray-300">
+                      <span className="text-gray-500">CSV Template:</span>{" "}
+                      <span className="font-medium text-rose-400">Not configured</span>
+                    </span>
+                    <span className="text-gray-500">Go to Settings to set up</span>
+                  </div>
                 </div>
               )
             )}
-            {lastInvoice && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-500/10 text-blue-400 rounded-lg">
-                <Calendar className="w-3.5 h-3.5" />
-                <span className="text-xs font-medium">
-                  {format(new Date(lastInvoice.created_at), "MMM d")}
-                </span>
+            
+            {/* Invoice History Info */}
+            {(lastInvoice || lastUpload) && (
+              <div className="flex items-center gap-2 px-2.5 py-1.5 bg-gray-800/50 rounded-lg border border-gray-700/50">
+                <Calendar className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                <div className="flex flex-col text-xs leading-relaxed">
+                  {/* Last Invoice Date (by calendar) - fall back to upload date for legacy */}
+                  {(lastInvoice?.invoice_date || lastInvoice?.created_at) && (
+                    <span 
+                      className="text-gray-300"
+                      title={`Last invoice: ${lastInvoice.filename || 'Unknown'}`}
+                    >
+                      <span className="text-gray-500">Last Invoice:</span>{" "}
+                      <span className="font-medium text-white">
+                        {lastInvoice.invoice_date 
+                          ? formatDateForDisplay(lastInvoice.invoice_date)
+                          : formatDateForDisplay(lastInvoice.created_at.split('T')[0])}
+                      </span>
+                    </span>
+                  )}
+                  {/* Last Upload (when imported) */}
+                  {lastUpload?.created_at && (
+                    <span 
+                      className="text-gray-300"
+                      title={`Uploaded: ${lastUpload.filename || 'Unknown'}`}
+                    >
+                      <span className="text-gray-500">Last Upload:</span>{" "}
+                      <span className="font-medium text-gray-400">
+                        {formatDateForDisplay(lastUpload.created_at.split('T')[0])}
+                      </span>
+                    </span>
+                  )}
+                </div>
               </div>
             )}
           </div>

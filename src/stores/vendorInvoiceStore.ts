@@ -13,9 +13,11 @@ interface VendorInvoiceStore {
   stats: VendorInvoiceStats;
   isLoading: boolean;
   error: string | null;
-  lastInvoice: { filename?: string; created_at: string } | null;
+  lastInvoice: { filename?: string; invoice_date?: string; created_at: string } | null;
+  lastUpload: { filename?: string; invoice_date?: string; created_at: string } | null;
   fetchInvoiceData: (vendorId: string) => Promise<void>;
   fetchLastInvoice: (vendorId: string) => Promise<void>;
+  checkDuplicateFile: (vendorId: string, filename: string) => Promise<{ isDuplicate: boolean; existingDate?: string }>;
   savePriceChanges: (changes: PriceChange[]) => Promise<void>;
   saveCodeChanges: (changes: CodeChange[]) => Promise<void>;
   approvePriceChange: (changeId: string) => Promise<void>;
@@ -38,6 +40,7 @@ export const useVendorInvoiceStore = create<VendorInvoiceStore>((set, get) => ({
   isLoading: false,
   error: null,
   lastInvoice: null,
+  lastUpload: null,
 
   fetchInvoiceData: async (vendorId: string) => {
     set({ isLoading: true, error: null });
@@ -89,30 +92,90 @@ export const useVendorInvoiceStore = create<VendorInvoiceStore>((set, get) => ({
         throw new Error("No organization ID found");
       }
 
-      const { data, error } = await supabase
-        .from("vendor_imports")
-        .select("file_name, created_at")
-        .eq("organization_id", user.user_metadata.organizationId)
-        .eq("vendor_id", vendorId)
-        .eq("status", "completed")
-        .order("created_at", { ascending: false })
-        .limit(1);
+      // Fetch both: last by invoice date AND last by upload date
+      const [invoiceDateResult, uploadDateResult] = await Promise.all([
+        // Last by invoice date (most recent invoice in system by calendar)
+        // Falls back to created_at ordering for legacy data without invoice_date
+        supabase
+          .from("vendor_imports")
+          .select("file_name, invoice_date, created_at")
+          .eq("organization_id", user.user_metadata.organizationId)
+          .eq("vendor_id", vendorId)
+          .eq("status", "completed")
+          .order("invoice_date", { ascending: false, nullsFirst: false })
+          .limit(1),
+        // Last by upload date (most recent import action)
+        supabase
+          .from("vendor_imports")
+          .select("file_name, invoice_date, created_at")
+          .eq("organization_id", user.user_metadata.organizationId)
+          .eq("vendor_id", vendorId)
+          .eq("status", "completed")
+          .order("created_at", { ascending: false })
+          .limit(1),
+      ]);
 
-      if (error) throw error;
-
-      if (data && data.length > 0) {
+      // Last invoice by date
+      if (invoiceDateResult.data && invoiceDateResult.data.length > 0) {
         set({
           lastInvoice: {
-            filename: data[0].file_name,
-            created_at: data[0].created_at,
+            filename: invoiceDateResult.data[0].file_name,
+            invoice_date: invoiceDateResult.data[0].invoice_date,
+            created_at: invoiceDateResult.data[0].created_at,
           },
         });
       } else {
         set({ lastInvoice: null });
       }
+
+      // Last upload
+      if (uploadDateResult.data && uploadDateResult.data.length > 0) {
+        set({
+          lastUpload: {
+            filename: uploadDateResult.data[0].file_name,
+            invoice_date: uploadDateResult.data[0].invoice_date,
+            created_at: uploadDateResult.data[0].created_at,
+          },
+        });
+      } else {
+        set({ lastUpload: null });
+      }
     } catch (error) {
       console.error("Error fetching last invoice:", error);
-      set({ lastInvoice: null });
+      set({ lastInvoice: null, lastUpload: null });
+    }
+  },
+
+  checkDuplicateFile: async (vendorId: string, filename: string) => {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user?.user_metadata?.organizationId) {
+        return { isDuplicate: false };
+      }
+
+      const { data, error } = await supabase
+        .from("vendor_imports")
+        .select("invoice_date, created_at")
+        .eq("organization_id", user.user_metadata.organizationId)
+        .eq("vendor_id", vendorId)
+        .eq("file_name", filename)
+        .neq("status", "superseded")
+        .limit(1);
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        return {
+          isDuplicate: true,
+          existingDate: data[0].invoice_date || data[0].created_at,
+        };
+      }
+      return { isDuplicate: false };
+    } catch (error) {
+      console.error("Error checking duplicate file:", error);
+      return { isDuplicate: false };
     }
   },
 

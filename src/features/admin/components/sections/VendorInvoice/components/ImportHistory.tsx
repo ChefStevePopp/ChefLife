@@ -1,8 +1,5 @@
 import React, { useState, useEffect } from "react";
 import {
-  FileSpreadsheet,
-  FileText,
-  Camera,
   RefreshCw,
   Search,
   Eye,
@@ -10,8 +7,6 @@ import {
   History,
   ChevronDown,
   Pencil,
-  TrendingUp,
-  TrendingDown,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
@@ -29,6 +24,7 @@ import type { ExcelColumn } from "@/types/excel";
 export interface ImportRecord {
   id: string;
   created_at: string;
+  invoice_date?: string; // The date ON the invoice (calendar date)
   vendor_id: string;
   import_type: string;
   file_name: string;
@@ -187,11 +183,11 @@ export const ImportHistory: React.FC<ImportHistoryProps> = ({ onRecall }) => {
   };
 
   // ---------------------------------------------------------------------------
-  // L5 STATUS BADGE
+  // L5 STATUS BADGE - Only colorize when status varies
   // ---------------------------------------------------------------------------
   const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
     const config: Record<string, { bg: string; text: string; label: string }> = {
-      completed: { bg: "bg-emerald-500/20", text: "text-emerald-400", label: "Completed" },
+      completed: { bg: "bg-emerald-500/10", text: "text-emerald-400", label: "Completed" },
       superseded: { bg: "bg-gray-500/20", text: "text-gray-500", label: "Superseded" },
       processing: { bg: "bg-amber-500/20", text: "text-amber-400", label: "Processing" },
       failed: { bg: "bg-rose-500/20", text: "text-rose-400", label: "Failed" },
@@ -201,34 +197,117 @@ export const ImportHistory: React.FC<ImportHistoryProps> = ({ onRecall }) => {
     const { bg, text, label } = config[status] || config.pending;
     
     return (
-      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${bg} ${text}`}>
+      <span className={`px-2 py-0.5 rounded text-xs font-medium ${bg} ${text}`}>
         {label}
       </span>
     );
   };
 
   // ---------------------------------------------------------------------------
-  // L5 PRICE CHANGE INDICATOR
+  // L5 PRICE CHANGE - Show ratio and percentage for context
   // ---------------------------------------------------------------------------
-  const PriceChangeIndicator: React.FC<{ value: number; itemCount: number }> = ({ value, itemCount }) => {
-    if (value === 0 || itemCount === 0) {
-      return <span className="text-gray-500">—</span>;
+  const PriceChangeCell: React.FC<{ changes: number; total: number }> = ({ changes, total }) => {
+    if (changes === 0 || total === 0) {
+      return <span className="text-gray-600">—</span>;
     }
     
-    const percent = Math.round((value / itemCount) * 100);
-    const isHigh = percent >= 25;
+    const percent = Math.round((changes / total) * 100);
     
     return (
-      <div className="flex items-center gap-1">
-        {isHigh ? (
-          <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
-        ) : (
-          <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
-        )}
-        <span className={isHigh ? "text-amber-400" : "text-emerald-400"}>
-          {value}
+      <div className="flex items-center justify-center gap-1.5">
+        <span className="text-gray-300">{changes}</span>
+        <span className="text-gray-600">/</span>
+        <span className="text-gray-500">{total}</span>
+        <span className={`text-xs ${percent >= 80 ? 'text-amber-400' : 'text-gray-500'}`}>
+          ({percent}%)
         </span>
       </div>
+    );
+  };
+
+  // ---------------------------------------------------------------------------
+  // HELPER: Get reference - prioritize invoice_number, then derive from filename
+  // ---------------------------------------------------------------------------
+  const getReference = (record: ImportRecord): string => {
+    // If we have an invoice_number, use it
+    if (record.invoice_number) return record.invoice_number;
+    
+    // Derive from filename
+    if (record.file_name) {
+      const fileName = record.file_name.toLowerCase();
+      
+      // Check file extension to determine type
+      if (fileName.endsWith('.csv') || fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+        // Date-only filenames like "07-01-2025.csv" → show "CSV Import"
+        const dateOnlyPattern = /^\d{2}-\d{2}-\d{4}\.(csv|xlsx|xls)$/i;
+        if (dateOnlyPattern.test(record.file_name)) {
+          return 'CSV Import';
+        }
+        // Otherwise strip extension and return filename as reference
+        return record.file_name.replace(/\.[^/.]+$/, "");
+      }
+      
+      if (fileName.endsWith('.pdf')) {
+        return 'PDF Import';
+      }
+      
+      if (fileName.endsWith('.jpg') || fileName.endsWith('.jpeg') || fileName.endsWith('.png')) {
+        return 'Photo Import';
+      }
+    }
+    
+    // Fall back to import_type if we have it
+    if (record.import_type) {
+      const typeLabels: Record<string, string> = {
+        'csv_import': 'CSV Import',
+        'pdf_import': 'PDF Import',
+        'mobile_import': 'Mobile',
+        'manual_entry': 'Manual',
+      };
+      return typeLabels[record.import_type] || record.import_type;
+    }
+    
+    return 'Import';
+  };
+
+  // ---------------------------------------------------------------------------
+  // HELPER: Get import type from filename or import_type field
+  // ---------------------------------------------------------------------------
+  const getImportType = (record: ImportRecord): string => {
+    // First check filename extension
+    if (record.file_name) {
+      const fileName = record.file_name.toLowerCase();
+      if (fileName.endsWith('.csv')) return 'csv';
+      if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) return 'xlsx';
+      if (fileName.endsWith('.pdf')) return 'pdf';
+      if (fileName.endsWith('.jpg') || fileName.endsWith('.jpeg') || fileName.endsWith('.png')) return 'photo';
+    }
+    // Fall back to import_type field
+    if (record.import_type) {
+      if (record.import_type.includes('csv')) return 'csv';
+      if (record.import_type.includes('pdf')) return 'pdf';
+      if (record.import_type.includes('mobile')) return 'photo';
+    }
+    return 'other';
+  };
+
+  // ---------------------------------------------------------------------------
+  // HELPER: Get import type badge
+  // ---------------------------------------------------------------------------
+  const ImportTypeBadge: React.FC<{ record: ImportRecord }> = ({ record }) => {
+    const type = getImportType(record);
+    const config: Record<string, { label: string; className: string }> = {
+      csv: { label: 'CSV', className: 'text-blue-400 bg-blue-500/10' },
+      xlsx: { label: 'Excel', className: 'text-emerald-400 bg-emerald-500/10' },
+      pdf: { label: 'PDF', className: 'text-purple-400 bg-purple-500/10' },
+      photo: { label: 'Photo', className: 'text-cyan-400 bg-cyan-500/10' },
+      other: { label: 'Other', className: 'text-gray-400 bg-gray-500/10' },
+    };
+    const { label, className } = config[type] || config.other;
+    return (
+      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${className}`}>
+        {label}
+      </span>
     );
   };
 
@@ -237,33 +316,59 @@ export const ImportHistory: React.FC<ImportHistoryProps> = ({ onRecall }) => {
   // ---------------------------------------------------------------------------
   const columns: ExcelColumn[] = [
     {
-      key: "created_at",
-      name: "Date",
-      type: "date",
+      key: "invoice_date",
+      name: "Invoice Date",
+      type: "custom",
       width: 120,
+      align: "center",
       sortable: true,
       filterable: true,
+      render: (value: string | null, row: ImportRecord) => {
+        const dateStr = value || row.created_at;
+        if (!dateStr) return <span className="text-gray-600">—</span>;
+        const date = new Date(dateStr);
+        return (
+          <span className="text-gray-300">
+            {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+          </span>
+        );
+      },
     },
     {
       key: "vendor_id",
       name: "Vendor",
       type: "text",
-      width: 150,
+      width: 140,
       sortable: true,
       filterable: true,
+    },
+    {
+      key: "import_type",
+      name: "Type",
+      type: "custom",
+      width: 70,
+      align: "center",
+      sortable: true,
+      filterable: true,
+      render: (_value: string, row: ImportRecord) => <ImportTypeBadge record={row} />,
     },
     {
       key: "invoice_number",
       name: "Reference",
       type: "custom",
-      width: 130,
+      width: 120,
+      align: "center",
       sortable: true,
       filterable: true,
-      render: (value: string | null) => (
-        <span className={`font-mono text-xs ${!value ? "text-gray-500" : "text-gray-300"}`}>
-          {value || "—"}
-        </span>
-      ),
+      render: (_value: string | null, row: ImportRecord) => {
+        const ref = getReference(row);
+        const isInvoiceNum = ref.startsWith('INV-');
+        return (
+          <span className={`text-xs ${isInvoiceNum ? 'font-mono text-gray-300' : 'text-gray-500'}`}>
+            {ref}
+          </span>
+        );
+      },
     },
     {
       key: "version",
@@ -272,42 +377,40 @@ export const ImportHistory: React.FC<ImportHistoryProps> = ({ onRecall }) => {
       width: 50,
       align: "center",
       sortable: true,
-      render: (value: number) => (
-        <span className="text-xs text-gray-400">v{value || 1}</span>
-      ),
+      render: (value: number) => {
+        const ver = value || 1;
+        // Only highlight versions > 1
+        if (ver > 1) {
+          return <span className="text-xs font-medium text-amber-400">v{ver}</span>;
+        }
+        return <span className="text-xs text-gray-600">v{ver}</span>;
+      },
     },
     {
       key: "file_name",
-      name: "File",
+      name: "Source File",
       type: "text",
-      width: 180,
+      width: 160,
       sortable: true,
       filterable: true,
     },
     {
-      key: "items_count",
-      name: "Items",
-      type: "number",
-      width: 70,
-      align: "center",
-      sortable: true,
-    },
-    {
       key: "price_changes",
-      name: "Price Δ",
+      name: "Price Updates",
       type: "custom",
-      width: 80,
+      width: 130,
       align: "center",
       sortable: true,
       render: (value: number, row: ImportRecord) => (
-        <PriceChangeIndicator value={value} itemCount={row.items_count} />
+        <PriceChangeCell changes={value} total={row.items_count} />
       ),
     },
     {
       key: "status",
       name: "Status",
       type: "custom",
-      width: 110,
+      width: 100,
+      align: "center",
       sortable: true,
       filterable: true,
       filterType: "select",
@@ -317,7 +420,8 @@ export const ImportHistory: React.FC<ImportHistoryProps> = ({ onRecall }) => {
       key: "actions",
       name: "",
       type: "custom",
-      width: 80,
+      width: 70,
+      align: "center",
       sortable: false,
       filterable: false,
       render: (_value: any, row: ImportRecord) => (
@@ -326,9 +430,8 @@ export const ImportHistory: React.FC<ImportHistoryProps> = ({ onRecall }) => {
             onClick={(e) => {
               e.stopPropagation();
               toast.info(`Viewing details for ${row.file_name}`);
-              // TODO: Open detail modal
             }}
-            className="p-1.5 text-gray-400 hover:text-blue-400 transition-colors rounded hover:bg-blue-500/10"
+            className="p-1.5 text-gray-500 hover:text-blue-400 transition-colors rounded hover:bg-blue-500/10"
             title="View details"
           >
             <Eye className="w-4 h-4" />
@@ -339,7 +442,7 @@ export const ImportHistory: React.FC<ImportHistoryProps> = ({ onRecall }) => {
                 e.stopPropagation();
                 onRecall(row);
               }}
-              className="p-1.5 text-gray-400 hover:text-cyan-400 transition-colors rounded hover:bg-cyan-500/10"
+              className="p-1.5 text-gray-500 hover:text-cyan-400 transition-colors rounded hover:bg-cyan-500/10"
               title="Edit / Create correction"
             >
               <Pencil className="w-4 h-4" />

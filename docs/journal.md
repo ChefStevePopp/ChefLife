@@ -8,6 +8,7 @@
 
 | Date | Handoff File | Focus Area |
 |------|--------------|------------|
+| 2026-01-12 | `handoffs/HANDOFF-2026-01-12-Session46-PriceSourceTracking.md` | Price source visibility, TwoStageButton, override protection |
 | 2026-01-11 | `handoffs/HANDOFF-2026-01-11-Session44-TriagePolish.md` | L5 Icon Badge Pattern, filterType, visual hierarchy |
 | 2026-01-10 | `HANDOFF-2026-01-10-Import-Flow-Stage1-Complete.md` | Common Name, ML infrastructure, Stage 1 complete |
 | 2026-01-08 | `HANDOFF-2026-01-08-OrgSettings-HealthInspections.md` | Company Settings L5, Health Inspections, Roadmap reorg |
@@ -28,6 +29,7 @@ Transcripts are stored in `/mnt/transcripts/` and contain full conversation hist
 
 | Date | Transcript | Description |
 |------|------------|-------------|
+| 2026-01-12 | `2026-01-12-13-23-45-price-source-tracking-implementation.txt` | Price source tracking, TwoStageButton enhancement, override protection |
 | 2026-01-12 | `2026-01-12-00-06-37-triage-filter-fixes-visual-hierarchy.txt` | Triage badge, filterType, L5 Icon Badge Pattern, visual hierarchy |
 | 2026-01-11 | `2026-01-11-23-54-14-triage-badge-count-filter-fixes.txt` | Triage badge count, filter fixes |
 | 2026-01-11 | `2026-01-11-23-42-09-vim-layout-triage-badge-import-icons.txt` | VIM layout, triage badge, import icons |
@@ -116,4 +118,4 @@ YYYY-MM-DD-HH-MM-SS-[description].txt
 
 ---
 
-*Last updated: January 10, 2026 (Session 36)*
+*Last updated: January 12, 2026 (Session 46)*

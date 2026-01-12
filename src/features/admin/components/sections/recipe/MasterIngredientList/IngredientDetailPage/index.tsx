@@ -37,6 +37,7 @@ import { PageHeader } from "./PageHeader";
 import { ConfirmDialog } from "@/shared/components/ConfirmDialog";
 import { TwoStageButton } from "@/components/ui/TwoStageButton";
 import { useDiagnostics } from "@/hooks/useDiagnostics";
+import { nexus } from "@/lib/nexus";
 import toast from "react-hot-toast";
 
 // =============================================================================
@@ -50,7 +51,8 @@ interface PriceSource {
   type: 'invoice' | 'manual' | 'unknown';
   invoiceNumber?: string;
   vendorName?: string;
-  updatedAt: Date;
+  updatedAt: Date;      // Invoice date (when price was effective)
+  importedAt?: Date;    // Import date (when we recorded it)
 }
 
 // ---------------------------------------------------------------------------
@@ -705,6 +707,7 @@ export const IngredientDetailPage: React.FC = () => {
   // Price source tracking - shows where the current price came from
   const [priceSource, setPriceSource] = useState<PriceSource | null>(null);
   const [isPriceOverrideEnabled, setIsPriceOverrideEnabled] = useState(false);
+  const [priceAtOverride, setPriceAtOverride] = useState<number | null>(null); // Track price when override started
 
   // Build purchase unit options from settings (for Purchase Information section)
   const purchaseUnitOptions: SelectOption[] = React.useMemo(() => {
@@ -860,7 +863,8 @@ export const IngredientDetailPage: React.FC = () => {
         setOriginalData(normalized);
         
         // Fetch latest price source from vendor_price_history
-        fetchPriceSource(id);
+        // Pass ingredient's updated_at as fallback for legacy/manual entries
+        fetchPriceSource(id, data.updated_at);
       } catch (err) {
         console.error("Error loading ingredient:", err);
         setError("Failed to load ingredient");
@@ -872,7 +876,8 @@ export const IngredientDetailPage: React.FC = () => {
   }, [id, isNew, organization?.id, ingredientIds, setCurrentIndex]);
 
   // Fetch price source from vendor_price_history
-  const fetchPriceSource = async (ingredientId: string) => {
+  // Falls back to ingredient's updated_at for legacy/manual entries
+  const fetchPriceSource = async (ingredientId: string, ingredientUpdatedAt?: string) => {
     try {
       // Get most recent price history entry for this ingredient
       const { data: priceHistory, error } = await supabase
@@ -881,11 +886,15 @@ export const IngredientDetailPage: React.FC = () => {
           id,
           price,
           created_at,
-          vendor_invoices (
+          source_type,
+          vendor_id,
+          vendor_import_id,
+          vendor_imports (
             invoice_number,
-            vendors (
-              name
-            )
+            invoice_date,
+            vendor_id,
+            file_name,
+            created_at
           )
         `)
         .eq('master_ingredient_id', ingredientId)
@@ -900,17 +909,28 @@ export const IngredientDetailPage: React.FC = () => {
       }
 
       if (priceHistory) {
-        const invoice = priceHistory.vendor_invoices as any;
+        const vendorImport = priceHistory.vendor_imports as any;
+        // Use invoice_date (when price was effective) not created_at (when we imported)
+        const invoiceDate = vendorImport?.invoice_date 
+          ? new Date(vendorImport.invoice_date)
+          : new Date(priceHistory.created_at);
+        const importDate = vendorImport?.created_at 
+          ? new Date(vendorImport.created_at)
+          : new Date(priceHistory.created_at);
+          
         setPriceSource({
           type: 'invoice',
-          invoiceNumber: invoice?.invoice_number || undefined,
-          vendorName: invoice?.vendors?.name || undefined,
-          updatedAt: new Date(priceHistory.created_at),
+          invoiceNumber: vendorImport?.invoice_number || undefined,
+          vendorName: vendorImport?.vendor_id || priceHistory.vendor_id || undefined,
+          updatedAt: invoiceDate,
+          importedAt: importDate,
         });
       } else {
-        // No price history - check if ingredient has a price set
-        // If so, it was likely set manually or is legacy data
-        setPriceSource(null);
+        // No price history - set as manual/legacy with ingredient's updated_at
+        setPriceSource({
+          type: 'manual',
+          updatedAt: ingredientUpdatedAt ? new Date(ingredientUpdatedAt) : new Date(),
+        });
       }
     } catch (err) {
       console.error('Error fetching price source:', err);
@@ -939,6 +959,12 @@ export const IngredientDetailPage: React.FC = () => {
     setIsSaving(true);
     try {
       const dataToSave = { ...formData, organization_id: organization.id, updated_at: new Date().toISOString() };
+      
+      // Check if price was changed via system override
+      const priceWasOverridden = isPriceOverrideEnabled && 
+        priceAtOverride !== null && 
+        formData.current_price !== priceAtOverride;
+      
       if (isNew) {
         const { error: insertError } = await supabase.from("master_ingredients").insert(dataToSave);
         if (insertError) throw insertError;
@@ -947,6 +973,36 @@ export const IngredientDetailPage: React.FC = () => {
         const { error: updateError } = await supabase.from("master_ingredients").update(dataToSave).eq("id", formData.id).eq("organization_id", organization.id);
         if (updateError) throw updateError;
         toast.success("Ingredient saved successfully");
+        
+        // Fire CRITICAL NEXUS event if price was changed via system override
+        if (priceWasOverridden && user?.id) {
+          nexus({
+            organization_id: organization.id,
+            user_id: user.id,
+            activity_type: 'system_override_price',
+            details: {
+              ingredient_id: formData.id,
+              ingredient_name: formData.product,
+              old_price: priceAtOverride,
+              new_price: formData.current_price,
+              price_change: formData.current_price - priceAtOverride,
+              price_change_percent: priceAtOverride > 0 
+                ? ((formData.current_price - priceAtOverride) / priceAtOverride * 100).toFixed(2)
+                : 'N/A',
+            },
+            metadata: {
+              diffs: {
+                table_name: 'master_ingredients',
+                record_id: formData.id,
+                old_values: { current_price: priceAtOverride },
+                new_values: { current_price: formData.current_price },
+                diff: { current_price: { from: priceAtOverride, to: formData.current_price } },
+              },
+            },
+            severity: 'critical',
+            requires_acknowledgment: true,
+          });
+        }
       }
       setOriginalData(dataToSave);
       navigate(returnTo);
@@ -1188,6 +1244,17 @@ export const IngredientDetailPage: React.FC = () => {
                       Purchase Price
                     </label>
                     
+                    {/* Guided mode warning about system override */}
+                    {isGuided && !isNew && (
+                      <div className="flex items-start gap-2 p-2 mb-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                        <Lock className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-amber-400" />
+                        <p className="text-xs text-amber-200/80">
+                          <span className="font-medium text-amber-300">Protected Field:</span> Prices should come from invoice imports to maintain audit trail. 
+                          The lock allows emergency overrides, but changes are logged and require admin acknowledgement.
+                        </p>
+                      </div>
+                    )}
+                    
                     {/* Price input with lock button inside */}
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">$</span>
@@ -1198,21 +1265,37 @@ export const IngredientDetailPage: React.FC = () => {
                         placeholder="0.00"
                         min={0}
                         step={0.01}
-                        readOnly={!isNew && priceSource !== null && !isPriceOverrideEnabled}
+                        readOnly={!isNew && !isPriceOverrideEnabled}
                         className={`input w-full pl-8 pr-10 ${
-                          !isNew && priceSource !== null && !isPriceOverrideEnabled
+                          !isNew && !isPriceOverrideEnabled
                             ? 'bg-gray-800/30 cursor-not-allowed text-gray-400'
                             : ''
                         }`}
                       />
-                      {/* Two-stage unlock button inside input */}
-                      {!isNew && priceSource && (
+                      {/* Two-stage unlock button - ALWAYS show for existing ingredients */}
+                      {/* Editing price here is a SYSTEM override that bypasses VIM audit trail */}
+                      {!isNew && (
                         <div className="absolute right-2 top-1/2 -translate-y-1/2">
                           {!isPriceOverrideEnabled ? (
                             <TwoStageButton
                               onConfirm={() => {
                                 setIsPriceOverrideEnabled(true);
-                                toast('Price override enabled - changes bypass invoice audit trail', { icon: '⚠️' });
+                                setPriceAtOverride(formData.current_price); // Capture price at override
+                                toast('System override enabled - changes bypass invoice audit trail', { icon: '⚠️' });
+                                
+                                // Fire NEXUS event
+                                if (organization?.id && user?.id) {
+                                  nexus({
+                                    organization_id: organization.id,
+                                    user_id: user.id,
+                                    activity_type: 'system_override_initiated',
+                                    details: {
+                                      ingredient_id: formData.id,
+                                      ingredient_name: formData.product,
+                                      current_price: formData.current_price,
+                                    },
+                                  });
+                                }
                               }}
                               icon={Lock}
                               confirmIcon={Pencil}
@@ -1245,66 +1328,96 @@ export const IngredientDetailPage: React.FC = () => {
                     />
                   </Field>
                 </div>
-
-                {/* Purchase Price Card - equation style like Cost Calculator */}
-                {formData.current_price > 0 && (
-                  <div className="py-4">
-                    {/* Equation row - only show full equation if we have a price source */}
-                    {priceSource ? (
-                      <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap">
-                        <div className="text-center min-w-[50px]">
-                          <div className="text-lg sm:text-xl font-bold text-white truncate max-w-[100px]" title={priceSource.vendorName}>
-                            {priceSource.vendorName || 'Unknown'}
-                          </div>
-                          <div className="text-xs text-gray-500">Vendor</div>
-                        </div>
-                        <div className="text-lg text-gray-600">•</div>
-                        <div className="text-center min-w-[50px]">
-                          <div className="text-lg sm:text-xl font-bold text-white">${formData.current_price.toFixed(2)}</div>
-                          <div className="text-xs text-gray-500">Price</div>
-                        </div>
-                        <div className="text-lg text-gray-600">•</div>
-                        <div className="text-center min-w-[50px]">
-                          <div className="text-lg sm:text-xl font-bold text-white">/{formData.unit_of_measure || 'unit'}</div>
-                          <div className="text-xs text-gray-500">Unit</div>
-                        </div>
-                        <div className="text-lg text-gray-600">•</div>
-                        <div className="text-center min-w-[50px]">
-                          <div className="text-lg sm:text-xl font-bold text-white">
-                            {priceSource.updatedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                          </div>
-                          <div className="text-xs text-gray-500">Updated</div>
-                        </div>
-                        <div className="text-lg text-gray-600">=</div>
-                        <div className="text-center px-3 py-1.5 bg-green-500/20 rounded-lg border border-green-500/30">
-                          <div className="text-xl sm:text-2xl font-bold text-green-400">
-                            ${formData.current_price.toFixed(2)}
-                          </div>
-                          <div className="text-xs text-green-400/70">per {formData.unit_of_measure || 'unit'}</div>
-                        </div>
-                      </div>
-                    ) : (
-                      /* Simple display for manual/legacy data */
-                      <div className="flex items-center justify-center">
-                        <div className="text-center px-3 py-1.5 bg-green-500/20 rounded-lg border border-green-500/30">
-                          <div className="text-xl sm:text-2xl font-bold text-green-400">
-                            ${formData.current_price.toFixed(2)}
-                          </div>
-                          <div className="text-xs text-green-400/70">per {formData.unit_of_measure || formData.case_size || "purchase unit"}</div>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Manual/legacy indicator */}
-                    {!priceSource && !isNew && (
-                      <div className="mt-2 text-center text-xs text-gray-500">
-                        * Manual entry or legacy data
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             </ExpandableSection>
+
+            {/* Purchase Summary Card - Outside section, always visible */}
+            {!isNew && formData.current_price > 0 && (
+              <div className={`bg-[#1a1f2b] rounded-lg shadow-lg overflow-hidden ring-1 ring-green-500/30`}>
+                {/* Header */}
+                <div className="px-4 py-3 flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
+                    <DollarSign className="w-4 h-4 text-green-400" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm font-medium text-gray-300">Purchase Summary</h2>
+                    <span className="text-xs text-gray-500">
+                      {priceSource?.type === 'invoice' ? 'From invoice import' : 'Current pricing'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Content */}
+                <div className="px-4 pb-4">
+                  {/* Main equation row */}
+                  <div className="flex items-center justify-center gap-3 sm:gap-6 flex-wrap py-4">
+                    {/* Item */}
+                    <div className="text-center min-w-[80px]">
+                      <div className="text-lg sm:text-xl font-bold text-white truncate max-w-[140px]" title={formData.common_name || formData.product}>
+                        {formData.common_name || formData.product || '—'}
+                      </div>
+                      <div className="text-xs text-gray-500">Item</div>
+                    </div>
+                    
+                    <div className="text-lg text-gray-600 hidden sm:block">•</div>
+                    
+                    {/* Vendor */}
+                    <div className="text-center min-w-[80px]">
+                      <div className="text-lg sm:text-xl font-bold text-white truncate max-w-[120px]" title={priceSource?.vendorName || formData.vendor}>
+                        {priceSource?.vendorName || formData.vendor || '—'}
+                      </div>
+                      <div className="text-xs text-gray-500">Vendor</div>
+                    </div>
+                    
+                    <div className="text-lg text-gray-600 hidden sm:block">•</div>
+                    
+                    {/* Price Result */}
+                    <div className="text-center px-4 py-2 bg-green-500/20 rounded-lg border border-green-500/30">
+                      <div className="text-xl sm:text-2xl font-bold text-green-400">
+                        ${formData.current_price.toFixed(2)}
+                      </div>
+                      <div className="text-xs text-green-400/70">per {formData.unit_of_measure || 'unit'}</div>
+                    </div>
+                    
+                    <div className="text-lg text-gray-600 hidden sm:block">•</div>
+                    
+                    {/* Invoice Date */}
+                    <div className="text-center min-w-[60px]">
+                      <div className="text-lg sm:text-xl font-bold text-white">
+                        {priceSource?.updatedAt 
+                          ? priceSource.updatedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                          : '—'}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {priceSource?.type === 'invoice' ? 'Invoice Date' : 'Updated'}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Source indicator */}
+                  {priceSource?.type === 'invoice' && (
+                    <div className="flex items-center justify-center gap-2 p-2.5 bg-gray-800/30 rounded-lg text-sm">
+                      <FileText className="w-3.5 h-3.5 text-green-400" />
+                      <span className="text-gray-400">
+                        {priceSource.invoiceNumber && (
+                          <>Invoice <span className="text-white">#{priceSource.invoiceNumber}</span></>  
+                        )}
+                        {priceSource.importedAt && (
+                          <span className="text-gray-500 ml-2">
+                            • Imported {priceSource.importedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  )}
+                  {priceSource?.type === 'manual' && (
+                    <div className="text-center text-xs text-gray-500">
+                      * Manual entry or legacy data — no invoice on file
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* SECTION 2: Inventory Units - STORE IT */}
@@ -1421,7 +1534,8 @@ export const IngredientDetailPage: React.FC = () => {
               helpText="Define how this ingredient is measured in your recipes and the conversion from purchase units."
             >
               <GuidanceTip color="amber">
-                When you write recipes, what unit do you use for this ingredient? Ounces? Each? Cups?
+                <span className="font-medium">ChefLife's Secret Weapon:</span> We distill every ingredient down to just three recipe units — <span className="text-white">OZ</span>, <span className="text-white">FL.OZ</span>, or <span className="text-white">EACH</span>. 
+                No cups, tablespoons, or pounds in recipes. This makes costing dead simple — every recipe speaks the same language.
               </GuidanceTip>
 
               <div className="space-y-4">

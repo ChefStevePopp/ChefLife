@@ -60,6 +60,7 @@ export type ActivityType =
   | "inventory_critical_low"
   // Vendor/Purchasing activities
   | "invoice_imported"
+  | "invoice_superseded"
   | "price_change_detected"
   | "invoice_discrepancy_recorded"
   | "vendor_added"
@@ -100,7 +101,10 @@ export type ActivityType =
   // Performance Ledger Management activities
   | "performance_event_modified"
   | "performance_event_removed"
-  | "performance_reduction_limit_override";
+  | "performance_reduction_limit_override"
+  // System override activities (bypassing audit trail)
+  | "system_override_initiated"
+  | "system_override_price";
 
 export interface NexusEvent {
   organization_id: string;
@@ -153,6 +157,7 @@ const ACTIVITY_TYPE_TO_CATEGORY: Record<ActivityType, ActivityCategory> = {
   
   // Financial
   invoice_imported: 'financial',
+  invoice_superseded: 'financial',
   price_change_detected: 'financial',
   invoice_discrepancy_recorded: 'financial',
   vendor_added: 'financial',
@@ -195,6 +200,9 @@ const ACTIVITY_TYPE_TO_CATEGORY: Record<ActivityType, ActivityCategory> = {
   performance_event_modified: 'team',
   performance_event_removed: 'team',
   performance_reduction_limit_override: 'team',
+  // System overrides
+  system_override_initiated: 'alerts',
+  system_override_price: 'financial',
 };
 
 // =============================================================================
@@ -301,6 +309,10 @@ const ACTIVITY_TOAST_CONFIG: Partial<Record<ActivityType, ToastConfig | null>> =
   invoice_imported: { 
     message: (d) => `Invoice from ${d.vendor || 'vendor'} imported (${d.item_count || 0} items)` 
   },
+  invoice_superseded: {
+    message: (d) => `Invoice v${d.version || 2} supersedes ${d.filename || 'previous import'} for ${d.vendor || 'vendor'}`,
+    severity: 'warning',
+  },
   price_change_detected: { 
     message: (d) => `Price ${d.direction || 'change'}: ${d.item || 'item'} (${d.change_percent || 0}%)`,
     severity: 'warning'
@@ -400,6 +412,15 @@ const ACTIVITY_TOAST_CONFIG: Partial<Record<ActivityType, ToastConfig | null>> =
   performance_reduction_limit_override: {
     message: (d) => `Reduction limit override: ${d.name || 'Team member'} (${d.current_usage || 0}/${d.configured_limit || 0} used)`,
     severity: 'warning',
+  },
+  // System overrides - CRITICAL
+  system_override_initiated: {
+    message: (d) => `System override enabled: ${d.ingredient_name || 'ingredient'} price field unlocked`,
+    severity: 'warning',
+  },
+  system_override_price: {
+    message: (d) => `⚠️ SYSTEM OVERRIDE: ${d.ingredient_name || 'Ingredient'} price manually changed (${(d.old_price || 0).toFixed(2)} → ${(d.new_price || 0).toFixed(2)})`,
+    severity: 'critical',
   },
 };
 

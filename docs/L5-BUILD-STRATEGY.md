@@ -1379,6 +1379,16 @@ src/features/mobile/
 
 ## Changelog
 
+**Jan 12, 2026 (Session 46 - Price Source Tracking):**
+- **TwoStageButton Enhancement** - Added `size` and `confirmIcon` props:
+  - `size`: "xs" | "sm" | "md" for different contexts
+  - `confirmIcon`: Optional different icon for confirm state (e.g., Lock → Pencil)
+  - Use case: Inline override protection for invoice-sourced prices
+- **Price Source Pattern** - Invoice-sourced data visualization:
+  - Query `vendor_price_history` for source tracking
+  - Read-only fields with two-stage unlock for data integrity
+  - Equation-style card matching Cost Calculator visual pattern
+
 **Jan 11, 2026 (Session 44 - Triage L5 Polish):**
 - **L5 Icon Badge Pattern** added to `src/index.css`:
   - Container → Icon at 70% with 80% opacity step-down

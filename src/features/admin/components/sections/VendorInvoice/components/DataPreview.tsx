@@ -33,6 +33,8 @@ interface Props {
   invoiceDate?: Date;
   sourceFile?: File; // Source file for audit trail
   importType?: 'csv_import' | 'pdf_import' | 'mobile_import' | 'manual_entry';
+  // Supersede tracking
+  supersedeInfo?: { isSupersede: boolean; existingDate: string };
   onConfirm: () => void;
   onCancel: () => void;
   onDateChange?: (date: Date) => void;
@@ -53,6 +55,7 @@ export const DataPreview: React.FC<Props> = ({
   invoiceDate,
   sourceFile,
   importType = 'csv_import',
+  supersedeInfo,
   onConfirm,
   onCancel,
   onDateChange,
@@ -225,6 +228,10 @@ export const DataPreview: React.FC<Props> = ({
           sourceFile: sourceFile,
           importType,
           createdBy: user.id,
+          // Supersede tracking from CSVUploader
+          isSupersede: supersedeInfo?.isSupersede || false,
+          supersededFilename: sourceFile?.name,
+          versionNumber: supersedeInfo?.isSupersede ? 2 : 1,
         },
         approvedChanges.map((change) => ({
           itemCode: change.itemCode,

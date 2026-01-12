@@ -86,6 +86,7 @@ export const VendorInvoiceManager = () => {
   const [isInfoExpanded, setIsInfoExpanded] = useState(false);
   const [importType, setImportType] = useState<"csv" | "pdf" | "manual">("csv");
   const [sourceFile, setSourceFile] = useState<File | null>(null); // For audit trail
+  const [supersedeInfo, setSupersedeInfo] = useState<{ isSupersede: boolean; existingDate: string } | null>(null);
   
   // Recall state - when editing a previous import
   const [recallRecord, setRecallRecord] = useState<ImportRecord | null>(null);
@@ -210,7 +211,7 @@ export const VendorInvoiceManager = () => {
   // ---------------------------------------------------------------------------
   // HANDLERS
   // ---------------------------------------------------------------------------
-  const handleUpload = async (data: any[] | File, fileDate?: Date, uploadedFile?: File) => {
+  const handleUpload = async (data: any[] | File, fileDate?: Date, uploadedFile?: File, supersedeData?: { isSupersede: boolean; existingDate: string }) => {
     if (!selectedVendor) {
       toast.error("Please select a vendor first");
       return;
@@ -279,6 +280,13 @@ export const VendorInvoiceManager = () => {
       // Store source file for audit trail
       if (uploadedFile) {
         setSourceFile(uploadedFile);
+      }
+
+      // Store supersede info for audit trail
+      if (supersedeData) {
+        setSupersedeInfo(supersedeData);
+      } else {
+        setSupersedeInfo(null);
       }
 
       setCSVData(transformedData);
@@ -596,12 +604,14 @@ export const VendorInvoiceManager = () => {
               invoiceDate={invoiceDate || new Date()}
               sourceFile={sourceFile || undefined}
               importType={importType === "manual" ? "manual_entry" : `${importType}_import` as any}
+              supersedeInfo={supersedeInfo || undefined}
               onDateChange={(date) => setInvoiceDate(date)}
               onConfirm={handleImportComplete}
               onCancel={() => {
                 setCSVData(null);
                 setSelectedVendor("");
                 setSourceFile(null);
+                setSupersedeInfo(null);
               }}
             />
           ) : (
@@ -617,6 +627,7 @@ export const VendorInvoiceManager = () => {
                     <CSVUploader
                       onUpload={handleUpload}
                       hasTemplate={templates.some((t) => t.vendor_id === selectedVendor)}
+                      vendorId={selectedVendor}
                     />
                   )}
                   {(importType === "pdf" || importType === "manual") && (

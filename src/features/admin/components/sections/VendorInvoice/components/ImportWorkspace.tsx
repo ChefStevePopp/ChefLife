@@ -289,6 +289,7 @@ export const ImportWorkspace: React.FC<Props> = ({
           },
           // Version control fields
           invoice_number: invoiceNumberForDisplay,
+          invoice_date: invoiceDate.toISOString().split("T")[0],
           version: importVersion,
           supersedes_id: existingImports?.[0]?.id || null, // Link to most recent superseded
         })

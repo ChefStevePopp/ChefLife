@@ -10,25 +10,44 @@ import {
   X,
   ChevronDown,
   ChevronUp,
+  Copy,
+  ShieldAlert,
 } from "lucide-react";
 import Papa from "papaparse";
+import { useVendorInvoiceStore } from "@/stores/vendorInvoiceStore";
+import { parseLocalDate, formatDateForDisplay, getLocalDateString } from "@/utils/dateUtils";
+import { useAuth } from "@/hooks/useAuth";
+import { SECURITY_LEVELS } from "@/config/security";
 
 interface Props {
-  onUpload: (data: any[], fileDate?: Date, sourceFile?: File) => void;
+  onUpload: (data: any[], fileDate?: Date, sourceFile?: File, supersedeInfo?: { isSupersede: boolean; existingDate: string }) => void;
   hasTemplate?: boolean;
+  vendorId?: string;
 }
 
 export const CSVUploader: React.FC<Props> = ({
   onUpload,
   hasTemplate = true,
+  vendorId,
 }) => {
+  const { checkDuplicateFile } = useVendorInvoiceStore();
+  const { securityLevel } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [detectedDate, setDetectedDate] = useState<Date | null>(null);
-  const [showDateConfirmation, setShowDateConfirmation] = useState(false);
   const [showFormatInfo, setShowFormatInfo] = useState(false);
+  const [duplicateWarning, setDuplicateWarning] = useState<{
+    filename: string;
+    existingDate: string;
+    detectedInvoiceDate: Date | null;
+  } | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [confirmingSupersede, setConfirmingSupersede] = useState(false);
 
-  // Function to detect date from filename
+  // Permission check: Only Omega, Alpha, Bravo can supersede imports
+  const canSupersede = securityLevel <= SECURITY_LEVELS.BRAVO;
+
+  // Function to detect date from filename and return as LOCAL date
+  // Uses parseLocalDate to avoid timezone shift!
   const detectDateFromFilename = (filename: string): Date | null => {
     // Remove file extension
     const nameWithoutExt = filename.replace(/\.[^/.]+$/, "");
@@ -50,169 +69,190 @@ export const CSVUploader: React.FC<Props> = ({
     const noSeparatorFormatShortYear = /^(\d{2})(\d{2})(\d{2})$/;
 
     let match;
-    let date: Date | null = null;
+    let year: number | null = null;
+    let month: number | null = null;
+    let day: number | null = null;
 
-    if ((match = nameWithoutExt.match(dashFormat))) {
-      // Try both MM-DD-YYYY and DD-MM-YYYY interpretations
-      const [_, part1, part2, year] = match;
-      // Try as MM-DD-YYYY first
-      date = new Date(`${year}-${part1}-${part2}`);
-      if (isNaN(date.getTime())) {
-        // Try as DD-MM-YYYY
-        date = new Date(`${year}-${part2}-${part1}`);
+    // Helper to build local date string and validate
+    const tryBuildDate = (y: number, m: number, d: number): Date | null => {
+      // Basic validation
+      if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+      const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const date = parseLocalDate(dateStr);
+      // Verify the date components match (catches invalid dates like Feb 30)
+      if (date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d) {
+        return date;
       }
+      return null;
+    };
+
+    if ((match = nameWithoutExt.match(isoFormat))) {
+      // YYYY-MM-DD - unambiguous
+      year = parseInt(match[1], 10);
+      month = parseInt(match[2], 10);
+      day = parseInt(match[3], 10);
+    } else if ((match = nameWithoutExt.match(dashFormat))) {
+      // MM-DD-YYYY - assume US format
+      month = parseInt(match[1], 10);
+      day = parseInt(match[2], 10);
+      year = parseInt(match[3], 10);
     } else if ((match = nameWithoutExt.match(dashFormatShortYear))) {
-      // Handle MM-DD-YY format
-      const [_, part1, part2, shortYear] = match;
-      const fullYear = 2000 + parseInt(shortYear, 10); // Assume 20xx for years
-      // Try as MM-DD-YY first
-      date = new Date(`${fullYear}-${part1}-${part2}`);
-      if (isNaN(date.getTime())) {
-        // Try as DD-MM-YY
-        date = new Date(`${fullYear}-${part2}-${part1}`);
-      }
-    } else if ((match = nameWithoutExt.match(isoFormat))) {
-      const [_, year, month, day] = match;
-      date = new Date(`${year}-${month}-${day}`);
+      // MM-DD-YY - assume US format, 20xx century
+      month = parseInt(match[1], 10);
+      day = parseInt(match[2], 10);
+      year = 2000 + parseInt(match[3], 10);
     } else if ((match = nameWithoutExt.match(underscoreFormat))) {
-      const [_, part1, part2, year] = match;
-      // Try as MM_DD_YYYY first
-      date = new Date(`${year}-${part1}-${part2}`);
-      if (isNaN(date.getTime())) {
-        // Try as DD_MM_YYYY
-        date = new Date(`${year}-${part2}-${part1}`);
-      }
+      // MM_DD_YYYY - assume US format
+      month = parseInt(match[1], 10);
+      day = parseInt(match[2], 10);
+      year = parseInt(match[3], 10);
     } else if ((match = nameWithoutExt.match(underscoreFormatShortYear))) {
-      // Handle MM_DD_YY format
-      const [_, part1, part2, shortYear] = match;
-      const fullYear = 2000 + parseInt(shortYear, 10); // Assume 20xx for years
-      // Try as MM_DD_YY first
-      date = new Date(`${fullYear}-${part1}-${part2}`);
-      if (isNaN(date.getTime())) {
-        // Try as DD_MM_YY
-        date = new Date(`${fullYear}-${part2}-${part1}`);
-      }
+      // MM_DD_YY - assume US format, 20xx century
+      month = parseInt(match[1], 10);
+      day = parseInt(match[2], 10);
+      year = 2000 + parseInt(match[3], 10);
     } else if ((match = nameWithoutExt.match(noSeparatorFormat))) {
-      const [_, part1, part2, year] = match;
-      // Try as MMDDYYYY first
-      date = new Date(`${year}-${part1}-${part2}`);
-      if (isNaN(date.getTime())) {
-        // Try as DDMMYYYY
-        date = new Date(`${year}-${part2}-${part1}`);
-      }
+      // MMDDYYYY - assume US format
+      month = parseInt(match[1], 10);
+      day = parseInt(match[2], 10);
+      year = parseInt(match[3], 10);
     } else if ((match = nameWithoutExt.match(noSeparatorFormatShortYear))) {
-      // Handle MMDDYY format
-      const [_, part1, part2, shortYear] = match;
-      const fullYear = 2000 + parseInt(shortYear, 10); // Assume 20xx for years
-      // Try as MMDDYY first
-      date = new Date(`${fullYear}-${part1}-${part2}`);
-      if (isNaN(date.getTime())) {
-        // Try as DDMMYY
-        date = new Date(`${fullYear}-${part2}-${part1}`);
-      }
+      // MMDDYY - assume US format, 20xx century
+      month = parseInt(match[1], 10);
+      day = parseInt(match[2], 10);
+      year = 2000 + parseInt(match[3], 10);
     }
 
-    // Validate the date is reasonable (not in the future and not too far in the past)
-    if (date && !isNaN(date.getTime())) {
-      const now = new Date();
-      const twoYearsAgo = new Date();
-      twoYearsAgo.setFullYear(now.getFullYear() - 2);
+    if (year && month && day) {
+      const date = tryBuildDate(year, month, day);
+      if (date) {
+        // Validate the date is reasonable (within 10 years)
+        const now = new Date();
+        const tenYearsAgo = new Date();
+        tenYearsAgo.setFullYear(now.getFullYear() - 10);
+        const oneYearFromNow = new Date();
+        oneYearFromNow.setFullYear(now.getFullYear() + 1);
 
-      if (date > now || date < twoYearsAgo) {
-        return null; // Date is too far in the future or past
+        if (date >= tenYearsAgo && date <= oneYearFromNow) {
+          return date;
+        }
       }
-      return date;
     }
 
     return null;
   };
 
+  // Process the file (called directly or after duplicate confirmation)
+  const processFile = useCallback(
+    (file: File, invoiceDate: Date | null, supersedeInfo?: { isSupersede: boolean; existingDate: string }) => {
+      // First try to detect the delimiter
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result as string;
+        const firstLine = text.split("\n")[0];
+
+        // Try to auto-detect the delimiter
+        const commaCount = (firstLine.match(/,/g) || []).length;
+        const tabCount = (firstLine.match(/\t/g) || []).length;
+        const semicolonCount = (firstLine.match(/;/g) || []).length;
+
+        let delimiter = ",";
+        if (tabCount > commaCount && tabCount > semicolonCount)
+          delimiter = "\t";
+        if (semicolonCount > commaCount && semicolonCount > tabCount)
+          delimiter = ";";
+
+        Papa.parse(file, {
+          delimiter,
+          header: true,
+          skipEmptyLines: "greedy",
+          transformHeader: (header) => {
+            return header.trim().toLowerCase();
+          },
+          complete: (results) => {
+            setIsProcessing(false);
+
+            if (results.errors.length > 0) {
+              console.error("Parse errors:", results.errors);
+              setError(
+                `Error parsing file: ${results.errors[0].message}. Row: ${results.errors[0].row}`,
+              );
+              return;
+            }
+
+            if (!results.data || results.data.length === 0) {
+              setError("No valid data found in the file.");
+              return;
+            }
+
+            // Check if we have any valid columns
+            const headers = Object.keys(results.data[0]);
+            if (headers.length === 0) {
+              setError("No valid columns found in the file.");
+              return;
+            }
+
+            // Remove any completely empty rows
+            const filteredData = results.data.filter((row) =>
+              Object.values(row).some((val) => val !== "" && val != null),
+            );
+
+            if (filteredData.length === 0) {
+              setError("File contains no valid data rows.");
+              return;
+            }
+
+            // Pass the detected date, source file, and supersede info to onUpload
+            onUpload(filteredData, invoiceDate || undefined, file, supersedeInfo);
+            setDuplicateWarning(null);
+            setPendingFile(null);
+          },
+          error: (error) => {
+            console.error("Parse error:", error);
+            setError(`Failed to parse file: ${error.message}`);
+            setIsProcessing(false);
+          },
+        });
+      };
+      reader.readAsText(file);
+    },
+    [onUpload],
+  );
+
   const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
+    async (acceptedFiles: File[]) => {
       const file = acceptedFiles[0];
       if (file) {
         setError(null);
+        setDuplicateWarning(null);
         setIsProcessing(true);
 
-        // Check if filename contains a date
-        const possibleDate = detectDateFromFilename(file.name);
-        if (possibleDate) {
-          setDetectedDate(possibleDate);
-          setShowDateConfirmation(true);
+        // Detect date from filename (will be passed to DataPreview)
+        const detectedDate = detectDateFromFilename(file.name);
+
+        // Check for duplicate filename
+        if (vendorId) {
+          const { isDuplicate, existingDate } = await checkDuplicateFile(
+            vendorId,
+            file.name,
+          );
+          if (isDuplicate && existingDate) {
+            setDuplicateWarning({
+              filename: file.name,
+              existingDate,
+              detectedInvoiceDate: detectedDate,
+            });
+            setPendingFile(file);
+            setIsProcessing(false);
+            return; // Wait for user confirmation
+          }
         }
 
-        // First try to detect the delimiter
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const text = e.target?.result as string;
-          const firstLine = text.split("\n")[0];
-
-          // Try to auto-detect the delimiter
-          const commaCount = (firstLine.match(/,/g) || []).length;
-          const tabCount = (firstLine.match(/\t/g) || []).length;
-          const semicolonCount = (firstLine.match(/;/g) || []).length;
-
-          let delimiter = ",";
-          if (tabCount > commaCount && tabCount > semicolonCount)
-            delimiter = "\t";
-          if (semicolonCount > commaCount && semicolonCount > tabCount)
-            delimiter = ";";
-
-          Papa.parse(file, {
-            delimiter,
-            header: true,
-            skipEmptyLines: "greedy",
-            transformHeader: (header) => {
-              return header.trim().toLowerCase();
-            },
-            complete: (results) => {
-              setIsProcessing(false);
-
-              if (results.errors.length > 0) {
-                console.error("Parse errors:", results.errors);
-                setError(
-                  `Error parsing file: ${results.errors[0].message}. Row: ${results.errors[0].row}`,
-                );
-                return;
-              }
-
-              if (!results.data || results.data.length === 0) {
-                setError("No valid data found in the file.");
-                return;
-              }
-
-              // Check if we have any valid columns
-              const headers = Object.keys(results.data[0]);
-              if (headers.length === 0) {
-                setError("No valid columns found in the file.");
-                return;
-              }
-
-              // Remove any completely empty rows
-              const filteredData = results.data.filter((row) =>
-                Object.values(row).some((val) => val !== "" && val != null),
-              );
-
-              if (filteredData.length === 0) {
-                setError("File contains no valid data rows.");
-                return;
-              }
-
-              // Make sure we're passing the detected date and source file to onUpload
-              onUpload(filteredData, possibleDate || detectedDate, file);
-              setShowDateConfirmation(false);
-            },
-            error: (error) => {
-              console.error("Parse error:", error);
-              setError(`Failed to parse file: ${error.message}`);
-              setIsProcessing(false);
-            },
-          });
-        };
-        reader.readAsText(file);
+        // No duplicate, process immediately (not a supersede)
+        processFile(file, detectedDate);
       }
     },
-    [onUpload],
+    [vendorId, checkDuplicateFile, processFile],
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -251,44 +291,6 @@ export const CSVUploader: React.FC<Props> = ({
 
   return (
     <div className="space-y-4">
-      {showDateConfirmation && detectedDate && (
-        <div className="bg-amber-500/10 rounded-lg p-4 flex items-start gap-3">
-          <Calendar className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-          <div className="flex-1 text-sm text-gray-300">
-            <p className="font-medium text-amber-400 mb-1">
-              Date Detected in Filename
-            </p>
-            <p className="text-gray-400 mb-2">
-              We detected the date {detectedDate.toLocaleDateString()} in your
-              file name. Would you like to use this as the invoice date?
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  // Clear the detected date when user declines
-                  setShowDateConfirmation(false);
-                  setDetectedDate(null);
-                }}
-                className="px-3 py-1 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 flex items-center gap-1 text-xs transition-colors"
-              >
-                <X className="w-3 h-3" />
-                No, ignore
-              </button>
-              <button
-                onClick={() => {
-                  // Keep the detected date when user confirms
-                  setShowDateConfirmation(false);
-                }}
-                className="px-3 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 flex items-center gap-1 text-xs transition-colors"
-              >
-                <Check className="w-3 h-3" />
-                Yes, use this date
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="bg-blue-500/10 rounded-lg p-4">
         <div
           className="flex items-center justify-between cursor-pointer"
@@ -345,6 +347,99 @@ export const CSVUploader: React.FC<Props> = ({
         <div className="flex items-center gap-2 text-rose-400 bg-rose-500/10 rounded-lg p-4">
           <AlertTriangle className="w-5 h-5 flex-shrink-0" />
           <p>{error}</p>
+        </div>
+      )}
+
+      {/* Floating Action Bar for Duplicate Confirmation */}
+      {duplicateWarning && pendingFile && (
+        <div className="floating-action-bar">
+          <div className="floating-action-bar-inner">
+            <div className="floating-action-bar-content">
+              {/* File Info */}
+              <div className="flex items-center gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <Copy className="w-4 h-4 text-rose-400" />
+                  <span className="text-white font-medium">{duplicateWarning.filename}</span>
+                </div>
+                <div className="flex items-center gap-2 text-gray-400">
+                  <span>imported</span>
+                  <span className="text-white">
+                    {formatDateForDisplay(duplicateWarning.existingDate.split('T')[0])}
+                  </span>
+                </div>
+                {duplicateWarning.detectedInvoiceDate && (
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-blue-400" />
+                    <span className="text-gray-400">Invoice:</span>
+                    <span className="text-white font-medium">
+                      {formatDateForDisplay(getLocalDateString(duplicateWarning.detectedInvoiceDate))}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="w-px h-6 bg-gray-700" />
+
+              {/* Actions - Permission controlled */}
+              {canSupersede ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setDuplicateWarning(null);
+                      setPendingFile(null);
+                      setConfirmingSupersede(false);
+                    }}
+                    className="btn-ghost text-sm py-1.5 px-4"
+                  >
+                    Cancel
+                  </button>
+                  
+                  {/* Two-Stage Confirmation Button */}
+                  {!confirmingSupersede ? (
+                    <button
+                      onClick={() => setConfirmingSupersede(true)}
+                      className="btn-secondary text-sm py-1.5 px-4 flex items-center gap-2"
+                    >
+                      <Copy className="w-4 h-4" />
+                      Create Version 2
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setIsProcessing(true);
+                        setConfirmingSupersede(false);
+                        // Pass supersede info for NEXUS audit trail
+                        processFile(pendingFile, duplicateWarning.detectedInvoiceDate, {
+                          isSupersede: true,
+                          existingDate: duplicateWarning.existingDate,
+                        });
+                      }}
+                      className="btn-primary text-sm py-1.5 px-4 flex items-center gap-2 bg-amber-600 hover:bg-amber-500 animate-pulse"
+                    >
+                      <Check className="w-4 h-4" />
+                      Confirm Supersede
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 text-amber-400">
+                    <ShieldAlert className="w-4 h-4" />
+                    <span className="text-sm">Manager access required to supersede</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setDuplicateWarning(null);
+                      setPendingFile(null);
+                    }}
+                    className="btn-ghost text-sm py-1.5 px-4"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

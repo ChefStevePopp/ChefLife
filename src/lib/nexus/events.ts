@@ -337,6 +337,14 @@ export const INVENTORY_EVENTS: ModuleEventCategory = {
       defaultAudience: 2, // Bravo+
     },
     {
+      id: 'invoice_superseded',
+      label: 'Invoice Version Superseded',
+      description: 'When a duplicate invoice is imported, creating a new version',
+      defaultChannels: ['in_app', 'email'],
+      defaultAudience: 1, // Alpha+ (Owner/Admin - this affects audit trail)
+      severity: 'warning',
+    },
+    {
       id: 'price_change_detected',
       label: 'Price Change Detected',
       description: 'When vendor price changes are detected',
@@ -351,6 +359,22 @@ export const INVENTORY_EVENTS: ModuleEventCategory = {
       defaultChannels: ['in_app'],
       defaultAudience: 2, // Bravo+
       severity: 'warning',
+    },
+    {
+      id: 'system_override_initiated',
+      label: 'System Override Initiated',
+      description: 'When someone unlocks a price field to bypass invoice audit trail',
+      defaultChannels: ['in_app'],
+      defaultAudience: 2, // Bravo+
+      severity: 'warning',
+    },
+    {
+      id: 'system_override_price',
+      label: 'Price System Override',
+      description: 'When price is manually changed outside the invoice audit trail - REQUIRES ACKNOWLEDGEMENT',
+      defaultChannels: ['in_app', 'email'],
+      defaultAudience: 1, // Alpha+ (Owner/Admin only)
+      severity: 'critical',
     },
   ],
 };
