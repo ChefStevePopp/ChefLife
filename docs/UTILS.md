@@ -165,7 +165,7 @@ Lightweight inline protection for destructive actions. First click expands to sh
 
 ```typescript
 import { TwoStageButton } from "@/components/ui/TwoStageButton";
-import { Trash2, X } from "lucide-react";
+import { Trash2, X, Lock, Pencil } from "lucide-react";
 
 // Cancel button
 <TwoStageButton
@@ -182,13 +182,26 @@ import { Trash2, X } from "lucide-react";
   confirmText="Delete?"
   variant="danger"
 />
+
+// Smaller unlock/override button with icon change
+<TwoStageButton
+  onConfirm={() => enableOverride()}
+  icon={Lock}
+  confirmIcon={Pencil}
+  confirmText="Override?"
+  variant="warning"
+  size="xs"
+  timeout={3000}
+/>
 ```
 
 **Props:**
 - `onConfirm` — Action to execute on second click
 - `icon` — Lucide icon (default: X)
+- `confirmIcon` — Optional different icon for confirm state
 - `confirmText` — Text shown in confirm state (default: "Sure?")
 - `variant` — `"danger"` | `"warning"` | `"neutral"`
+- `size` — `"xs"` | `"sm"` | `"md"` (default: "md")
 - `timeout` — Auto-reset time in ms (default: 2000)
 
 ---

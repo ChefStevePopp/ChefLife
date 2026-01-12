@@ -23,6 +23,9 @@ import {
   Bell,
   TrendingUp,
   ClipboardList,
+  FileText,
+  Pencil,
+  Lock,
 } from "lucide-react";
 import { MasterIngredient } from "@/types/master-ingredient";
 import { supabase } from "@/lib/supabase";
@@ -32,12 +35,23 @@ import { useIngredientNavigationStore } from "@/stores/ingredientNavigationStore
 import { AllergenSection } from "../EditIngredientModal/AllergenSection";
 import { PageHeader } from "./PageHeader";
 import { ConfirmDialog } from "@/shared/components/ConfirmDialog";
+import { TwoStageButton } from "@/components/ui/TwoStageButton";
 import { useDiagnostics } from "@/hooks/useDiagnostics";
 import toast from "react-hot-toast";
 
 // =============================================================================
 // INGREDIENT DETAIL PAGE - L5 Professional
 // =============================================================================
+
+// ---------------------------------------------------------------------------
+// PRICE SOURCE TYPE
+// ---------------------------------------------------------------------------
+interface PriceSource {
+  type: 'invoice' | 'manual' | 'unknown';
+  invoiceNumber?: string;
+  vendorName?: string;
+  updatedAt: Date;
+}
 
 // ---------------------------------------------------------------------------
 // GUIDED MODE CONTEXT
@@ -687,8 +701,21 @@ export const IngredientDetailPage: React.FC = () => {
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
+  
+  // Price source tracking - shows where the current price came from
+  const [priceSource, setPriceSource] = useState<PriceSource | null>(null);
+  const [isPriceOverrideEnabled, setIsPriceOverrideEnabled] = useState(false);
 
-  // Build unit options from settings
+  // Build purchase unit options from settings (for Purchase Information section)
+  const purchaseUnitOptions: SelectOption[] = React.useMemo(() => {
+    if (!settings?.purchase_unit_measures) return [];
+    return settings.purchase_unit_measures.map((unit: string) => ({
+      value: unit,
+      label: unit,
+    }));
+  }, [settings]);
+
+  // Build unit options from settings (for Inventory section - more detailed categories)
   const unitOfMeasureOptions: SelectOption[] = React.useMemo(() => {
     if (!settings) return [];
     const options: SelectOption[] = [];
@@ -831,6 +858,9 @@ export const IngredientDetailPage: React.FC = () => {
         const normalized = normalizeIngredient(data);
         setFormData(normalized);
         setOriginalData(normalized);
+        
+        // Fetch latest price source from vendor_price_history
+        fetchPriceSource(id);
       } catch (err) {
         console.error("Error loading ingredient:", err);
         setError("Failed to load ingredient");
@@ -840,6 +870,52 @@ export const IngredientDetailPage: React.FC = () => {
     };
     loadIngredient();
   }, [id, isNew, organization?.id, ingredientIds, setCurrentIndex]);
+
+  // Fetch price source from vendor_price_history
+  const fetchPriceSource = async (ingredientId: string) => {
+    try {
+      // Get most recent price history entry for this ingredient
+      const { data: priceHistory, error } = await supabase
+        .from('vendor_price_history')
+        .select(`
+          id,
+          price,
+          created_at,
+          vendor_invoices (
+            invoice_number,
+            vendors (
+              name
+            )
+          )
+        `)
+        .eq('master_ingredient_id', ingredientId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        // PGRST116 = no rows returned, which is fine
+        console.error('Error fetching price source:', error);
+        return;
+      }
+
+      if (priceHistory) {
+        const invoice = priceHistory.vendor_invoices as any;
+        setPriceSource({
+          type: 'invoice',
+          invoiceNumber: invoice?.invoice_number || undefined,
+          vendorName: invoice?.vendors?.name || undefined,
+          updatedAt: new Date(priceHistory.created_at),
+        });
+      } else {
+        // No price history - check if ingredient has a price set
+        // If so, it was likely set manually or is legacy data
+        setPriceSource(null);
+      }
+    } catch (err) {
+      console.error('Error fetching price source:', err);
+    }
+  };
 
   // Auto-calculate cost
   useEffect(() => {
@@ -1107,43 +1183,124 @@ export const IngredientDetailPage: React.FC = () => {
                 </Field>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <Field 
-                    label="Purchase Price"
-                    hint="The price you pay for one purchase unit"
-                  >
-                    <L5Input
-                      type="number"
-                      value={formData.current_price || ""}
-                      onChange={(v) => handleChange({ current_price: parseFloat(v) || 0 })}
-                      placeholder="0.00"
-                      prefix="$"
-                      min={0}
-                      step={0.01}
-                    />
-                  </Field>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-1">
+                      Purchase Price
+                    </label>
+                    
+                    {/* Price input with lock button inside */}
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">$</span>
+                      <input
+                        type="number"
+                        value={formData.current_price || ""}
+                        onChange={(e) => handleChange({ current_price: parseFloat(e.target.value) || 0 })}
+                        placeholder="0.00"
+                        min={0}
+                        step={0.01}
+                        readOnly={!isNew && priceSource !== null && !isPriceOverrideEnabled}
+                        className={`input w-full pl-8 pr-10 ${
+                          !isNew && priceSource !== null && !isPriceOverrideEnabled
+                            ? 'bg-gray-800/30 cursor-not-allowed text-gray-400'
+                            : ''
+                        }`}
+                      />
+                      {/* Two-stage unlock button inside input */}
+                      {!isNew && priceSource && (
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                          {!isPriceOverrideEnabled ? (
+                            <TwoStageButton
+                              onConfirm={() => {
+                                setIsPriceOverrideEnabled(true);
+                                toast('Price override enabled - changes bypass invoice audit trail', { icon: '⚠️' });
+                              }}
+                              icon={Lock}
+                              confirmIcon={Pencil}
+                              confirmText="Edit?"
+                              variant="warning"
+                              timeout={3000}
+                              size="xs"
+                            />
+                          ) : (
+                            <Pencil className="w-4 h-4 text-amber-400" />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {isGuided && (
+                      <p className="text-xs text-gray-500 mt-1.5">The price you pay for one purchase unit</p>
+                    )}
+                  </div>
 
                   <Field 
                     label="Unit of Measure"
-                    hint="How the vendor sells it (kg, case, bag, etc.)"
+                    hint="How the vendor sells it (Case, kg, lb, Box, etc.)"
                   >
                     <L5Select
                       value={formData.unit_of_measure}
                       onChange={(v) => handleChange({ unit_of_measure: v })}
-                      options={unitOfMeasureOptions}
+                      options={purchaseUnitOptions}
                       placeholder="Select unit..."
                     />
                   </Field>
                 </div>
 
-                {/* Purchase Unit Cost Display */}
+                {/* Purchase Price Card - equation style like Cost Calculator */}
                 {formData.current_price > 0 && (
-                  <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap py-4">
-                    <div className="text-center px-3 py-1.5 bg-green-500/20 rounded-lg border border-green-500/30">
-                      <div className="text-xl sm:text-2xl font-bold text-green-400">
-                        ${formData.current_price.toFixed(2)}
+                  <div className="py-4">
+                    {/* Equation row - only show full equation if we have a price source */}
+                    {priceSource ? (
+                      <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap">
+                        <div className="text-center min-w-[50px]">
+                          <div className="text-lg sm:text-xl font-bold text-white truncate max-w-[100px]" title={priceSource.vendorName}>
+                            {priceSource.vendorName || 'Unknown'}
+                          </div>
+                          <div className="text-xs text-gray-500">Vendor</div>
+                        </div>
+                        <div className="text-lg text-gray-600">•</div>
+                        <div className="text-center min-w-[50px]">
+                          <div className="text-lg sm:text-xl font-bold text-white">${formData.current_price.toFixed(2)}</div>
+                          <div className="text-xs text-gray-500">Price</div>
+                        </div>
+                        <div className="text-lg text-gray-600">•</div>
+                        <div className="text-center min-w-[50px]">
+                          <div className="text-lg sm:text-xl font-bold text-white">/{formData.unit_of_measure || 'unit'}</div>
+                          <div className="text-xs text-gray-500">Unit</div>
+                        </div>
+                        <div className="text-lg text-gray-600">•</div>
+                        <div className="text-center min-w-[50px]">
+                          <div className="text-lg sm:text-xl font-bold text-white">
+                            {priceSource.updatedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </div>
+                          <div className="text-xs text-gray-500">Updated</div>
+                        </div>
+                        <div className="text-lg text-gray-600">=</div>
+                        <div className="text-center px-3 py-1.5 bg-green-500/20 rounded-lg border border-green-500/30">
+                          <div className="text-xl sm:text-2xl font-bold text-green-400">
+                            ${formData.current_price.toFixed(2)}
+                          </div>
+                          <div className="text-xs text-green-400/70">per {formData.unit_of_measure || 'unit'}</div>
+                        </div>
                       </div>
-                      <div className="text-xs text-green-400/70">per {formData.unit_of_measure || formData.case_size || "purchase unit"}</div>
-                    </div>
+                    ) : (
+                      /* Simple display for manual/legacy data */
+                      <div className="flex items-center justify-center">
+                        <div className="text-center px-3 py-1.5 bg-green-500/20 rounded-lg border border-green-500/30">
+                          <div className="text-xl sm:text-2xl font-bold text-green-400">
+                            ${formData.current_price.toFixed(2)}
+                          </div>
+                          <div className="text-xs text-green-400/70">per {formData.unit_of_measure || formData.case_size || "purchase unit"}</div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Manual/legacy indicator */}
+                    {!priceSource && !isNew && (
+                      <div className="mt-2 text-center text-xs text-gray-500">
+                        * Manual entry or legacy data
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

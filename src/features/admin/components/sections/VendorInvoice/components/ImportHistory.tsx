@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from "react";
 import {
-  Calendar,
   FileSpreadsheet,
   FileText,
   Camera,
   RefreshCw,
   Search,
   Eye,
-  Download,
-  Trash2,
   AlertTriangle,
   History,
   ChevronDown,
+  Pencil,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
@@ -19,18 +19,36 @@ import toast from "react-hot-toast";
 import { ExcelDataGrid } from "@/shared/components/ExcelDataGrid";
 import type { ExcelColumn } from "@/types/excel";
 
-interface ImportRecord {
+// =============================================================================
+// IMPORT HISTORY - L5 Design
+// =============================================================================
+// Version-controlled import history with audit trail
+// Actions: View details, Edit (recalls document for correction)
+// =============================================================================
+
+export interface ImportRecord {
   id: string;
   created_at: string;
   vendor_id: string;
   import_type: string;
   file_name: string;
+  file_url?: string;
   items_count: number;
   price_changes: number;
   new_items: number;
   status: string;
   created_by: string;
   created_by_name?: string;
+  // Version control fields
+  invoice_number?: string;
+  version?: number;
+  supersedes_id?: string;
+  superseded_at?: string;
+  superseded_by?: string;
+}
+
+interface ImportHistoryProps {
+  onRecall?: (importRecord: ImportRecord) => void;
 }
 
 type DateRangeOption =
@@ -41,7 +59,7 @@ type DateRangeOption =
   | "last30days"
   | "custom";
 
-export const ImportHistory: React.FC = () => {
+export const ImportHistory: React.FC<ImportHistoryProps> = ({ onRecall }) => {
   const { user, isLoading: authLoading, organizationId } = useAuth();
   const [imports, setImports] = useState<ImportRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -53,7 +71,7 @@ export const ImportHistory: React.FC = () => {
     () => {
       const end = new Date();
       const start = new Date();
-      start.setMonth(start.getMonth() - 1); // Default to last month
+      start.setMonth(start.getMonth() - 1);
       return {
         start: start.toISOString().split("T")[0],
         end: end.toISOString().split("T")[0],
@@ -70,24 +88,21 @@ export const ImportHistory: React.FC = () => {
 
     switch (dateRangeOption) {
       case "today":
-        // Start and end are both today
         break;
       case "yesterday":
         start.setDate(today.getDate() - 1);
         end.setDate(today.getDate() - 1);
         break;
       case "last7days":
-        start.setDate(today.getDate() - 6); // Last 7 days including today
+        start.setDate(today.getDate() - 6);
         break;
       case "last30days":
-        start.setDate(today.getDate() - 29); // Last 30 days including today
+        start.setDate(today.getDate() - 29);
         break;
       case "custom":
-        // Don't change the dates, just show the date picker
         setShowDatePicker(true);
         return;
       case "all":
-        // Don't set any date range for "all"
         setShowDatePicker(false);
         return;
     }
@@ -107,63 +122,39 @@ export const ImportHistory: React.FC = () => {
       setIsLoading(true);
       setError(null);
 
-      // Wait for auth to be loaded and check for organization ID
       if (authLoading) {
-        console.log("[ImportHistory] Auth still loading, skipping fetch");
         setIsLoading(false);
         return;
       }
 
-      // Get the organization ID from useAuth hook or user metadata
       const orgId = organizationId || user?.user_metadata?.organizationId;
       if (!orgId) {
-        console.log("[ImportHistory] No organization ID found:", {
-          organizationId,
-          userMetadata: user?.user_metadata,
-          userId: user?.id,
-        });
-        setError(
-          "Organization ID not found. Please ensure you have access to an organization.",
-        );
+        setError("Organization ID not found.");
         setIsLoading(false);
         return;
       }
 
-      console.log("[ImportHistory] Using organization ID:", orgId);
-
-      // Query the vendor_imports table
       let query = supabase
         .from("vendor_imports")
         .select("*")
         .eq("organization_id", orgId)
         .order("created_at", { ascending: false });
 
-      // Apply date range filter if not showing all
       if (dateRangeOption !== "all") {
-        // Format dates for query
         const startDate = new Date(dateRange.start);
         const endDate = new Date(dateRange.end);
-        // Ensure we include the entire end day by setting to 23:59:59
         endDate.setHours(23, 59, 59, 999);
 
         query = query
           .gte("created_at", startDate.toISOString())
           .lte("created_at", endDate.toISOString());
-
-        console.log("Date range used:", {
-          start: startDate.toISOString(),
-          end: endDate.toISOString(),
-        });
       } else {
-        // If showing all, limit to the last 25 records
         query = query.limit(25);
-        console.log("Fetching last 25 records without date filter");
       }
 
-      // Apply search filter if provided
       if (searchTerm) {
         query = query.or(
-          `vendor_id.ilike.%${searchTerm}%,file_name.ilike.%${searchTerm}%,import_type.ilike.%${searchTerm}%`,
+          `vendor_id.ilike.%${searchTerm}%,file_name.ilike.%${searchTerm}%,invoice_number.ilike.%${searchTerm}%`,
         );
       }
 
@@ -171,10 +162,7 @@ export const ImportHistory: React.FC = () => {
 
       if (fetchError) throw fetchError;
 
-      // Always use real data from the database
-      console.log("Fetched import records:", data);
       setImports(data as ImportRecord[]);
-
       setIsLoading(false);
     } catch (err) {
       console.error("Error fetching import history:", err);
@@ -185,60 +173,74 @@ export const ImportHistory: React.FC = () => {
     }
   };
 
-  // Fetch data when component mounts or date range changes
   useEffect(() => {
-    // Only fetch if auth is not loading and we have user data
     if (!authLoading && user) {
-      console.log("Fetching import history with date option:", dateRangeOption);
       fetchImportHistory();
     } else if (!authLoading && !user) {
-      console.log("No user found, cannot fetch import history");
       setError("User not authenticated");
       setIsLoading(false);
     }
   }, [dateRange, dateRangeOption, authLoading, user, organizationId]);
 
-  // Add a manual refresh button click handler
   const handleRefresh = () => {
-    console.log("Manual refresh requested");
     fetchImportHistory();
   };
 
-  // No automatic refresh interval - only fetch when explicitly requested
+  // ---------------------------------------------------------------------------
+  // L5 STATUS BADGE
+  // ---------------------------------------------------------------------------
+  const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
+    const config: Record<string, { bg: string; text: string; label: string }> = {
+      completed: { bg: "bg-emerald-500/20", text: "text-emerald-400", label: "Completed" },
+      superseded: { bg: "bg-gray-500/20", text: "text-gray-500", label: "Superseded" },
+      processing: { bg: "bg-amber-500/20", text: "text-amber-400", label: "Processing" },
+      failed: { bg: "bg-rose-500/20", text: "text-rose-400", label: "Failed" },
+      pending: { bg: "bg-blue-500/20", text: "text-blue-400", label: "Pending" },
+    };
+    
+    const { bg, text, label } = config[status] || config.pending;
+    
+    return (
+      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${bg} ${text}`}>
+        {label}
+      </span>
+    );
+  };
 
-  // Get icon for import type
-  const getImportTypeIcon = (type: string) => {
-    switch (type) {
-      case "csv":
-        return <FileSpreadsheet className="w-4 h-4" />;
-      case "pdf":
-        return <FileText className="w-4 h-4" />;
-      case "photo":
-        return <Camera className="w-4 h-4" />;
-      default:
-        return <FileSpreadsheet className="w-4 h-4" />;
+  // ---------------------------------------------------------------------------
+  // L5 PRICE CHANGE INDICATOR
+  // ---------------------------------------------------------------------------
+  const PriceChangeIndicator: React.FC<{ value: number; itemCount: number }> = ({ value, itemCount }) => {
+    if (value === 0 || itemCount === 0) {
+      return <span className="text-gray-500">—</span>;
     }
+    
+    const percent = Math.round((value / itemCount) * 100);
+    const isHigh = percent >= 25;
+    
+    return (
+      <div className="flex items-center gap-1">
+        {isHigh ? (
+          <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
+        ) : (
+          <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+        )}
+        <span className={isHigh ? "text-amber-400" : "text-emerald-400"}>
+          {value}
+        </span>
+      </div>
+    );
   };
 
-  // Format date
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
-  // Define columns for ExcelDataGrid
+  // ---------------------------------------------------------------------------
+  // L5 COLUMNS
+  // ---------------------------------------------------------------------------
   const columns: ExcelColumn[] = [
     {
       key: "created_at",
       name: "Date",
       type: "date",
-      width: 180,
+      width: 120,
       sortable: true,
       filterable: true,
     },
@@ -251,10 +253,34 @@ export const ImportHistory: React.FC = () => {
       filterable: true,
     },
     {
+      key: "invoice_number",
+      name: "Reference",
+      type: "custom",
+      width: 130,
+      sortable: true,
+      filterable: true,
+      render: (value: string | null) => (
+        <span className={`font-mono text-xs ${!value ? "text-gray-500" : "text-gray-300"}`}>
+          {value || "—"}
+        </span>
+      ),
+    },
+    {
+      key: "version",
+      name: "Ver",
+      type: "custom",
+      width: 50,
+      align: "center",
+      sortable: true,
+      render: (value: number) => (
+        <span className="text-xs text-gray-400">v{value || 1}</span>
+      ),
+    },
+    {
       key: "file_name",
       name: "File",
       type: "text",
-      width: 200,
+      width: 180,
       sortable: true,
       filterable: true,
     },
@@ -262,60 +288,96 @@ export const ImportHistory: React.FC = () => {
       key: "items_count",
       name: "Items",
       type: "number",
-      width: 100,
+      width: 70,
+      align: "center",
       sortable: true,
-      filterable: true,
     },
     {
       key: "price_changes",
-      name: "Price Changes",
-      type: "number",
-      width: 120,
+      name: "Price Δ",
+      type: "custom",
+      width: 80,
+      align: "center",
       sortable: true,
-      filterable: true,
-    },
-    {
-      key: "new_items",
-      name: "New Items",
-      type: "number",
-      width: 120,
-      sortable: true,
-      filterable: true,
+      render: (value: number, row: ImportRecord) => (
+        <PriceChangeIndicator value={value} itemCount={row.items_count} />
+      ),
     },
     {
       key: "status",
       name: "Status",
-      type: "text",
-      width: 120,
+      type: "custom",
+      width: 110,
       sortable: true,
       filterable: true,
+      filterType: "select",
+      render: (value: string) => <StatusBadge status={value} />,
+    },
+    {
+      key: "actions",
+      name: "",
+      type: "custom",
+      width: 80,
+      sortable: false,
+      filterable: false,
+      render: (_value: any, row: ImportRecord) => (
+        <div className="flex justify-center gap-1">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              toast.info(`Viewing details for ${row.file_name}`);
+              // TODO: Open detail modal
+            }}
+            className="p-1.5 text-gray-400 hover:text-blue-400 transition-colors rounded hover:bg-blue-500/10"
+            title="View details"
+          >
+            <Eye className="w-4 h-4" />
+          </button>
+          {row.status !== 'superseded' && onRecall && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onRecall(row);
+              }}
+              className="p-1.5 text-gray-400 hover:text-cyan-400 transition-colors rounded hover:bg-cyan-500/10"
+              title="Edit / Create correction"
+            >
+              <Pencil className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      ),
     },
   ];
 
+  // ---------------------------------------------------------------------------
+  // RENDER
+  // ---------------------------------------------------------------------------
   return (
-    <div className="space-y-6 ImportHistory">
-      <div className="flex items-center justify-between mb-6 bg-[#262d3c] p-2 rounded-lg shadow-lg">
-        <div className="flex items-center gap-3 p-4 rounded-lg bg-[#262d3c]">
+    <div className="space-y-4">
+      {/* L5 Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-lime-500/20 flex items-center justify-center">
             <History className="w-5 h-5 text-lime-400" />
           </div>
           <div>
             <h3 className="text-lg font-medium text-white">Import History</h3>
             <p className="text-sm text-gray-400">
-              View and manage your invoice import history across all vendors
+              Version-controlled audit trail of all invoice imports
             </p>
           </div>
         </div>
-        <button onClick={handleRefresh} className="btn-ghost mr-2">
+        <button onClick={handleRefresh} className="btn-ghost">
           <RefreshCw className="w-4 h-4 mr-2" />
           Refresh
         </button>
       </div>
 
-      {/* Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <div>
-          <label className="block text-sm font-medium text-gray-400 mb-2">
+      {/* Filters Row */}
+      <div className="flex flex-wrap items-end gap-4">
+        <div className="flex-1 min-w-[200px]">
+          <label className="block text-xs font-medium text-gray-400 mb-1.5">
             Date Range
           </label>
           <div className="relative">
@@ -324,7 +386,7 @@ export const ImportHistory: React.FC = () => {
               onChange={(e) =>
                 setDateRangeOption(e.target.value as DateRangeOption)
               }
-              className="input w-full appearance-none pr-10"
+              className="input w-full appearance-none pr-10 h-9 text-sm"
             >
               <option value="all">All Records (Last 25)</option>
               <option value="today">Today</option>
@@ -337,112 +399,61 @@ export const ImportHistory: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-end">
-          <button onClick={fetchImportHistory} className="btn-ghost-green h-10">
-            <Search className="w-4 h-4 mr-2" />
-            Apply Filters
-          </button>
-        </div>
+        {showDatePicker && (
+          <>
+            <div className="w-40">
+              <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                From
+              </label>
+              <input
+                type="date"
+                value={dateRange.start}
+                onChange={(e) =>
+                  setDateRange((prev) => ({ ...prev, start: e.target.value }))
+                }
+                className="input w-full h-9 text-sm"
+              />
+            </div>
+            <div className="w-40">
+              <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                To
+              </label>
+              <input
+                type="date"
+                value={dateRange.end}
+                onChange={(e) =>
+                  setDateRange((prev) => ({ ...prev, end: e.target.value }))
+                }
+                className="input w-full h-9 text-sm"
+              />
+            </div>
+          </>
+        )}
+
+        <button onClick={fetchImportHistory} className="btn-ghost h-9 text-sm">
+          <Search className="w-4 h-4 mr-2" />
+          Search
+        </button>
       </div>
 
-      {/* Custom Date Range Picker - Only shown when custom is selected */}
-      {showDatePicker && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 p-4 border border-gray-700 rounded-lg bg-gray-800/50">
-          <div>
-            <label className="block text-sm font-medium text-gray-400 mb-2">
-              Start Date
-            </label>
-            <input
-              type="date"
-              value={dateRange.start}
-              onChange={(e) =>
-                setDateRange((prev) => ({ ...prev, start: e.target.value }))
-              }
-              className="input w-full"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-400 mb-2">
-              End Date
-            </label>
-            <input
-              type="date"
-              value={dateRange.end}
-              onChange={(e) =>
-                setDateRange((prev) => ({ ...prev, end: e.target.value }))
-              }
-              className="input w-full"
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Import History Table using ExcelDataGrid */}
+      {/* Data Grid */}
       {authLoading || isLoading ? (
-        <div className="flex items-center justify-center p-8 text-gray-400">
-          <div className="animate-spin h-5 w-5 border-2 border-primary-500 border-t-transparent rounded-full mr-2"></div>
-          {authLoading
-            ? "Loading authentication..."
-            : "Loading import history..."}
+        <div className="flex items-center justify-center p-12 text-gray-400">
+          <div className="animate-spin h-5 w-5 border-2 border-lime-500 border-t-transparent rounded-full mr-3"></div>
+          {authLoading ? "Loading..." : "Loading import history..."}
         </div>
       ) : error ? (
-        <div className="flex items-center justify-center p-8 text-rose-400 gap-2">
+        <div className="flex items-center justify-center p-12 text-rose-400 gap-2">
           <AlertTriangle className="w-5 h-5" />
           {error}
         </div>
       ) : (
         <ExcelDataGrid
           columns={columns}
-          data={imports.map((importRecord) => ({
-            ...importRecord,
-            // Add custom actions to each row
-            actions: (
-              <div className="flex justify-center gap-2">
-                <button
-                  onClick={() => {
-                    // View details
-                    toast.info(`Viewing details for ${importRecord.file_name}`);
-                  }}
-                  className="p-1 text-gray-400 hover:text-blue-400 transition-colors"
-                  title="View details"
-                >
-                  <Eye className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => {
-                    // Download original file
-                    toast.info(`Downloading ${importRecord.file_name}`);
-                  }}
-                  className="p-1 text-gray-400 hover:text-green-400 transition-colors"
-                  title="Download original file"
-                >
-                  <Download className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => {
-                    // Delete import record
-                    if (
-                      window.confirm(
-                        "Are you sure you want to delete this import record? This won't affect any data that was imported.",
-                      )
-                    ) {
-                      toast.success(
-                        `Deleted import record for ${importRecord.file_name}`,
-                      );
-                      // In a real implementation, this would delete the record from the database
-                      setImports((prev) =>
-                        prev.filter((i) => i.id !== importRecord.id),
-                      );
-                    }
-                  }}
-                  className="p-1 text-gray-400 hover:text-rose-400 transition-colors"
-                  title="Delete record"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ),
+          data={imports.map((record) => ({
+            ...record,
+            version: record.version || 1,
+            invoice_number: record.invoice_number || null,
           }))}
           onRefresh={fetchImportHistory}
           type="import-history"

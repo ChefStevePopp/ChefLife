@@ -25,7 +25,7 @@ import { DataPreview } from "./components/DataPreview";
 import { ItemCodeGroupManager } from "./components/ItemCodeGroupManager";
 import { UmbrellaIngredientManager } from "./components/UmbrellaIngredientManager";
 import { VendorAnalytics } from "./components/VendorAnalytics";
-import { ImportHistory } from "./components/ImportHistory";
+import { ImportHistory, ImportRecord } from "./components/ImportHistory";
 import { TriagePanel } from "./components/TriagePanel";
 import { useVendorTemplatesStore } from "@/stores/vendorTemplatesStore";
 import { ManualInvoiceForm } from "./components/ManualInvoiceForm";
@@ -86,6 +86,12 @@ export const VendorInvoiceManager = () => {
   const [isInfoExpanded, setIsInfoExpanded] = useState(false);
   const [importType, setImportType] = useState<"csv" | "pdf" | "manual">("csv");
   const [sourceFile, setSourceFile] = useState<File | null>(null); // For audit trail
+  
+  // Recall state - when editing a previous import
+  const [recallRecord, setRecallRecord] = useState<ImportRecord | null>(null);
+  
+  // Import draft state - tracks if ImportWorkspace has unsaved work
+  const [hasImportDraft, setHasImportDraft] = useState(false);
   
   // Triage badge state
   const [triageCount, setTriageCount] = useState(0);
@@ -489,10 +495,11 @@ export const VendorInvoiceManager = () => {
         {/* Tab Navigation */}
         <div className="border-b border-gray-700">
           <div className="flex flex-wrap items-center gap-2 p-4">
-            {TABS.map((tab) => {
+                        {TABS.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               const isTriage = tab.id === 'triage';
+              const isImport = tab.id === 'import';
               
               return (
                 <button
@@ -502,6 +509,7 @@ export const VendorInvoiceManager = () => {
                 >
                   <Icon className="w-4 h-4" />
                   <span>{tab.label}</span>
+                  {/* Triage badge */}
                   {isTriage && (
                     <span 
                       className={`
@@ -514,7 +522,6 @@ export const VendorInvoiceManager = () => {
                         }
                       `}
                     >
-                      {/* White ping animation on count increase - subtle Canada nod 🍁 */}
                       {triageAnimating && triageCount > 0 && (
                         <span className="absolute inset-0 rounded-full bg-white animate-ping opacity-60" />
                       )}
@@ -522,6 +529,13 @@ export const VendorInvoiceManager = () => {
                         {triageCount > 99 ? '99+' : triageCount}
                       </span>
                     </span>
+                  )}
+                  {/* Import draft indicator */}
+                  {isImport && hasImportDraft && !isActive && (
+                    <span 
+                      className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-purple-500 border-2 border-[#1a1f2b]"
+                      title="Draft in progress"
+                    />
                   )}
                 </button>
               );
@@ -597,7 +611,7 @@ export const VendorInvoiceManager = () => {
               {activeTab === "analytics" && <VendorAnalytics />}
               {activeTab === "codes" && <ItemCodeGroupManager />}
               {activeTab === "umbrella" && <UmbrellaIngredientManager />}
-              {activeTab === "import" && (
+                            {activeTab === "import" && (
                 <>
                   {importType === "csv" && (
                     <CSVUploader
@@ -611,14 +625,20 @@ export const VendorInvoiceManager = () => {
                         vendorId={selectedVendor}
                         vendorName={selectedVendor}
                         importType={importType === "pdf" ? "pdf" : "photo"}
+                        recallRecord={recallRecord}
+                        onDraftChange={setHasImportDraft}
                         onComplete={() => {
                           setSelectedVendor("");
                           setImportType("csv");
+                          setRecallRecord(null);
+                          setHasImportDraft(false);
                           handleTabChange("triage");
                         }}
                         onCancel={() => {
                           setSelectedVendor("");
                           setImportType("csv");
+                          setRecallRecord(null);
+                          setHasImportDraft(false);
                         }}
                       />
                     ) : (
@@ -634,7 +654,47 @@ export const VendorInvoiceManager = () => {
                   )}
                 </>
               )}
-              {activeTab === "history" && <ImportHistory />}
+              {/* Keep ImportWorkspace mounted but hidden when there's a draft and on other tabs */}
+              {activeTab !== "import" && hasImportDraft && selectedVendor && (importType === "pdf" || importType === "manual") && (
+                <div className="hidden">
+                  <ImportWorkspace
+                    vendorId={selectedVendor}
+                    vendorName={selectedVendor}
+                    importType={importType === "pdf" ? "pdf" : "photo"}
+                    recallRecord={recallRecord}
+                    onDraftChange={setHasImportDraft}
+                    onComplete={() => {
+                      setSelectedVendor("");
+                      setImportType("csv");
+                      setRecallRecord(null);
+                      setHasImportDraft(false);
+                      handleTabChange("triage");
+                    }}
+                    onCancel={() => {
+                      setSelectedVendor("");
+                      setImportType("csv");
+                      setRecallRecord(null);
+                      setHasImportDraft(false);
+                    }}
+                  />
+                </div>
+              )}
+              {activeTab === "history" && (
+                <ImportHistory
+                  onRecall={(importRecord) => {
+                    // Store the record for recall
+                    setRecallRecord(importRecord);
+                    // Switch to import tab with vendor pre-selected
+                    setSelectedVendor(importRecord.vendor_id);
+                    setImportType("manual"); // Use photo/manual import for corrections
+                    handleTabChange("import");
+                    toast(
+                      `Loading ${importRecord.file_name} for correction. Upload new version when ready.`,
+                      { icon: "📝", duration: 5000 }
+                    );
+                  }}
+                />
+              )}
               {activeTab === "triage" && <TriagePanel />}
               {activeTab === "settings" && <ImportSettings />}
             </>

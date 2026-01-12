@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
   FileText,
   Camera,
@@ -19,19 +19,24 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrganizationId } from "@/hooks/useOrganizationId";
 import { nexus } from "@/lib/nexus";
+import { generateInvoiceReference } from "@/lib/friendly-id";
 import toast from "react-hot-toast";
+import { ImportRecord } from "./ImportHistory";
 
 // =============================================================================
 // IMPORT WORKSPACE - L6 Design
 // =============================================================================
 // Two-column import: Document on right, editable table on left
 // Philosophy: "C-suite accounting app that masquerades as restaurant software"
+// Supports recall mode: loads previous document for correction
 // =============================================================================
 
 interface Props {
   vendorId: string;
   vendorName: string;
   importType: "pdf" | "photo";
+  recallRecord?: ImportRecord | null;
+  onDraftChange?: (hasDraft: boolean) => void;
   onComplete: () => void;
   onCancel: () => void;
 }
@@ -40,6 +45,8 @@ export const ImportWorkspace: React.FC<Props> = ({
   vendorId,
   vendorName,
   importType,
+  recallRecord,
+  onDraftChange,
   onComplete,
   onCancel,
 }) => {
@@ -55,9 +62,54 @@ export const ImportWorkspace: React.FC<Props> = ({
   const [items, setItems] = useState<LineItemState[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isInfoExpanded, setIsInfoExpanded] = useState(false);
-  const [isDocumentExpanded, setIsDocumentExpanded] = useState(true); // Collapsible document preview
+  const [isDocumentExpanded, setIsDocumentExpanded] = useState(true);
+  const [isLoadingRecall, setIsLoadingRecall] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ---------------------------------------------------------------------------
+  // DRAFT STATE - Notify parent when we have unsaved work
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const hasDraft = file !== null || items.length > 0;
+    onDraftChange?.(hasDraft);
+  }, [file, items.length, onDraftChange]);
+
+  // ---------------------------------------------------------------------------
+  // RECALL MODE - Load previous document for correction
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (recallRecord?.file_url) {
+      loadRecalledDocument();
+    }
+  }, [recallRecord]);
+
+  const loadRecalledDocument = async () => {
+    if (!recallRecord?.file_url) return;
+
+    setIsLoadingRecall(true);
+    try {
+      // Fetch the file from Supabase storage
+      const { data, error } = await supabase.storage
+        .from("vendor-invoices")
+        .download(recallRecord.file_url);
+
+      if (error) throw error;
+
+      // Convert to File object
+      const fileName = recallRecord.file_name || "recalled-document";
+      const fileType = fileName.endsWith(".pdf") ? "application/pdf" : "image/jpeg";
+      const recalledFile = new File([data], fileName, { type: fileType });
+
+      setFile(recalledFile);
+      toast.success(`Loaded ${fileName} for review`);
+    } catch (error: any) {
+      console.error("Failed to load recalled document:", error);
+      toast.error(`Could not load previous document: ${error.message}`);
+    } finally {
+      setIsLoadingRecall(false);
+    }
+  };
 
   // ---------------------------------------------------------------------------
   // FILE HANDLING
@@ -148,8 +200,76 @@ export const ImportWorkspace: React.FC<Props> = ({
       const documentHash = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
 
       // ---------------------------------------------------------------------------
-      // STEP 2: Create vendor_imports batch record
+      // STEP 2: Create vendor_imports batch record (with AUTO version control)
       // ---------------------------------------------------------------------------
+      // Version control is AUTOMATIC based on invoice_number OR file_name
+      // Same invoice # or filename from same vendor = new version, old ones superseded
+      
+      // Check if we have a real invoice number from the parsed document
+      const parsedInvoiceNumber = parsedInvoice?.invoiceNumber?.trim() || null;
+      
+      // For version control matching:
+      // - If we have a parsed invoice number, match by invoice_number
+      // - Otherwise, match by file_name
+      let existingQuery = supabase
+        .from("vendor_imports")
+        .select("id, version, invoice_number, file_name")
+        .eq("organization_id", organizationId)
+        .eq("vendor_id", vendorId)
+        .neq("status", "superseded");
+      
+      if (parsedInvoiceNumber) {
+        existingQuery = existingQuery.eq("invoice_number", parsedInvoiceNumber);
+      } else {
+        existingQuery = existingQuery.eq("file_name", file.name);
+      }
+      
+      const { data: existingImports } = await existingQuery;
+      
+      // Generate display reference: real invoice # or friendly reference
+      const invoiceNumberForDisplay = parsedInvoiceNumber || generateInvoiceReference();
+      
+      // Calculate next version and supersede old imports
+      let importVersion = 1;
+      let isCorrection = false;
+      
+      if (existingImports && existingImports.length > 0) {
+        isCorrection = true;
+        // Get highest version
+        const maxVersion = Math.max(...existingImports.map(i => i.version || 1));
+        importVersion = maxVersion + 1;
+        
+        // Auto-supersede ALL previous non-superseded imports
+        const idsToSupersede = existingImports.map(i => i.id);
+        await supabase
+          .from("vendor_imports")
+          .update({
+            status: "superseded",
+            superseded_at: new Date().toISOString(),
+            superseded_by: user.id,
+          })
+          .in("id", idsToSupersede);
+
+        // NEXUS: Log the auto-correction
+        await nexus({
+          organization_id: organizationId,
+          user_id: user.id,
+          activity_type: 'import_version_created',
+          severity: 'info',
+          details: {
+            vendor: vendorName,
+            vendor_id: vendorId,
+            invoice_number: invoiceNumberForDisplay,
+            file_name: file.name,
+            superseded_count: existingImports.length,
+            new_version: importVersion,
+            superseded_ids: idsToSupersede,
+          },
+        });
+
+        toast(`Auto-creating version ${importVersion} (${existingImports.length} previous version${existingImports.length > 1 ? 's' : ''} superseded)`, { icon: "📝" });
+      }
+
       const { data: importRecord, error: importError } = await supabase
         .from("vendor_imports")
         .insert({
@@ -159,7 +279,7 @@ export const ImportWorkspace: React.FC<Props> = ({
           file_name: file.name,
           file_url: uploadData.path,
           items_count: items.length,
-          price_changes: 0, // Will be updated after processing
+          price_changes: 0,
           new_items: 0,
           status: "processing",
           created_by: user.id,
@@ -167,6 +287,10 @@ export const ImportWorkspace: React.FC<Props> = ({
             parse_confidence: parsedInvoice?.parseConfidence,
             parse_warnings: parsedInvoice?.parseWarnings,
           },
+          // Version control fields
+          invoice_number: invoiceNumberForDisplay,
+          version: importVersion,
+          supersedes_id: existingImports?.[0]?.id || null, // Link to most recent superseded
         })
         .select()
         .single();
@@ -176,17 +300,14 @@ export const ImportWorkspace: React.FC<Props> = ({
       // ---------------------------------------------------------------------------
       // STEP 3: Create vendor_invoice record (header)
       // ---------------------------------------------------------------------------
-      // Generate reference if no invoice number (register receipts, etc.)
-      const invoiceNumberValue = parsedInvoice?.invoiceNumber?.trim() 
-        || `NOINV-${invoiceDate.toISOString().split("T")[0].replace(/-/g, "")}-${vendorName.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10)}`;
-
+      // For corrections, we still create a new vendor_invoices record linked to new import
       const { data: invoiceRecord, error: invoiceError } = await supabase
         .from("vendor_invoices")
         .insert({
           organization_id: organizationId,
           vendor_id: vendorId,
           invoice_date: invoiceDate.toISOString().split("T")[0],
-          invoice_number: invoiceNumberValue,
+          invoice_number: invoiceNumberForDisplay,
           total_amount: items.reduce((sum, i) => sum + (i.quantityReceived * i.unitPrice), 0),
           status: "pending",
           document_file_path: uploadData.path,
@@ -202,30 +323,70 @@ export const ImportWorkspace: React.FC<Props> = ({
       // ---------------------------------------------------------------------------
       // STEP 4: Create vendor_invoice_items (line items with order/delivery tracking)
       // ---------------------------------------------------------------------------
-      const lineItems = items.map(item => ({
-        invoice_id: invoiceRecord.id,
-        organization_id: organizationId,
-        item_code: item.itemCode,
-        product_name: item.productName,
-        quantity: item.quantityReceived, // Received quantity
-        quantity_ordered: item.quantityOrdered,
-        quantity_received: item.quantityReceived,
-        unit_price: item.unitPrice,
-        unit_of_measure: item.unit,
-        line_total: item.quantityReceived * item.unitPrice,
-        master_ingredient_id: item.matchedIngredientId || null,
-        match_status: item.matchedIngredientId ? "matched" : "unmatched",
-        match_confidence: item.matchConfidence || null,
-        original_description: item.productName,
-        discrepancy_type: item.discrepancyType || 'none',
-        notes: item.notes || null,
-      }));
+      // NOTE: Only items WITH a master_ingredient_id can go here (NOT NULL constraint)
+      const lineItems = items
+        .filter(item => item.matchedIngredientId) // Only items with MIL match
+        .map(item => ({
+          invoice_id: invoiceRecord.id,
+          master_ingredient_id: item.matchedIngredientId,
+          vendor_code: item.itemCode || 'UNKNOWN',
+          quantity: item.quantityReceived,
+          quantity_ordered: item.quantityOrdered,
+          quantity_received: item.quantityReceived,
+          unit_price: item.unitPrice,
+          total_price: item.quantityReceived * item.unitPrice,
+          match_status: 'matched',
+          match_confidence: item.matchConfidence || null,
+          original_description: item.productName,
+          discrepancy_type: item.discrepancyType || 'none',
+          notes: item.notes || null,
+        }));
 
-      const { error: itemsError } = await supabase
-        .from("vendor_invoice_items")
-        .insert(lineItems);
+      // ---------------------------------------------------------------------------
+      // STEP 4b: Insert unmatched items into pending_import_items for Triage
+      // ---------------------------------------------------------------------------
+      const unmatchedItems = items.filter(item => !item.matchedIngredientId);
+      if (unmatchedItems.length > 0) {
+        console.log(`[VIM] ${unmatchedItems.length} unmatched items going to triage:`, 
+          unmatchedItems.map(i => ({ code: i.itemCode, name: i.productName })));
+        
+        // Build pending items array
+        const pendingItems = unmatchedItems.map(item => ({
+          organization_id: organizationId,
+          vendor_id: vendorId,
+          vendor_import_id: importRecord.id,
+          item_code: item.itemCode || `UNKNOWN-${Date.now()}`,
+          product_name: item.productName,
+          unit_price: item.unitPrice,
+          unit_of_measure: item.unit || null,
+          status: 'pending',
+          created_by: user.id,
+        }));
 
-      if (itemsError) throw itemsError;
+        // Upsert to handle re-imports of same item codes
+        // Note: Unique constraint is (organization_id, vendor_id, item_code, status)
+        const { error: pendingError } = await supabase
+          .from("pending_import_items")
+          .upsert(pendingItems, {
+            onConflict: 'organization_id,vendor_id,item_code,status',
+            ignoreDuplicates: false, // Update existing with new price/import_id
+          });
+
+        if (pendingError) {
+          console.error("[VIM] Failed to insert pending items:", pendingError);
+          // Non-fatal: log but don't fail the import
+        } else {
+          console.log(`[VIM] ${unmatchedItems.length} items queued for triage`);
+        }
+      }
+
+      if (lineItems.length > 0) {
+        const { error: itemsError } = await supabase
+          .from("vendor_invoice_items")
+          .insert(lineItems);
+
+        if (itemsError) throw itemsError;
+      }
 
       // ---------------------------------------------------------------------------
       // STEP 5: Update prices and create price history
@@ -257,7 +418,7 @@ export const ImportWorkspace: React.FC<Props> = ({
             .from("vendor_invoice_items")
             .select("id")
             .eq("invoice_id", invoiceRecord.id)
-            .eq("item_code", item.itemCode)
+            .eq("vendor_code", item.itemCode || 'UNKNOWN')
             .single();
 
           await supabase
@@ -317,9 +478,13 @@ export const ImportWorkspace: React.FC<Props> = ({
           invoice_number: parsedInvoice?.invoiceNumber || null,
           invoice_date: invoiceDate.toISOString().split("T")[0],
           item_count: items.length,
+          matched_count: lineItems.length,
+          unmatched_count: unmatchedItems.length,
           total_amount: items.reduce((sum, i) => sum + (i.quantityReceived * i.unitPrice), 0),
           price_changes: priceChanges,
           import_type: importType,
+          version: importVersion,
+          is_correction: isCorrection,
           has_discrepancies: shortItems.length > 0,
           discrepancy_count: shortItems.length,
           discrepancy_value: shortValue,
@@ -395,13 +560,18 @@ export const ImportWorkspace: React.FC<Props> = ({
         });
       }
       
+      const action = isCorrection ? 'Corrected' : 'Imported';
+      const unmatchedMsg = unmatchedItems.length > 0 
+        ? ` (${unmatchedItems.length} items need triage)` 
+        : '';
+      
       if (shortValue > 0) {
         toast.success(
-          `Imported ${items.length} items. ${shortItems.length} shortage(s) totaling ${shortValue.toFixed(2)} documented.`,
+          `${action} ${items.length} items. ${shortItems.length} shortage(s) totaling ${shortValue.toFixed(2)} documented.${unmatchedMsg}`,
           { duration: 5000 }
         );
       } else {
-        toast.success(`Imported ${items.length} items with ${priceChanges} price updates`);
+        toast.success(`${action} ${items.length} items with ${priceChanges} price updates${unmatchedMsg}`);
       }
       onComplete();
 
@@ -421,11 +591,23 @@ export const ImportWorkspace: React.FC<Props> = ({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-medium text-white">
-            {importType === "pdf" ? "PDF Import" : "Manual Entry"}: {vendorName}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-medium text-white">
+              {importType === "pdf" ? "PDF Import" : "Manual Entry"}: {vendorName}
+            </h3>
+            {recallRecord && (
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-cyan-500/20 text-cyan-400">
+                Correction Mode
+              </span>
+            )}
+          </div>
           <p className="text-sm text-gray-400">
-            {file ? file.name : (importType === "pdf" ? "Upload PDF to begin" : "Upload invoice photo for audit trail")}
+            {recallRecord 
+              ? `Reviewing ${recallRecord.file_name} — upload new version to create correction`
+              : file 
+                ? file.name 
+                : (importType === "pdf" ? "Upload PDF to begin" : "Upload invoice photo for audit trail")
+            }
           </p>
         </div>
         <button
@@ -459,14 +641,21 @@ export const ImportWorkspace: React.FC<Props> = ({
               }
             </p>
             <p className="text-xs text-gray-500">
-              The document will be stored permanently for audit trail compliance.
+              The document will be stored permanently for audit trail compliance. Re-uploading the same invoice creates a new version automatically.
             </p>
           </div>
         </div>
       </div>
 
       {/* Main Content */}
-      {!file ? (
+      {isLoadingRecall ? (
+        /* Loading recalled document */
+        <div className="flex flex-col items-center justify-center p-12 border-2 border-dashed border-cyan-700/50 rounded-lg bg-cyan-900/10">
+          <div className="animate-spin h-8 w-8 border-2 border-cyan-500 border-t-transparent rounded-full mb-4"></div>
+          <p className="text-cyan-400 font-medium">Loading previous document...</p>
+          <p className="text-sm text-gray-400 mt-1">{recallRecord?.file_name}</p>
+        </div>
+      ) : !file ? (
         /* Upload Zone */
         <div
           {...getRootProps()}

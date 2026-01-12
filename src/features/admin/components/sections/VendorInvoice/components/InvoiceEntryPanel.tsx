@@ -29,7 +29,19 @@ import toast from "react-hot-toast";
 // Left panel of two-column import workspace
 // Editable item table with verification workflow
 // C-suite accounting: Order vs Delivery tracking, discrepancy notes
+//
+// PRICING MODES:
+// 1. Catch Weight: Order by case, price by weight (meat products)
+//    Total = Weight Received × Price/unit
+// 2. Fixed Price: Order by case, price per case (boxed items)
+//    Total = Qty Received × Unit Price
 // =============================================================================
+
+// Weight-based units trigger catch weight pricing mode
+const WEIGHT_UNITS = ['kg', 'lb', 'g', 'oz'];
+const isWeightUnit = (unit: string) => WEIGHT_UNITS.some(w => unit.toLowerCase() === w.toLowerCase());
+
+export type PricingMode = 'catch_weight' | 'fixed_price';
 
 export interface LineItemState extends ParsedLineItem {
   id: string;
@@ -39,8 +51,13 @@ export interface LineItemState extends ParsedLineItem {
   matchConfidence?: number;
   isEditing?: boolean;
   // Order vs Delivery tracking
-  quantityOrdered: number;
-  quantityReceived: number;
+  quantityOrdered: number;      // Cases ordered
+  quantityReceived: number;     // Cases received (for fixed price) OR used for legacy
+  // Catch weight support
+  pricingMode: PricingMode;
+  weightReceived?: number;      // Actual weight in KG (catch weight only)
+  pricePerUnit: number;         // $/KG (catch weight) or $/Case (fixed)
+  // Discrepancy tracking
   discrepancyType: 'none' | 'short' | 'over' | 'damaged' | 'substituted' | 'rejected' | 'other';
   discrepancyReason?: string;
   notes?: string;
@@ -112,17 +129,28 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
         setInvoiceNumber(parsedInvoice.invoiceNumber);
       }
       
-      // Initialize items
-      const initialItems: LineItemState[] = parsedInvoice.lineItems.map((item, index) => ({
-        ...item,
-        id: `item-${index}-${Date.now()}`,
-        isVerified: false,
-        matchConfidence: 0,
-        // Default: ordered = received (no discrepancy)
-        quantityOrdered: item.quantity,
-        quantityReceived: item.quantity,
-        discrepancyType: 'none',
-      }));
+      // Initialize items - detect pricing mode from unit
+      const initialItems: LineItemState[] = parsedInvoice.lineItems.map((item, index) => {
+        // Detect catch weight based on unit
+        const unit = item.unit || 'Case';
+        const isCatchWeight = WEIGHT_UNITS.some(w => unit.toLowerCase() === w.toLowerCase());
+        
+        return {
+          ...item,
+          id: `item-${index}-${Date.now()}`,
+          isVerified: false,
+          matchConfidence: 0,
+          // Pricing mode based on unit
+          pricingMode: isCatchWeight ? 'catch_weight' : 'fixed_price',
+          unit: unit,
+          // For catch weight: qty ordered is cases (default 1), weight received is the parsed quantity
+          quantityOrdered: isCatchWeight ? 1 : item.quantity,
+          quantityReceived: isCatchWeight ? 1 : item.quantity,
+          weightReceived: isCatchWeight ? item.quantity : undefined,
+          pricePerUnit: item.unitPrice,
+          discrepancyType: 'none',
+        };
+      });
       
       setItems(initialItems);
       
@@ -137,7 +165,17 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
   // NOTIFY PARENT OF CHANGES
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    onItemsChange(items);
+    // Convert back to standard format for parent
+    const normalizedItems = items.map(item => ({
+      ...item,
+      // For parent processing: quantity = what was received
+      quantity: item.pricingMode === 'catch_weight' 
+        ? (item.weightReceived || 0) 
+        : item.quantityReceived,
+      // unitPrice is always the price per unit (kg or case)
+      unitPrice: item.pricePerUnit,
+    }));
+    onItemsChange(normalizedItems);
   }, [items]);
 
   // ---------------------------------------------------------------------------
@@ -347,9 +385,29 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
   // ITEM HANDLERS
   // ---------------------------------------------------------------------------
   const updateItem = (index: number, field: keyof LineItemState, value: any) => {
-    setItems(prev => prev.map((item, i) => 
-      i === index ? { ...item, [field]: value } : item
-    ));
+    setItems(prev => prev.map((item, i) => {
+      if (i !== index) return item;
+      
+      const updates: Partial<LineItemState> = { [field]: value };
+      
+      // Auto-detect pricing mode when unit changes
+      if (field === 'unit') {
+        const newMode: PricingMode = isWeightUnit(value) ? 'catch_weight' : 'fixed_price';
+        if (newMode !== item.pricingMode) {
+          updates.pricingMode = newMode;
+          // Swap values when mode changes
+          if (newMode === 'catch_weight') {
+            updates.weightReceived = item.quantityReceived;
+            updates.quantityReceived = 1;
+          } else {
+            updates.quantityReceived = item.weightReceived || 1;
+            updates.weightReceived = undefined;
+          }
+        }
+      }
+      
+      return { ...item, ...updates };
+    }));
   };
 
   const toggleVerify = (index: number) => {
@@ -373,8 +431,10 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
       productName: "",
       isVerified: false,
       isEditing: true,
+      pricingMode: 'fixed_price',
       quantityOrdered: 1,
       quantityReceived: 1,
+      pricePerUnit: 0,
       discrepancyType: 'none',
     }]);
   };
@@ -388,40 +448,51 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
   };
 
   // ---------------------------------------------------------------------------
-  // COMPUTED
+  // CALCULATE LINE TOTAL
   // ---------------------------------------------------------------------------
-  const verifiedCount = items.filter(i => i.isVerified).length;
-  const totalCount = items.length;
-  const allVerified = totalCount > 0 && verifiedCount === totalCount;
-  const invoiceTotal = items.reduce((sum, item) => sum + (item.unitPrice * item.quantityReceived), 0);
-  const hasDiscrepancies = items.some(i => i.discrepancyType !== 'none');
-  const totalShortValue = items.reduce((sum, item) => {
-    if (item.discrepancyType === 'short') {
-      return sum + ((item.quantityOrdered - item.quantityReceived) * item.unitPrice);
+  const calculateLineTotal = (item: LineItemState): number => {
+    if (item.pricingMode === 'catch_weight') {
+      return (item.weightReceived || 0) * item.pricePerUnit;
     }
-    return sum;
-  }, 0);
+    return item.quantityReceived * item.pricePerUnit;
+  };
 
-  // Update discrepancy type when quantities change
-  const handleQuantityChange = (index: number, field: 'quantityOrdered' | 'quantityReceived', value: number) => {
+  // ---------------------------------------------------------------------------
+  // DISCREPANCY HANDLERS
+  // ---------------------------------------------------------------------------
+  const handleQuantityChange = (index: number, field: 'quantityOrdered' | 'quantityReceived' | 'weightReceived', value: number) => {
     setItems(prev => prev.map((item, i) => {
       if (i !== index) return item;
       
       const newItem = { ...item, [field]: value };
-      const ordered = field === 'quantityOrdered' ? value : item.quantityOrdered;
-      const received = field === 'quantityReceived' ? value : item.quantityReceived;
       
-      // Auto-detect discrepancy
-      if (received < ordered) {
-        newItem.discrepancyType = 'short';
-      } else if (received > ordered) {
-        newItem.discrepancyType = 'over';
-      } else if (item.discrepancyType === 'short' || item.discrepancyType === 'over') {
-        newItem.discrepancyType = 'none';
+      // For catch weight, compare weights for discrepancy
+      // For fixed price, compare quantities
+      if (item.pricingMode === 'catch_weight') {
+        // Catch weight doesn't track ordered weight (just cases ordered)
+        // Discrepancy would be: ordered 1 case, received 0 cases
+        if (field === 'quantityReceived') {
+          if (value < item.quantityOrdered) {
+            newItem.discrepancyType = 'short';
+          } else if (value > item.quantityOrdered) {
+            newItem.discrepancyType = 'over';
+          } else if (item.discrepancyType === 'short' || item.discrepancyType === 'over') {
+            newItem.discrepancyType = 'none';
+          }
+        }
+      } else {
+        // Fixed price: compare ordered vs received quantities
+        const ordered = field === 'quantityOrdered' ? value : item.quantityOrdered;
+        const received = field === 'quantityReceived' ? value : item.quantityReceived;
+        
+        if (received < ordered) {
+          newItem.discrepancyType = 'short';
+        } else if (received > ordered) {
+          newItem.discrepancyType = 'over';
+        } else if (item.discrepancyType === 'short' || item.discrepancyType === 'over') {
+          newItem.discrepancyType = 'none';
+        }
       }
-      
-      // Update legacy quantity field to received
-      newItem.quantity = received;
       
       return newItem;
     }));
@@ -432,6 +503,28 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
       i === index ? { ...item, isExpanded: !item.isExpanded } : item
     ));
   };
+
+  // ---------------------------------------------------------------------------
+  // COMPUTED
+  // ---------------------------------------------------------------------------
+  const verifiedCount = items.filter(i => i.isVerified).length;
+  const totalCount = items.length;
+  const allVerified = totalCount > 0 && verifiedCount === totalCount;
+  const invoiceTotal = items.reduce((sum, item) => sum + calculateLineTotal(item), 0);
+  const hasDiscrepancies = items.some(i => i.discrepancyType !== 'none');
+  
+  // Calculate short value based on pricing mode
+  const totalShortValue = items.reduce((sum, item) => {
+    if (item.discrepancyType === 'short') {
+      if (item.pricingMode === 'fixed_price') {
+        return sum + ((item.quantityOrdered - item.quantityReceived) * item.pricePerUnit);
+      }
+      // For catch weight shorts (missing cases), estimate based on average weight
+      // This is a rough estimate since we don't know expected weight per case
+      return sum + ((item.quantityOrdered - item.quantityReceived) * item.pricePerUnit * 10); // Assume 10kg avg
+    }
+    return sum;
+  }, 0);
 
   // ---------------------------------------------------------------------------
   // VALIDATION & SUBMIT
@@ -447,7 +540,6 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
         setInvoiceNumberPing(true);
       }, 30000);
     } else {
-      // Clear timer and ping if they enter a number or confirm
       if (pingTimerRef.current) clearTimeout(pingTimerRef.current);
       setInvoiceNumberPing(false);
     }
@@ -456,7 +548,6 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
     };
   }, [invoiceNumber, noInvoiceNumberConfirmed]);
 
-  // Trigger ping on blur from empty field
   const handleInvoiceNumberBlur = () => {
     if (!invoiceNumber.trim() && !noInvoiceNumberConfirmed) {
       setInvoiceNumberPing(true);
@@ -464,22 +555,20 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
   };
 
   const handleSubmit = () => {
-    // Check for incomplete items (required for Triage pipeline)
     const incompleteItems = items.filter(item => 
       !item.productName.trim() || 
-      item.unitPrice <= 0
+      item.pricePerUnit <= 0
     );
 
     if (incompleteItems.length > 0) {
       const missing: string[] = [];
       if (incompleteItems.some(i => !i.productName.trim())) missing.push('product name');
-      if (incompleteItems.some(i => i.unitPrice <= 0)) missing.push('price');
+      if (incompleteItems.some(i => i.pricePerUnit <= 0)) missing.push('price');
       
       toast.error(`${incompleteItems.length} item${incompleteItems.length > 1 ? 's' : ''} missing ${missing.join(' and ')}`);
       return;
     }
 
-    // Block if no invoice number and not confirmed
     if (!invoiceNumber.trim() && !noInvoiceNumberConfirmed) {
       toast.error('Confirm "No Invoice #" before saving');
       return;
@@ -488,7 +577,6 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
     onSubmit();
   };
 
-  // Reset confirmation if they enter an invoice number
   useEffect(() => {
     if (invoiceNumber.trim()) {
       setNoInvoiceNumberConfirmed(false);
@@ -529,7 +617,6 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
                 placeholder="Enter invoice #"
                 className="input w-full bg-gray-800 border-gray-700 text-sm pr-10"
               />
-              {/* Two-stage confirmation when no invoice number - inside field */}
               {!invoiceNumber.trim() && (
                 <div className="absolute right-1 top-1/2 -translate-y-1/2">
                   {noInvoiceNumberConfirmed ? (
@@ -582,15 +669,15 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
 
       {/* Items Table */}
       <div className="flex-1 overflow-hidden flex flex-col border border-gray-700/50 rounded-lg">
-        {/* Table Header */}
+        {/* Table Header - Dynamic based on most common pricing mode */}
         <div className="grid grid-cols-12 gap-2 p-3 bg-gray-800/50 text-xs font-medium text-gray-400 uppercase tracking-wider border-b border-gray-700/50">
           <div className="col-span-3 text-center">Product</div>
           <div className="col-span-1 text-center">Code</div>
-          <div className="col-span-1 text-center">Ordered</div>
-          <div className="col-span-1 text-center">Received</div>
+          <div className="col-span-1 text-center">Ord</div>
+          <div className="col-span-1 text-center">Rcvd</div>
           <div className="col-span-1 text-center">Unit</div>
-          <div className="col-span-1 text-center">Price</div>
-          <div className="col-span-2 text-center">Total</div>
+          <div className="col-span-2 text-center">Price</div>
+          <div className="col-span-1 text-center">Total</div>
           <div className="col-span-2 text-center">Actions</div>
         </div>
 
@@ -671,39 +758,62 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
                     />
                   </div>
 
-                  {/* Quantity Ordered */}
+                  {/* Quantity Ordered (Cases) */}
                   <div className="col-span-1">
                     <input
                       type="number"
-                      step="any"
+                      step="1"
                       value={item.quantityOrdered}
                       onChange={(e) => handleQuantityChange(index, 'quantityOrdered', parseFloat(e.target.value) || 0)}
                       className="input w-full bg-transparent border-0 p-1.5 text-sm text-center rounded-lg focus:bg-slate-700/50 focus:ring-1 focus:ring-primary-500/50"
                       min="0"
+                      title="Cases ordered"
                     />
                   </div>
 
-                  {/* Quantity Received */}
+                  {/* Received: Weight (catch) or Qty (fixed) */}
                   <div className="col-span-1">
-                    <input
-                      type="number"
-                      step="any"
-                      value={item.quantityReceived}
-                      onChange={(e) => handleQuantityChange(index, 'quantityReceived', parseFloat(e.target.value) || 0)}
-                      className={`input w-full bg-transparent border-0 p-1.5 text-sm text-center rounded-lg focus:bg-slate-700/50 focus:ring-1 focus:ring-primary-500/50 ${
-                        item.discrepancyType === 'short' ? 'text-rose-400 font-medium' :
-                        item.discrepancyType === 'over' ? 'text-amber-400 font-medium' : ''
-                      }`}
-                      min="0"
-                    />
+                    {item.pricingMode === 'catch_weight' ? (
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={item.weightReceived || ''}
+                        onChange={(e) => updateItem(index, 'weightReceived', parseFloat(e.target.value) || 0)}
+                        className="input w-full bg-transparent border-0 p-1.5 text-sm text-center rounded-lg focus:bg-slate-700/50 focus:ring-1 focus:ring-primary-500/50 text-cyan-400"
+                        min="0"
+                        placeholder="kg"
+                        title="Weight received (kg)"
+                      />
+                    ) : (
+                      <input
+                        type="number"
+                        step="1"
+                        value={item.quantityReceived}
+                        onChange={(e) => handleQuantityChange(index, 'quantityReceived', parseFloat(e.target.value) || 0)}
+                        className={`input w-full bg-transparent border-0 p-1.5 text-sm text-center rounded-lg focus:bg-slate-700/50 focus:ring-1 focus:ring-primary-500/50 ${
+                          item.discrepancyType === 'short' ? 'text-rose-400 font-medium' :
+                          item.discrepancyType === 'over' ? 'text-amber-400 font-medium' : ''
+                        }`}
+                        min="0"
+                        title="Quantity received"
+                      />
+                    )}
                   </div>
 
-                  {/* Purchase Unit */}
+                  {/* Unit - dropdown from Operations settings */}
                   <div className="col-span-1">
                     <select
                       value={item.unit}
                       onChange={(e) => updateItem(index, "unit", e.target.value)}
-                      className="input w-full bg-transparent border-0 p-1.5 text-sm text-center rounded-lg focus:bg-slate-700/50 focus:ring-1 focus:ring-primary-500/50 cursor-pointer"
+                      className={`input w-full bg-transparent border-0 p-1.5 text-xs text-center rounded-lg focus:bg-slate-700/50 focus:ring-1 focus:ring-primary-500/50 cursor-pointer ${
+                        item.pricingMode === 'catch_weight' 
+                          ? 'text-cyan-400' 
+                          : 'text-gray-400'
+                      }`}
+                      title={item.pricingMode === 'catch_weight' 
+                        ? 'Catch Weight: Price per unit weight'
+                        : 'Fixed Price: Price per unit'
+                      }
                     >
                       {purchaseUnits.map((unit) => (
                         <option key={unit} value={unit} className="bg-gray-800">
@@ -713,26 +823,29 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
                     </select>
                   </div>
 
-                  {/* Unit Price */}
-                  <div className="col-span-1">
-                    <div className="relative">
-                      <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-gray-600 text-sm">$</span>
+                  {/* Price Per Unit */}
+                  <div className="col-span-2">
+                    <div className="relative flex items-center">
+                      <span className="absolute left-2 text-gray-600 text-sm">$</span>
                       <input
                         type="number"
                         step="0.01"
-                        value={item.unitPrice}
-                        onChange={(e) => updateItem(index, "unitPrice", parseFloat(e.target.value) || 0)}
-                        className="input w-full bg-transparent border-0 p-1.5 pl-5 text-sm text-center rounded-lg focus:bg-slate-700/50 focus:ring-1 focus:ring-primary-500/50"
+                        value={item.pricePerUnit}
+                        onChange={(e) => updateItem(index, "pricePerUnit", parseFloat(e.target.value) || 0)}
+                        className="input w-full bg-transparent border-0 p-1.5 pl-5 pr-10 text-sm text-center rounded-lg focus:bg-slate-700/50 focus:ring-1 focus:ring-primary-500/50"
                       />
+                      <span className="absolute right-2 text-xs text-gray-500">
+                        /{item.unit?.toLowerCase() || 'ea'}
+                      </span>
                     </div>
                   </div>
 
-                  {/* Line Total (based on received) */}
-                  <div className="col-span-2 text-center text-sm text-gray-400 font-medium">
-                    ${(item.quantityReceived * item.unitPrice).toFixed(2)}
+                  {/* Line Total */}
+                  <div className="col-span-1 text-center text-sm text-gray-400 font-medium">
+                    ${calculateLineTotal(item).toFixed(2)}
                   </div>
 
-                  {/* Actions - L5 sizing: h-8 w-8 buttons, w-4 h-4 icons */}
+                  {/* Actions */}
                   <div className="col-span-2 flex items-center justify-center gap-1">
                     <button
                       onClick={() => toggleExpanded(index)}
@@ -765,11 +878,10 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
                   </div>
                 </div>
 
-                {/* Expanded Row: Notes & Discrepancy - Single line layout */}
+                {/* Expanded Row: Notes & Discrepancy */}
                 {item.isExpanded && (
                   <div className="px-3 py-2 bg-gray-800/30 border-b border-gray-700/50">
                     <div className="flex items-center gap-3">
-                      {/* Discrepancy Type */}
                       {item.discrepancyType !== 'none' && (
                         <>
                           <select
@@ -784,15 +896,14 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
                             <option value="rejected">Rejected</option>
                             <option value="other">Other</option>
                           </select>
-                          {item.discrepancyType === 'short' && (
+                          {item.discrepancyType === 'short' && item.pricingMode === 'fixed_price' && (
                             <span className="text-xs text-rose-400 whitespace-nowrap">
-                              Credit: ${((item.quantityOrdered - item.quantityReceived) * item.unitPrice).toFixed(2)}
+                              Credit: ${((item.quantityOrdered - item.quantityReceived) * item.pricePerUnit).toFixed(2)}
                             </span>
                           )}
                           <div className="w-px h-6 bg-gray-700" />
                         </>
                       )}
-                      {/* Notes - single line input */}
                       <div className="flex-1 flex items-center gap-2">
                         <span className="text-xs text-gray-500 whitespace-nowrap">Notes:</span>
                         <input
@@ -803,7 +914,6 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
                           className="input flex-1 bg-gray-800 border-gray-700 text-sm py-1.5 px-2"
                         />
                       </div>
-                      {/* Collapse button */}
                       <button
                         onClick={() => toggleExpanded(index)}
                         className="h-8 w-8 rounded-lg flex items-center justify-center bg-gray-700/50 text-gray-400 hover:text-gray-300 transition-colors flex-shrink-0"
@@ -836,7 +946,6 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
         <div className={`floating-action-bar ${hasDiscrepancies ? 'danger' : !allVerified ? 'warning' : ''}`}>
           <div className="floating-action-bar-inner">
             <div className="floating-action-bar-content">
-              {/* Verified count */}
               <div className="flex items-center gap-1.5 text-sm">
                 <span className="text-gray-400">Verified:</span>
                 <span className={verifiedCount === totalCount ? "text-emerald-400 font-medium" : "text-amber-400 font-medium"}>
@@ -844,7 +953,6 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
                 </span>
               </div>
               
-              {/* Shorts value (if any) */}
               {hasDiscrepancies && (
                 <>
                   <div className="w-px h-6 bg-gray-700" />
@@ -857,14 +965,12 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
               
               <div className="w-px h-6 bg-gray-700" />
               
-              {/* Invoice total */}
               <div className="text-lg font-semibold text-white">
                 ${invoiceTotal.toFixed(2)}
               </div>
               
               <div className="w-px h-6 bg-gray-700" />
               
-              {/* Actions */}
               <button
                 onClick={onCancel}
                 className="btn-ghost text-sm py-1.5 px-4"
@@ -894,7 +1000,7 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Fixed Search Dropdown - renders outside scroll container */}
+      {/* Fixed Search Dropdown */}
       {activeSearchIndex !== null && searchResults.length > 0 && dropdownPosition && (
         <div
           className="fixed bg-gray-800 border border-gray-700 rounded-lg shadow-xl max-h-48 overflow-y-auto"

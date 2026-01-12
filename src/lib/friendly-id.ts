@@ -194,3 +194,33 @@ export function isPrepIngredient(signals: IngredientTypeSignals): boolean {
 export function isPurchasedIngredient(signals: IngredientTypeSignals): boolean {
   return determineIngredientType(signals) === 'purchased';
 }
+
+// =============================================================================
+// INVOICE REFERENCE GENERATION
+// =============================================================================
+// Generate unique, readable invoice references for imports without invoice numbers
+// Format: INV-{short_friendly_id}
+// Example: INV-Xk9mR2p
+// =============================================================================
+
+/**
+ * Generate a unique invoice reference
+ * Used when importing invoices that don't have vendor invoice numbers
+ * (e.g., register receipts, CSV uploads)
+ * @returns Invoice reference string like "INV-Xk9mR2p"
+ */
+export function generateInvoiceReference(): string {
+  const { friendlyId } = generateFriendlyId();
+  // Use first 7 chars for brevity while maintaining uniqueness
+  return `INV-${friendlyId.slice(0, 7)}`;
+}
+
+/**
+ * Check if a string is a generated invoice reference
+ * @param ref - String to check
+ * @returns true if it matches INV-XXXXXXX pattern
+ */
+export function isGeneratedInvoiceReference(ref: string): boolean {
+  if (!ref) return false;
+  return /^INV-[0-9A-HJ-NP-Za-km-z]{7}$/.test(ref);
+}
