@@ -224,9 +224,15 @@ export function ExcelDataGrid<T>({
         const value = getNestedValue(item, key);
         if (value == null) return false;
 
-        switch (column.type) {
+        // Use filterType if specified, otherwise fall back to column type
+        const effectiveType = column.filterType || column.type;
+
+        switch (effectiveType) {
           case "text":
             return String(value).toLowerCase().includes(String(filterValue).toLowerCase());
+          case "select":
+            // Exact match for dropdown selections
+            return String(value) === String(filterValue);
           case "number":
           case "currency":
             const [min, max] = filterValue as [number | null, number | null];
@@ -240,7 +246,8 @@ export function ExcelDataGrid<T>({
             if (endDate && new Date(endDate) < dateValue) return false;
             return true;
           default:
-            return true;
+            // For custom columns without filterType, do text match
+            return String(value).toLowerCase().includes(String(filterValue).toLowerCase());
         }
       });
     });
@@ -285,12 +292,16 @@ export function ExcelDataGrid<T>({
   // ---------------------------------------------------------------------------
   // UNIQUE VALUES FOR SMART FILTERS
   // ---------------------------------------------------------------------------
-  // Compute unique values for each text column to enable smart dropdowns
+  // Compute unique values for filterable columns (text OR custom with filterType)
   const columnUniqueValues = useMemo(() => {
     const uniqueMap: Record<string, string[]> = {};
     
     columns
-      .filter((col) => col.type === "text")
+      .filter((col) => 
+        col.type === "text" || 
+        col.filterType === "select" || 
+        col.filterType === "text"
+      )
       .forEach((col) => {
         const values = new Set<string>();
         data.forEach((item) => {
@@ -385,22 +396,27 @@ export function ExcelDataGrid<T>({
     );
   }, [columns]);
 
-  // Columns to show in "Other Filters" (excluding category hierarchy and trimmed columns)
+  // Columns to show in "Other Filters" (excluding category hierarchy and non-filterable)
   const otherFilterColumns = useMemo(() => {
     const excludeKeys = [
       "major_group", "major_group_name",
       "category", "category_name", 
       "sub_category", "sub_category_name",
       "storage_area", "cost_per_recipe_unit", "recipe_unit_type", // Trimmed per Steve's request
+      "actions", // Never filterable
     ];
-    return columns.filter(
-      (col) => 
-        col.type !== "imageUrl" && 
-        col.type !== "allergen" &&
-        col.type !== "currency" && // Remove numeric filters for simplicity
-        col.type !== "number" &&
-        !excludeKeys.includes(col.key)
-    );
+    return columns.filter((col) => {
+      // Skip excluded keys
+      if (excludeKeys.includes(col.key)) return false;
+      // Skip non-filterable types
+      if (col.type === "imageUrl" || col.type === "allergen") return false;
+      // Include if explicitly marked filterable
+      if (col.filterable === true) return true;
+      // Include text columns by default
+      if (col.type === "text") return true;
+      // Exclude everything else (unless filterable is explicitly true above)
+      return false;
+    });
   }, [columns]);
 
   // ---------------------------------------------------------------------------

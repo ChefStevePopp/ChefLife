@@ -168,7 +168,12 @@ export const MobileInvoice: React.FC<Props> = ({
   }, [settings, fetchSettings]);
 
   // ---------------------------------------------------------------------------
-  // LOAD VENDOR'S INGREDIENTS
+  // LOAD VENDOR'S INGREDIENTS (L5: Complete implementation)
+  // ---------------------------------------------------------------------------
+  // Sources:
+  // 1. Direct: master_ingredients_with_categories.vendor = vendorId
+  // 2. Historical: ingredients that appeared on this vendor's invoices
+  // Frequent items: aggregated from invoice history
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!vendorId) return;
@@ -176,73 +181,98 @@ export const MobileInvoice: React.FC<Props> = ({
     const loadVendorIngredients = async () => {
       setIsLoadingIngredients(true);
       try {
-        // Get ingredients linked to this vendor via primary_vendor_id
+        // ---------------------------------------------------------------------
+        // STEP 1: Direct vendor assignment (purchased items only)
+        // ---------------------------------------------------------------------
         const { data: directIngredients, error: directError } = await supabase
-          .from("master_ingredients")
+          .from("master_ingredients_with_categories")
           .select("*")
-          .eq("primary_vendor_id", vendorId)
+          .eq("vendor", vendorId)
+          .eq("ingredient_type", "purchased")
           .order("product");
 
         if (directError) throw directError;
 
-        // Also get ingredients from invoice history for this vendor
-        // vendor_invoice_items links through invoice_id to vendor_invoices.vendor_id
-        const { data: invoiceIngredients, error: invoiceError } = await supabase
+        // Build ingredient map (direct items first)
+        const allIngredients = new Map<string, MasterIngredient>();
+        (directIngredients || []).forEach((ing: MasterIngredient) => {
+          allIngredients.set(ing.id, ing);
+        });
+
+        // ---------------------------------------------------------------------
+        // STEP 2: Historical - get ingredient IDs from invoice history
+        // Two-step query avoids FK issues with views
+        // ---------------------------------------------------------------------
+        const { data: invoiceHistory, error: historyError } = await supabase
           .from("vendor_invoice_items")
           .select(`
             master_ingredient_id,
-            master_ingredients (*),
             vendor_invoices!inner (vendor_id)
           `)
           .eq("vendor_invoices.vendor_id", vendorId)
           .not("master_ingredient_id", "is", null);
 
-        if (invoiceError) {
-          console.warn("Could not load invoice ingredients:", invoiceError);
-          // Continue with just direct ingredients
+        if (historyError) {
+          console.warn("Could not load invoice history:", historyError);
+          // Continue with direct ingredients only
         }
 
-        // Merge and deduplicate
-        const allIngredients = new Map<string, MasterIngredient>();
-        
-        (directIngredients || []).forEach((ing: MasterIngredient) => {
-          allIngredients.set(ing.id, ing);
-        });
-
-        (invoiceIngredients || []).forEach((item: any) => {
-          if (item.master_ingredients) {
-            allIngredients.set(item.master_ingredients.id, item.master_ingredients);
+        // Build frequency counts for "frequently purchased" feature
+        const frequencyCounts = new Map<string, number>();
+        (invoiceHistory || []).forEach((item: any) => {
+          if (item.master_ingredient_id) {
+            const count = frequencyCounts.get(item.master_ingredient_id) || 0;
+            frequencyCounts.set(item.master_ingredient_id, count + 1);
           }
         });
 
+        // Find ingredient IDs from history that aren't in direct list
+        const directIds = new Set(allIngredients.keys());
+        const historicalIds = [...new Set(
+          (invoiceHistory || [])
+            .map((h: any) => h.master_ingredient_id)
+            .filter((id: string) => id && !directIds.has(id))
+        )];
+
+        // ---------------------------------------------------------------------
+        // STEP 3: Fetch historical ingredients from view (if any new ones)
+        // ---------------------------------------------------------------------
+        if (historicalIds.length > 0) {
+          const { data: historicalIngredients, error: historicalError } = await supabase
+            .from("master_ingredients_with_categories")
+            .select("*")
+            .in("id", historicalIds)
+            .eq("ingredient_type", "purchased");
+
+          if (historicalError) {
+            console.warn("Could not load historical ingredients:", historicalError);
+          } else {
+            (historicalIngredients || []).forEach((ing: MasterIngredient) => {
+              allIngredients.set(ing.id, ing);
+            });
+          }
+        }
+
+        // Set combined ingredient list
         const ingredientList = Array.from(allIngredients.values());
         setIngredients(ingredientList);
 
-        // Get frequent items (most purchased from this vendor)
-        // Need to aggregate by ingredient across invoices
-        if (invoiceIngredients && invoiceIngredients.length > 0) {
-          const counts = new Map<string, { ingredient: MasterIngredient; count: number }>();
-          
-          invoiceIngredients.forEach((item: any) => {
-            if (item.master_ingredients && item.master_ingredient_id) {
-              const existing = counts.get(item.master_ingredient_id);
-              if (existing) {
-                existing.count++;
-              } else {
-                counts.set(item.master_ingredient_id, {
-                  ingredient: item.master_ingredients,
-                  count: 1,
-                });
-              }
-            }
-          });
-
-          const sorted = Array.from(counts.values())
-            .sort((a, b) => b.count - a.count)
+        // ---------------------------------------------------------------------
+        // STEP 4: Build frequent items from invoice history counts
+        // ---------------------------------------------------------------------
+        if (frequencyCounts.size > 0) {
+          // Sort by frequency, take top 6
+          const topIds = Array.from(frequencyCounts.entries())
+            .sort((a, b) => b[1] - a[1])
             .slice(0, 6)
-            .map((c) => c.ingredient);
+            .map(([id]) => id);
 
-          setFrequentItems(sorted);
+          // Map to actual ingredients (from our combined list)
+          const frequent = topIds
+            .map((id) => allIngredients.get(id))
+            .filter((ing): ing is MasterIngredient => ing !== undefined);
+
+          setFrequentItems(frequent);
         } else {
           setFrequentItems([]);
         }

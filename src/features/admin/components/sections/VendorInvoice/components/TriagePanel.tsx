@@ -76,25 +76,20 @@ const getTriageColumns = (
     key: "source",
     name: "Source",
     type: "custom",
-    width: 90,
+    filterType: "select",
+    width: 80,
     filterable: true,
     sortable: true,
     align: "center",
     render: (value: string) => (
       <div className="w-full flex justify-center">
         {value === "skipped" ? (
-          <div 
-            className="w-7 h-7 rounded-lg bg-amber-500/20 flex items-center justify-center"
-            title="Skipped - Not created yet"
-          >
-            <Ghost className="w-4 h-4 text-amber-400" />
+          <div className="icon-badge-amber" title="Skipped - Not created yet">
+            <Ghost />
           </div>
         ) : (
-          <div 
-            className="w-7 h-7 rounded-lg bg-rose-500/20 flex items-center justify-center"
-            title="Incomplete - Missing required fields"
-          >
-            <AlertTriangle className="w-4 h-4 text-rose-400" />
+          <div className="icon-badge-rose" title="Incomplete - Missing required fields">
+            <AlertTriangle />
           </div>
         )}
       </div>
@@ -104,25 +99,20 @@ const getTriageColumns = (
     key: "ingredient_type",
     name: "Type",
     type: "custom",
-    width: 90,
+    filterType: "select",
+    width: 80,
     filterable: true,
     sortable: true,
     align: "center",
     render: (value: string) => (
       <div className="w-full flex justify-center">
         {value === "prep" ? (
-          <div 
-            className="w-7 h-7 rounded-lg bg-purple-500/20 flex items-center justify-center"
-            title="Prep - Made in kitchen"
-          >
-            <ChefHat className="w-4 h-4 text-purple-400" />
+          <div className="icon-badge-purple" title="Prep - Made in kitchen">
+            <ChefHat />
           </div>
         ) : (
-          <div 
-            className="w-7 h-7 rounded-lg bg-primary-500/20 flex items-center justify-center"
-            title="Purchased - From vendor"
-          >
-            <ShoppingCart className="w-4 h-4 text-primary-400" />
+          <div className="icon-badge-primary" title="Purchased - From vendor">
+            <ShoppingCart />
           </div>
         )}
       </div>
@@ -130,24 +120,31 @@ const getTriageColumns = (
   },
   {
     key: "item_code",
-    name: "Item Code",
-    type: "text",
-    width: 140,
+    name: "Code",
+    type: "custom",
+    filterType: "text",
+    width: 110,
     filterable: true,
     sortable: true,
+    align: "center",
+    render: (value: string) => (
+      <span className="text-sm text-gray-500 font-mono">{value}</span>
+    ),
   },
   {
     key: "product_name",
     name: "Product Name",
     type: "custom",
-    width: 300,
+    filterType: "text",
+    width: 280,
     filterable: true,
     sortable: true,
+    align: "center",
     render: (value: string, row: PendingItem) => (
-      <div>
-        <span className="text-white">{value}</span>
+      <div className="text-center">
+        <span className="text-white font-medium">{value}</span>
         {row.vendor_name && (
-          <div className="text-xs text-gray-500">{row.vendor_name}</div>
+          <div className="text-xs text-gray-600">{row.vendor_name}</div>
         )}
       </div>
     ),
@@ -156,47 +153,36 @@ const getTriageColumns = (
     key: "unit_price",
     name: "Price",
     type: "custom",
-    width: 100,
+    filterType: "number",
+    width: 90,
+    filterable: true,
     sortable: true,
-    align: "right",
+    align: "center",
     render: (value: number | null) => (
-      <span className="text-gray-300 font-medium">
-        <span className="text-emerald-400">$</span> {value != null ? value.toFixed(2) : "-"}
+      <span className="font-semibold">
+        <span className="text-emerald-500">$</span>
+        <span className="text-white">{value != null ? value.toFixed(2) : "—"}</span>
       </span>
     ),
   },
   {
     key: "percent_complete",
-    name: "% Complete",
+    name: "Complete",
     type: "custom",
-    width: 140,
+    filterType: "number",
+    width: 130,
+    filterable: true,
     sortable: true,
     align: "center",
     render: (value: number) => (
       <div className="w-full flex items-center justify-center gap-2">
-        <div className="flex-1 h-2 bg-gray-700 rounded-full overflow-hidden">
+        <div className="w-16 h-1.5 bg-gray-800 rounded-full overflow-hidden">
           <div
-            className={`h-full rounded-full transition-all ${
-              value === 0
-                ? "bg-gray-600"
-                : value < 50
-                ? "bg-rose-500"
-                : value < 100
-                ? "bg-amber-500"
-                : "bg-emerald-500"
-            }`}
+            className="h-full rounded-full bg-primary-500/40"
             style={{ width: `${value}%` }}
           />
         </div>
-        <span className={`text-xs font-medium w-8 text-right ${
-          value === 0
-            ? "text-gray-500"
-            : value < 50
-            ? "text-rose-400"
-            : value < 100
-            ? "text-amber-400"
-            : "text-emerald-400"
-        }`}>
+        <span className="text-sm text-gray-500 tabular-nums">
           {value}%
         </span>
       </div>
@@ -204,7 +190,7 @@ const getTriageColumns = (
   },
   {
     key: "actions",
-    name: "Actions",
+    name: "",
     type: "custom",
     width: 100,
     sortable: false,
@@ -217,10 +203,10 @@ const getTriageColumns = (
             e.stopPropagation();
             onEdit(row);
           }}
-          className="w-7 h-7 rounded-lg flex items-center justify-center bg-gray-800/50 hover:bg-primary-500/20 text-gray-400 hover:text-primary-400 transition-colors"
+          className="h-8 w-8 rounded-lg flex items-center justify-center bg-gray-800/50 hover:bg-primary-500/20 text-gray-500 hover:text-primary-400 transition-colors"
           title="Edit / Complete Setup"
         >
-          <Pencil className="w-3.5 h-3.5" />
+          <Pencil className="w-4 h-4" />
         </button>
         <TwoStageButton
           onConfirm={() => onDelete(row)}
@@ -495,47 +481,47 @@ export const TriagePanel: React.FC = () => {
           className="expandable-info-header w-full justify-between"
         >
           <div className="flex items-center gap-2">
-            <Info className="w-4 h-4 text-cyan-400 flex-shrink-0" />
-            <span className="text-sm font-medium text-gray-300">
+            <Info className="w-4 h-4 text-gray-500 flex-shrink-0" />
+            <span className="text-sm font-medium text-gray-400">
               Icon Legend
             </span>
           </div>
-          <ChevronUp className="w-4 h-4 text-gray-400" />
+          <ChevronUp className="w-4 h-4 text-gray-500" />
         </button>
         <div className="expandable-info-content">
           <div className="p-4 pt-2">
             <div className="grid grid-cols-2 gap-6">
               <div>
-                <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Source</div>
+                <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Source</div>
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-amber-500/20 flex items-center justify-center">
-                      <Ghost className="w-4 h-4 text-amber-400" />
+                    <div className="icon-badge-amber">
+                      <Ghost />
                     </div>
-                    <span className="text-sm text-gray-300">Skipped — Not created yet, parked during import</span>
+                    <span className="text-sm text-gray-400">Skipped — Parked during import</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-rose-500/20 flex items-center justify-center">
-                      <AlertTriangle className="w-4 h-4 text-rose-400" />
+                    <div className="icon-badge-rose">
+                      <AlertTriangle />
                     </div>
-                    <span className="text-sm text-gray-300">Incomplete — Created but missing required fields</span>
+                    <span className="text-sm text-gray-400">Incomplete — Missing required fields</span>
                   </div>
                 </div>
               </div>
               <div>
-                <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Type</div>
+                <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Type</div>
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-primary-500/20 flex items-center justify-center">
-                      <ShoppingCart className="w-4 h-4 text-primary-400" />
+                    <div className="icon-badge-primary">
+                      <ShoppingCart />
                     </div>
-                    <span className="text-sm text-gray-300">Purchased — Bought from vendor</span>
+                    <span className="text-sm text-gray-400">Purchased — From vendor</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                      <ChefHat className="w-4 h-4 text-purple-400" />
+                    <div className="icon-badge-purple">
+                      <ChefHat />
                     </div>
-                    <span className="text-sm text-gray-300">Prep — Made in kitchen from recipe</span>
+                    <span className="text-sm text-gray-400">Prep — Made in kitchen</span>
                   </div>
                 </div>
               </div>

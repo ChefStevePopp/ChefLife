@@ -301,11 +301,44 @@ export interface ExcelColumn {
   width: number;         // Column width in pixels
   sortable?: boolean;    // Enable sorting (default: true)
   filterable?: boolean;  // Enable filtering (default: false)
+  filterType?: "text" | "number" | "currency" | "date" | "select";  // Override filter UI
   align?: "left" | "center" | "right";  // Header and cell alignment
   render?: (value: any, row: any) => React.ReactNode;  // Custom cell renderer
   filterOptions?: { value: string; label: string }[];  // Dropdown filter values
 }
 ```
+
+### filterType vs type
+
+The `filterType` property allows custom columns to specify their filter behavior independently of display:
+
+```typescript
+// Icon display + dropdown filter
+{
+  key: "source",
+  type: "custom",           // Display: custom render function
+  filterType: "select",     // Filter: dropdown with unique values
+  filterable: true,
+  render: (value) => <IconBadge value={value} />
+}
+
+// Custom display + range filter
+{
+  key: "percent_complete",
+  type: "custom",           // Display: progress bar
+  filterType: "number",     // Filter: min/max range inputs
+  filterable: true,
+  render: (value) => <ProgressBar value={value} />
+}
+```
+
+| filterType | Filter UI | Use For |
+|------------|-----------|--------|
+| `text` | Text input / autocomplete | Names, descriptions |
+| `select` | Dropdown | Categorical data (status, type) |
+| `number` | Min/Max range | Numeric values |
+| `currency` | Min/Max range | Dollar amounts |
+| `date` | Date range picker | Date fields |
 
 ### Custom Column Rendering
 

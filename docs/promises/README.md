@@ -70,6 +70,7 @@ Which ChefLife modules/features deliver this promise?
 ├── ⏱️ Time
 │   ├── The system learns, so you do less
 │   ├── Fast entry, not photo gymnastics
+│   ├── Your phone is your command center
 │   └── [Future promises...]
 │
 ├── 📈 Intelligence
@@ -99,6 +100,7 @@ Which ChefLife modules/features deliver this promise?
 |---------|--------|
 | [The System Learns, So You Do Less](PROMISE-System-Learns.md) | Building 🔄 |
 | [Fast Entry, Not Photo Gymnastics](PROMISE-Fast-Entry-Not-Photo-Gymnastics.md) | Documented ✅ |
+| [Your Phone is Your Command Center](PROMISE-Phone-Command-Center.md) | Designed ✅ |
 
 ---
 
@@ -145,5 +147,5 @@ If a feature requires users to:
 ---
 
 *Created: January 10, 2026*
-*Updated: January 11, 2026 - Fast Entry promise added*
+*Updated: January 11, 2026 - Phone Command Center promise added*
 *Section: Product Philosophy*

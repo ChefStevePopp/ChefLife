@@ -61,6 +61,7 @@ export type ActivityType =
   // Vendor/Purchasing activities
   | "invoice_imported"
   | "price_change_detected"
+  | "invoice_discrepancy_recorded"
   | "vendor_added"
   // Settings activities
   | "settings_changed"
@@ -153,6 +154,7 @@ const ACTIVITY_TYPE_TO_CATEGORY: Record<ActivityType, ActivityCategory> = {
   // Financial
   invoice_imported: 'financial',
   price_change_detected: 'financial',
+  invoice_discrepancy_recorded: 'financial',
   vendor_added: 'financial',
   
   // System
@@ -297,10 +299,14 @@ const ACTIVITY_TOAST_CONFIG: Partial<Record<ActivityType, ToastConfig | null>> =
   
   // Financial
   invoice_imported: { 
-    message: (d) => `Invoice from ${d.vendor || 'vendor'} imported` 
+    message: (d) => `Invoice from ${d.vendor || 'vendor'} imported (${d.item_count || 0} items)` 
   },
   price_change_detected: { 
-    message: (d) => `Price change detected: ${d.item || 'item'}`,
+    message: (d) => `Price ${d.direction || 'change'}: ${d.item || 'item'} (${d.change_percent || 0}%)`,
+    severity: 'warning'
+  },
+  invoice_discrepancy_recorded: {
+    message: (d) => `Delivery discrepancy: ${d.vendor || 'Vendor'} - ${d.discrepancy_count || 0} item(s), ${(d.discrepancy_value || 0).toFixed(2)} short`,
     severity: 'warning'
   },
   

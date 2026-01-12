@@ -8,6 +8,18 @@
 
 ## Philosophy
 
+### The Prime Directive: L5 From the Start
+
+> **"We build L5 from the start — no MVP."**
+
+Don't scaffold junk to polish later. Every component starts with:
+- Proper L5 header structure
+- Loading skeletons (not spinners)
+- Empty states with clear CTAs
+- Correct styling patterns
+
+It takes the same time to build it right as to build it wrong then fix it.
+
 ### The Core Promise: Tech That Works For You, Not Against You
 
 Before any design decision, ask:
@@ -1099,6 +1111,110 @@ A feature is L5 complete when:
 
 ---
 
+## Database Foundations
+
+Core schema relationships that underpin all ChefLife features.
+
+### Organization Membership
+
+```
+auth.users (Supabase Auth)
+    │
+    ├── organization_roles (join table) ──► organizations
+    │       user_id ◄─────────────────────► organization_id
+    │
+    └── organization_team_members (employees, may not be app users)
+            └── References organization_id
+```
+
+| Table | Purpose | When to Use |
+|-------|---------|-------------|
+| `organization_roles` | Links users → organizations | **RLS policies**, permission checks |
+| `organizations` | The orgs themselves | Company settings, branding |
+| `organization_team_members` | Team members (employees) | Scheduling, performance, payroll |
+
+**Key distinction:** A `team_member` is an employee (may not have app login). A `user` in `organization_roles` has app access.
+
+### RLS Policy Pattern
+
+Every table with `organization_id` uses this pattern:
+
+```sql
+-- Standard RLS for org-scoped tables
+ALTER TABLE your_table ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their organization's data" ON your_table
+  FOR SELECT USING (organization_id IN (
+    SELECT organization_id FROM organization_roles WHERE user_id = auth.uid()
+  ));
+
+CREATE POLICY "Users can manage their organization's data" ON your_table
+  FOR ALL USING (organization_id IN (
+    SELECT organization_id FROM organization_roles WHERE user_id = auth.uid()
+  ));
+```
+
+**⚠️ Common Mistake:** The table is `organization_roles`, NOT `user_organizations`. Migrations have failed on this.
+
+### Operations Settings
+
+Organization-wide configuration lives in `operations_settings`:
+
+```sql
+operations_settings
+├── organization_id (FK → organizations)
+├── storage_areas text[]
+├── kitchen_stations text[]
+├── vendors text[]
+├── purchase_unit_measures text[]   -- Case, kg, lb, Box, etc.
+├── volume_measures text[]
+├── weight_measures text[]
+├── ... (many more arrays)
+└── category_groups jsonb           -- UI tab configuration
+```
+
+**Access Pattern:**
+```typescript
+import { useOperationsStore } from "@/stores/operationsStore";
+
+const { settings, fetchSettings } = useOperationsStore();
+const purchaseUnits = settings?.purchase_unit_measures || ['Case', 'Each', 'kg', 'lb'];
+```
+
+This powers all dropdowns in the app - vendors, storage areas, measurements, etc.
+
+### Vendor Invoice Chain
+
+```
+vendor_imports (batch import record)
+    │
+    └── vendor_invoices (individual invoice)
+            │
+            ├── vendor_invoice_items (line items)
+            │       ├── master_ingredient_id (FK)
+            │       ├── quantity_ordered / quantity_received
+            │       └── discrepancy_type, notes
+            │
+            └── vendor_credits (for shorts/damages)
+                    └── Links back to invoice_item_id
+```
+
+**Audit Trail:** Every price change traces back to a source document via `vendor_price_history.invoice_item_id`.
+
+### Migration Naming Convention
+
+```
+YYYYMMDD[sequence]_description.sql
+
+Examples:
+20260111000000_vim_order_delivery_tracking.sql
+20260111100000_add_purchase_unit_measures.sql
+```
+
+Sequence numbers (`000000`, `100000`) allow multiple migrations per day in order.
+
+---
+
 ## References
 
 - **UTILS.md** — Date utilities, formatters
@@ -1124,11 +1240,167 @@ A feature is L5 complete when:
 
 ---
 
-*Last updated: January 10, 2026*
+## Mobile-First Design (MobileShell Paradigm)
+
+ChefLife has two distinct experiences:
+- **Desktop Admin** — Complex data grids, deep configuration, sidebar navigation
+- **Mobile Command Center** — Launcher-style interface, swipeable pages, glanceable widgets
+
+### The Paradigm Shift
+
+| Desktop Admin | Mobile Command |
+|---------------|----------------|
+| Complex data grids | Glanceable widgets |
+| Deep navigation | Swipe pages |
+| Mouse precision | Thumb-friendly targets |
+| Information dense | Action focused |
+| Sidebar + tabs | Launcher + icons |
+
+Same data. Completely different experience.
+
+### Three Pillars: People, Place, Profit
+
+```
+         ○  ●  ○
+      People|Place|Profit
+```
+
+| Page | Focus | Primary Actions |
+|------|-------|----------------|
+| **People** | Team management | Schedule, messaging, who's on |
+| **Place** | Operations | Temps, tasks, checklists, receiving |
+| **Profit** | Money flow | Quick Invoice, revenue, counts |
+
+This hierarchy mirrors restaurant philosophy:
+> "If you don't have the people, you don't have a place for guests. No guests, no profit."
+
+### MobileShell Components
+
+| Component | Purpose |
+|-----------|--------|
+| `MobileShell` | Root wrapper, page state, swipe handling |
+| `AlertTicker` | Animated urgent notifications banner |
+| `HeroContext` | Greeting, shift info, contextual imagery |
+| `SwipeablePages` | Horizontal scroll-snap container |
+| `WidgetAccordion` | Expandable sections with animated stats |
+| `IconCluster` | Glassmorphism action button grid |
+| `PageDots` | Newton's cradle navigation indicator |
+| `BottomNav` | Updated 4+1 navigation |
+
+### Signature Interactions
+
+**Newton's Cradle Page Dots:**
+Physics-based animation that transfers momentum between dots on page swipe.
+```css
+@keyframes cradle-swing-out {
+  0%   { transform: rotate(0deg) translateX(0); }
+  40%  { transform: rotate(25deg) translateX(6px); }
+  70%  { transform: rotate(-8deg) translateX(-2px); }
+  100% { transform: rotate(0deg) translateX(0); }
+}
+
+.dot-active { animation: cradle-receive 0.3s ease-out 0.15s; } /* 0.15s delay = momentum transfer */
+```
+
+**Glassmorphism Icons:**
+```css
+.glass-icon {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  box-shadow: 
+    0 4px 16px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+```
+
+**Widget Accordions:**
+Expandable sections with animated stats flowing to the right of the title.
+```
+┌────────────────────────────────────────────────┐
+│ ▼ Team Schedule                    5 on │ 1 brk │
+├────────────────────────────────────────────────┤
+│  ○ Emily (EXPO)   10am - 8pm                   │
+│  ○ Marcus (LINE)   3pm - 9:30pm               │
+└────────────────────────────────────────────────┘
+```
+
+### Role-Based Visibility
+
+If you can't use it, you don't see it. No greyed-out buttons.
+
+| Role | People | Place | Profit |
+|------|--------|-------|--------|
+| **Line Cook** | My Profile, Schedule | Temps, Tasks | — |
+| **Shift Lead** | + Full Team | + Receive | Invoice, Counts |
+| **Manager** | All | All | All + Admin |
+
+### CSS-First Approach
+
+No animation libraries. Pure CSS for:
+- `scroll-snap-type: x mandatory` — page swiping
+- `@keyframes` — all animations
+- `backdrop-filter: blur()` — glassmorphism
+- CSS Grid — responsive icon clusters
+- `transition` — interactive feedback
+
+### File Structure
+
+```
+src/features/mobile/
+├── components/
+│   ├── MobileShell.tsx
+│   ├── AlertTicker.tsx
+│   ├── HeroContext.tsx
+│   ├── SwipeablePages.tsx
+│   ├── WidgetAccordion.tsx
+│   ├── IconCluster.tsx
+│   ├── PageDots.tsx
+│   └── pages/
+│       ├── PeoplePage.tsx
+│       ├── PlacePage.tsx
+│       └── ProfitPage.tsx
+├── hooks/
+│   ├── useShiftContext.ts
+│   └── useAlerts.ts
+└── index.ts
+```
+
+**Reference Roadmap:** [ROADMAP-Mobile-Dashboard.md](roadmaps/ROADMAP-Mobile-Dashboard.md)
+
+**Reference Promise:** [PROMISE-Phone-Command-Center.md](promises/PROMISE-Phone-Command-Center.md)
+
+---
+
+*Last updated: January 11, 2026 - Mobile-First Design paradigm added*
 
 ---
 
 ## Changelog
+
+**Jan 11, 2026 (Session 44 - Triage L5 Polish):**
+- **L5 Icon Badge Pattern** added to `src/index.css`:
+  - Container → Icon at 70% with 80% opacity step-down
+  - `w-7 h-7 rounded-lg` container → `w-5 h-5` icon
+  - Background: `{color}-500/20`, Icon: `{color}-400/80`
+  - CSS classes: `.icon-badge-amber`, `.icon-badge-rose`, `.icon-badge-primary`, `.icon-badge-purple`, `.icon-badge-emerald`, `.icon-badge-gray`
+  - Usage: `<div className="icon-badge-amber"><Ghost /></div>` (no className on icon needed)
+- **TwoStageButton** sizing documented:
+  - Dimensions: `h-8 w-8` container, `w-4 h-4` icon
+  - Variants: `danger` (rose), `warning` (amber), `neutral` (gray)
+  - Pattern: First click expands, second click confirms
+- **ExcelDataGrid filterType support**:
+  - Added `filterType` property to ExcelColumn interface
+  - Custom columns can specify filter behavior independently of display
+  - `type: "custom"` + `filterType: "select"` = icon display + dropdown filter
+  - `columnUniqueValues` now computes for `filterType: "select"` or `filterType: "text"`
+- **Triage Panel visual hierarchy**:
+  - All columns center-aligned (eliminates middle void)
+  - Product Name + Price as heroes (white, font-medium/semibold)
+  - Code + % Complete as secondary (gray-500, text-sm)
+  - Progress bar: `h-1.5 bg-primary-500/40` (muted L5)
+  - Edit button matches TwoStageButton: `h-8 w-8` + `w-4 h-4` icon
 
 **Jan 10, 2026 (Session 40 - Triage Panel L5 Refactor):**
 - **Triage Panel refactored to ExcelDataGrid standard**:

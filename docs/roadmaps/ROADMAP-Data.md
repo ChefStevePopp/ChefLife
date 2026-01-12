@@ -48,6 +48,10 @@
   - [x] Type icons (ShoppingCart=purchased, ChefHat=prep)
   - [x] Edit navigates to IngredientDetailPage with Triage context
   - [x] "Back to Triage" preserves workflow continuity
+  - [x] **L5 Icon Badge Pattern** — `icon-badge-{color}` CSS classes (Jan 11)
+  - [x] **filterType property** — Custom columns specify filter behavior independently
+  - [x] **Center-aligned visual hierarchy** — Eliminates middle void
+  - [x] **Canada theme badge** — Red/white triage count badge
 
 ### Food Inventory Review 🔄
 - [x] Basic inventory list with DataTable
@@ -69,6 +73,8 @@
 - [x] Cascading category filters (Major Group → Category → Sub Category)
 - [x] **`align` column property** — "left" | "center" | "right" for headers and cells
 - [x] **`type: "custom"` with render function** — Custom cell rendering for icons, progress bars, action buttons
+- [x] **`filterType` property** — Custom columns specify filter UI independently of display type (Jan 11)
+- [x] **`filterable` explicit override** — Force filterable on custom columns
 
 ---
 
@@ -84,7 +90,7 @@
 - [x] **Triage Panel L5 Refactor** — Custom table → ExcelDataGrid standard
 - [x] **ExcelColumn `align` property** — Header/cell alignment support
 - [x] **Custom render functions** — `type: "custom"` for icon columns
-- [x] **Mobile Quick Invoice** — L6 fast entry replacing OCR photo gymnastics (Jan 11)
+- [x] **Mobile Quick Invoice** — L6 fast entry component built, parked for Mobile Admin (Jan 11)
 
 ### Import Wizard L5 Refresh
 - [ ] Column mapping UI (user maps their columns → our fields)
@@ -99,17 +105,21 @@
 - [ ] **MIL "Needs Attention" filter** — Surface items pending review
 - [ ] **One-click Code Group linking** — Quick action during review
 
-### 📱 Mobile Quick Invoice (L6 Priority) ✅
+### 📱 Mobile Quick Invoice (L6 Priority) ✅ → Mobile Admin
 > *"Fast entry beats photo gymnastics"* — See [Promise](../promises/PROMISE-Fast-Entry-Not-Photo-Gymnastics.md)
+>
+> **Note:** Component built (`MobileInvoice.tsx`) but moved to future Mobile Admin section.
+> Separates mobile-context workflows from desktop VIM to avoid user friction.
 
 - [x] **Mobile-first invoice entry** — Vendor picker → filtered MIL items → qty/price → save
 - [x] **Recent vendors** — One-tap access to frequent suppliers (sorted by last invoice)
-- [x] **Vendor-filtered MIL** — Show only that vendor's products (via primary_vendor_id + invoice history)
+- [x] **Vendor-filtered MIL** — Show only that vendor's products (via vendor + invoice history)
 - [x] **Photo audit trail** — Attach receipt photo as proof (not OCR source)
 - [x] **Frequent items per vendor** — Shows top 6 most-purchased items as quick-add chips
 - [x] **Three-step flow** — Vendor → Items (with cart) → Review & Submit
 - [x] **Running total** — Cart summary with item count and total
 - [x] **Price entry modal** — Mobile-friendly qty/price entry with +/- buttons
+- [ ] **Mobile Admin integration** — Separate sidebar section for mobile-context tasks
 - [ ] **Draft status** — `vendor_invoices.status = 'draft'` for photo-captured, not-yet-entered (future)
 
 ### 🎯 Code Groups: The Magic in the Walls
@@ -310,5 +320,5 @@ src/shared/components/
 ---
 
 *Created: January 8, 2026*
-*Updated: January 11, 2026 - Mobile Quick Invoice (L6) BUILT, OCR deprioritized*
+*Updated: January 11, 2026 - Mobile Quick Invoice built, parked for Mobile Admin section*
 *Section: Data Management*

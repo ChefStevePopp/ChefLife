@@ -92,6 +92,76 @@ select::-ms-expand {
 }
 
 @layer components {
+  /* ==========================================================================
+   * L5 ICON BADGE PATTERN
+   * Container → Icon sizing at 70% with 80% opacity step-down
+   * 
+   * Standard sizes:
+   *   w-6 container → w-4 icon (66%)
+   *   w-7 container → w-5 icon (71%)
+   *   w-8 container → w-5 icon (62%) or w-6 icon (75%)
+   *   w-10 container → w-7 icon (70%)
+   * 
+   * Color pattern:
+   *   Background: {color}-500/20
+   *   Icon: {color}-400/80
+   * 
+   * Example:
+   *   <div class="icon-badge-amber">
+   *     <Ghost class="w-5 h-5" />
+   *   </div>
+   * ==========================================================================
+   */
+  .icon-badge {
+    @apply w-7 h-7 rounded-lg flex items-center justify-center;
+  }
+  .icon-badge svg {
+    @apply w-5 h-5;
+  }
+  
+  /* Color variants - use explicit classes (Tailwind can't purge dynamic) */
+  .icon-badge-amber {
+    @apply icon-badge bg-amber-500/20;
+  }
+  .icon-badge-amber svg {
+    @apply text-amber-400/80;
+  }
+  
+  .icon-badge-rose {
+    @apply icon-badge bg-rose-500/20;
+  }
+  .icon-badge-rose svg {
+    @apply text-rose-400/80;
+  }
+  
+  .icon-badge-primary {
+    @apply icon-badge bg-primary-500/20;
+  }
+  .icon-badge-primary svg {
+    @apply text-primary-400/80;
+  }
+  
+  .icon-badge-purple {
+    @apply icon-badge bg-purple-500/20;
+  }
+  .icon-badge-purple svg {
+    @apply text-purple-400/80;
+  }
+  
+  .icon-badge-emerald {
+    @apply icon-badge bg-emerald-500/20;
+  }
+  .icon-badge-emerald svg {
+    @apply text-emerald-400/80;
+  }
+  
+  .icon-badge-gray {
+    @apply icon-badge bg-gray-700/50;
+  }
+  .icon-badge-gray svg {
+    @apply text-gray-500;
+  }
+
   /* Card */
   .card {
     @apply bg-gray-800/50 backdrop-blur-xl border border-gray-700/50 rounded-2xl shadow-xl;
@@ -444,6 +514,20 @@ select::-ms-expand {
   }
 }
 
+/* Attention ping - rose/red for alerts */
+@keyframes pulseRose {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(244, 63, 94, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(244, 63, 94, 0.4);
+  }
+}
+
+.animate-ping-rose {
+  animation: pulseRose 2s ease-in-out infinite;
+}
+
 /* ============================================================================
  * FLOATING ACTION BAR - Glowing focus bar for bulk actions, unsaved changes, etc.
  * Usage: Wrap content in .floating-action-bar, it provides the glow ring
@@ -464,7 +548,7 @@ select::-ms-expand {
 
 .floating-action-bar {
   position: fixed;
-  bottom: 1.5rem;
+  bottom: 3rem;
   left: 50%;
   transform: translateX(-50%);
   z-index: 50;

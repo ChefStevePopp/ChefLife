@@ -51,9 +51,15 @@ export const ColumnFilter: React.FC<ColumnFilterProps> = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Determine filter type - use filterType if specified, otherwise fall back to column type
+  const effectiveType = column.filterType || column.type;
+
   // Determine filter type based on unique values count
   const shouldUseDropdown = forceDropdown || (uniqueValues.length > 0 && uniqueValues.length <= DROPDOWN_THRESHOLD);
   const shouldUseAutocomplete = !forceDropdown && uniqueValues.length > DROPDOWN_THRESHOLD;
+
+  // For 'select' filterType, always use dropdown
+  const isSelectType = effectiveType === "select";
 
   // Filter autocomplete suggestions
   const autocompleteSuggestions = shouldUseAutocomplete
@@ -63,81 +69,83 @@ export const ColumnFilter: React.FC<ColumnFilterProps> = ({
     : [];
 
   const renderFilterInput = () => {
-    switch (column.type) {
-      case "text":
-        // Smart text filter: dropdown for categorical, autocomplete for high-cardinality
-        if (shouldUseDropdown) {
-          return (
-            <div ref={dropdownRef} className="relative">
-              <button
-                onClick={() => uniqueValues.length > 0 && setIsDropdownOpen(!isDropdownOpen)}
-                disabled={uniqueValues.length === 0}
-                className={`input w-full py-1.5 px-3 text-sm text-left flex items-center justify-between gap-2 ${
-                  uniqueValues.length === 0 ? "opacity-50 cursor-not-allowed" : ""
-                }`}
-              >
-                <span className={value ? "text-white" : "text-gray-500"}>
-                  {uniqueValues.length === 0 
-                    ? `Select parent first...`
-                    : (value as string) || `Select ${column.name}...`
-                  }
-                </span>
-                <div className="flex items-center gap-1">
-                  {value && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onClear();
-                      }}
-                      className="text-gray-500 hover:text-gray-300 p-0.5"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                  <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${isDropdownOpen ? "rotate-180" : ""}`} />
-                </div>
-              </button>
-              
-              {isDropdownOpen && (
-                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                  {/* Clear option - distinct styling */}
-                  <button
-                    onClick={() => {
-                      onClear();
-                      setIsDropdownOpen(false);
-                    }}
-                    className="w-full px-3 py-2 text-left text-sm text-gray-400 hover:bg-gray-700/50 border-b border-gray-700/50 flex items-center gap-2"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                    <span className="italic">Clear filter</span>
-                  </button>
-                  {/* Options */}
-                  {uniqueValues.map((option) => (
-                    <button
-                      key={option}
-                      onClick={() => {
-                        onChange(option);
-                        setIsDropdownOpen(false);
-                      }}
-                      className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors ${
-                        value === option 
-                          ? "bg-primary-500/20 text-white font-medium" 
-                          : "text-gray-200 hover:bg-gray-700/50"
-                      }`}
-                    >
-                      {value === option ? (
-                        <Check className="w-4 h-4 text-primary-400" />
-                      ) : (
-                        <span className="w-4" />
-                      )}
-                      <span className={value === option ? "font-medium" : ""}>{option || "(empty)"}</span>
-                    </button>
-                  ))}
-                </div>
+    // Handle select type (forced dropdown with predefined options)
+    if (isSelectType || (effectiveType === "text" && shouldUseDropdown)) {
+      return (
+        <div ref={dropdownRef} className="relative">
+          <button
+            onClick={() => uniqueValues.length > 0 && setIsDropdownOpen(!isDropdownOpen)}
+            disabled={uniqueValues.length === 0}
+            className={`input w-full py-1.5 px-3 text-sm text-left flex items-center justify-between gap-2 ${
+              uniqueValues.length === 0 ? "opacity-50 cursor-not-allowed" : ""
+            }`}
+          >
+            <span className={value ? "text-white" : "text-gray-500"}>
+              {uniqueValues.length === 0 
+                ? `Select parent first...`
+                : (value as string) || `Select ${column.name}...`
+              }
+            </span>
+            <div className="flex items-center gap-1">
+              {value && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClear();
+                  }}
+                  className="text-gray-500 hover:text-gray-300 p-0.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
               )}
+              <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${isDropdownOpen ? "rotate-180" : ""}`} />
             </div>
-          );
-        }
+          </button>
+          
+          {isDropdownOpen && (
+            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+              {/* Clear option - distinct styling */}
+              <button
+                onClick={() => {
+                  onClear();
+                  setIsDropdownOpen(false);
+                }}
+                className="w-full px-3 py-2 text-left text-sm text-gray-400 hover:bg-gray-700/50 border-b border-gray-700/50 flex items-center gap-2"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span className="italic">Clear filter</span>
+              </button>
+              {/* Options */}
+              {uniqueValues.map((option) => (
+                <button
+                  key={option}
+                  onClick={() => {
+                    onChange(option);
+                    setIsDropdownOpen(false);
+                  }}
+                  className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors ${
+                    value === option 
+                      ? "bg-primary-500/20 text-white font-medium" 
+                      : "text-gray-200 hover:bg-gray-700/50"
+                  }`}
+                >
+                  {value === option ? (
+                    <Check className="w-4 h-4 text-primary-400" />
+                  ) : (
+                    <span className="w-4" />
+                  )}
+                  <span className={value === option ? "font-medium" : ""}>{option || "(empty)"}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    switch (effectiveType) {
+      case "text":
+      case "custom": // Fall back to text filter for custom columns
 
         if (shouldUseAutocomplete) {
           return (

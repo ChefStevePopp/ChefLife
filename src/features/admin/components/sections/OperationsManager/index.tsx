@@ -49,6 +49,7 @@ const DEFAULT_CATEGORY_GROUPS: CategoryGroup[] = [
     description: "Configure measurement units for recipes and inventory",
     order: 0,
     categories: [
+      { id: "purchase_unit_measures", label: "Purchase Units" },
       { id: "alcohol_measures", label: "Alcohol Measures" },
       { id: "volume_measures", label: "Volume Measures" },
       { id: "weight_measures", label: "Weight Measures" },

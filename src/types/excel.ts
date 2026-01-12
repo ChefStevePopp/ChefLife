@@ -22,4 +22,6 @@ export interface ExcelColumn {
   render?: (value: any, row: any) => React.ReactNode;
   /** Pre-defined filter options for dropdown (instead of auto-detecting) */
   filterOptions?: { value: string; label: string }[];
+  /** Override filter input type (useful for 'custom' display columns) */
+  filterType?: "text" | "number" | "currency" | "date" | "select";
 }

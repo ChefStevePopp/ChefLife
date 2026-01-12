@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   FileSpreadsheet,
   History,
@@ -20,7 +20,7 @@ import { VendorSelector } from "./components/VendorSelector";
 import { ImportHeader } from "./components/ImportHeader";
 import { PDFUploader } from "./components/PDFUploader";
 import { PhotoUploader } from "./components/PhotoUploader";
-import { MobileInvoice } from "./components/MobileInvoice";
+import { ImportWorkspace } from "./components/ImportWorkspace";
 import { DataPreview } from "./components/DataPreview";
 import { ItemCodeGroupManager } from "./components/ItemCodeGroupManager";
 import { UmbrellaIngredientManager } from "./components/UmbrellaIngredientManager";
@@ -33,6 +33,8 @@ import { useSearchParams } from "react-router-dom";
 import { useDiagnostics } from "@/hooks/useDiagnostics";
 import { useVariantTesting } from "@/hooks/useVariantTesting";
 import { VariantToggle } from "@/components/ui/VariantToggle";
+import { useOrganizationId } from "@/hooks/useOrganizationId";
+import { supabase } from "@/lib/supabase";
 import { ocrService } from "@/lib/ocr-service";
 import toast from "react-hot-toast";
 
@@ -65,6 +67,7 @@ const TABS: Tab[] = [
 
 export const VendorInvoiceManager = () => {
   const { showDiagnostics } = useDiagnostics();
+  const { organizationId } = useOrganizationId();
   const [searchParams, setSearchParams] = useSearchParams();
   
   // ---------------------------------------------------------------------------
@@ -81,8 +84,12 @@ export const VendorInvoiceManager = () => {
   const [selectedVendor, setSelectedVendor] = useState("");
   const [manualVendorId, setManualVendorId] = useState("");
   const [isInfoExpanded, setIsInfoExpanded] = useState(false);
-  const [importType, setImportType] = useState<"csv" | "pdf" | "mobile" | "manual">("csv");
+  const [importType, setImportType] = useState<"csv" | "pdf" | "manual">("csv");
   const [sourceFile, setSourceFile] = useState<File | null>(null); // For audit trail
+  
+  // Triage badge state
+  const [triageCount, setTriageCount] = useState(0);
+  const [triageAnimating, setTriageAnimating] = useState(false);
 
   // A/B Testing: Compare header variants (dev/omega users only)
   const {
@@ -96,6 +103,72 @@ export const VendorInvoiceManager = () => {
   // STORES
   // ---------------------------------------------------------------------------
   const { templates, fetchTemplates } = useVendorTemplatesStore();
+
+  // ---------------------------------------------------------------------------
+  // TRIAGE COUNT - Badge for tab
+  // ---------------------------------------------------------------------------
+  const fetchTriageCount = useCallback(async () => {
+    if (!organizationId) return;
+    
+    try {
+      // Count pending_import_items (skipped items)
+      const { count: skippedCount } = await supabase
+        .from('pending_import_items')
+        .select('*', { count: 'exact', head: true })
+        .eq('organization_id', organizationId)
+        .eq('status', 'pending');
+
+      // Count ALL incomplete master_ingredients - purchased AND prep
+      // Fetch everything, filter client-side to match TriagePanel exactly
+      const { data: allIngredients } = await supabase
+        .from('master_ingredients')
+        .select('id, major_group, category, sub_category, recipe_unit_type, recipe_unit_per_purchase_unit, yield_percent, storage_area, archived, ingredient_type, source_recipe_id')
+        .eq('organization_id', organizationId);
+
+      // Fields that count toward completion (same as TriagePanel)
+      const COMPLETION_FIELDS = [
+        'major_group', 'category', 'sub_category', 'recipe_unit_type',
+        'recipe_unit_per_purchase_unit', 'yield_percent', 'storage_area'
+      ];
+      
+      // Count ALL non-archived ingredients with < 100% completion
+      // This includes both purchased AND prep items
+      const incompleteCount = (allIngredients || []).filter((ing: any) => {
+        // Skip archived items
+        if (ing.archived === true) return false;
+        
+        // Count filled fields
+        const filledFields = COMPLETION_FIELDS.filter(field => {
+          const value = ing[field];
+          return value !== null && value !== undefined && value !== '' && value !== 0;
+        });
+        const percent = Math.round((filledFields.length / COMPLETION_FIELDS.length) * 100);
+        return percent < 100;
+      }).length;
+
+      const newCount = (skippedCount || 0) + incompleteCount;
+      
+      // Trigger animation if count increased
+      if (newCount > triageCount && triageCount > 0) {
+        setTriageAnimating(true);
+        setTimeout(() => setTriageAnimating(false), 1500);
+      }
+      
+      setTriageCount(newCount);
+    } catch (error) {
+      console.error('Error fetching triage count:', error);
+    }
+  }, [organizationId, triageCount]);
+
+  // Fetch on mount and when tab changes
+  useEffect(() => {
+    fetchTriageCount();
+  }, [organizationId]);
+
+  // Refresh count when tab changes (to update badge after processing items)
+  useEffect(() => {
+    fetchTriageCount();
+  }, [activeTab]);
 
   // ---------------------------------------------------------------------------
   // SYNC TAB WITH URL
@@ -381,7 +454,7 @@ export const VendorInvoiceManager = () => {
             <div className="expandable-info-content">
               <div className="p-4 pt-2 space-y-3">
                 <p className="text-sm text-gray-400">
-                  Import vendor invoices via CSV, Mobile quick-entry, or PDF to automatically update 
+                  Import vendor invoices via CSV or PDF to automatically update 
                   ingredient prices. Track price history, analyze vendor performance, 
                   and manage umbrella items that aggregate costs across vendors.
                 </p>
@@ -419,14 +492,37 @@ export const VendorInvoiceManager = () => {
             {TABS.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
+              const isTriage = tab.id === 'triage';
+              
               return (
                 <button
                   key={tab.id}
                   onClick={() => handleTabChange(tab.id)}
-                  className={`tab ${tab.color} ${isActive ? "active" : ""}`}
+                  className={`tab ${tab.color} ${isActive ? "active" : ""} relative`}
                 >
                   <Icon className="w-4 h-4" />
                   <span>{tab.label}</span>
+                  {isTriage && (
+                    <span 
+                      className={`
+                        absolute -top-1.5 -right-1.5 min-w-[20px] h-[20px] 
+                        flex items-center justify-center 
+                        text-[10px] font-bold rounded-full px-1
+                        ${triageCount > 0 
+                          ? 'text-white bg-red-700' 
+                          : 'text-gray-500 bg-gray-700'
+                        }
+                      `}
+                    >
+                      {/* White ping animation on count increase - subtle Canada nod 🍁 */}
+                      {triageAnimating && triageCount > 0 && (
+                        <span className="absolute inset-0 rounded-full bg-white animate-ping opacity-60" />
+                      )}
+                      <span className="relative z-10">
+                        {triageCount > 99 ? '99+' : triageCount}
+                      </span>
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -460,7 +556,7 @@ export const VendorInvoiceManager = () => {
                   selectedVendor={selectedVendor}
                   onVendorChange={setSelectedVendor}
                   fileType={importType}
-                  onFileTypeChange={(type) => setImportType(type as "csv" | "pdf" | "mobile" | "manual")}
+                  onFileTypeChange={(type) => setImportType(type as "csv" | "pdf" | "manual")}
                 />
               )}
             </div>
@@ -509,46 +605,32 @@ export const VendorInvoiceManager = () => {
                       hasTemplate={templates.some((t) => t.vendor_id === selectedVendor)}
                     />
                   )}
-                  {importType === "pdf" && <PDFUploader onUpload={handleUpload} />}
-                  {importType === "mobile" && (
-                    <MobileInvoice
-                      selectedVendorId={selectedVendor || undefined}
-                      onSubmit={(data, date, photoFile) => {
-                        // Store photo for audit trail if provided
-                        if (photoFile) {
-                          setSourceFile(photoFile);
-                        }
-                        setCSVData(data);
-                        setInvoiceDate(date);
-                        setManualVendorId(selectedVendor);
-                      }}
-                      onCancel={() => {
-                        setSelectedVendor("");
-                        setImportType("csv");
-                      }}
-                    />
-                  )}
-                  {importType === "manual" && (
-                    <div className="space-y-6">
-                      {selectedVendor ? (
-                        <ManualInvoiceForm
-                          onSubmit={handleManualSubmit}
-                          onCancel={() => {
-                            setSelectedVendor("");
-                            setImportType("csv");
-                          }}
-                        />
-                      ) : (
-                        <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-700 rounded-lg bg-gray-800/50">
-                          <h3 className="text-lg font-medium text-white mb-2">
-                            Manual Invoice Entry
-                          </h3>
-                          <p className="text-gray-400 text-center mb-4">
-                            Please select a vendor first to begin manual entry
-                          </p>
-                        </div>
-                      )}
-                    </div>
+                  {(importType === "pdf" || importType === "manual") && (
+                    selectedVendor ? (
+                      <ImportWorkspace
+                        vendorId={selectedVendor}
+                        vendorName={selectedVendor}
+                        importType={importType === "pdf" ? "pdf" : "photo"}
+                        onComplete={() => {
+                          setSelectedVendor("");
+                          setImportType("csv");
+                          handleTabChange("triage");
+                        }}
+                        onCancel={() => {
+                          setSelectedVendor("");
+                          setImportType("csv");
+                        }}
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-700 rounded-lg bg-gray-800/50">
+                        <h3 className="text-lg font-medium text-white mb-2">
+                          {importType === "pdf" ? "PDF Import" : "Manual Entry"}
+                        </h3>
+                        <p className="text-gray-400 text-center mb-4">
+                          Please select a vendor first to begin
+                        </p>
+                      </div>
+                    )
                   )}
                 </>
               )}

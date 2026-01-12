@@ -344,6 +344,14 @@ export const INVENTORY_EVENTS: ModuleEventCategory = {
       defaultAudience: 2, // Bravo+
       severity: 'warning',
     },
+    {
+      id: 'invoice_discrepancy_recorded',
+      label: 'Delivery Discrepancy Recorded',
+      description: 'When shorts, damages, or other delivery issues are documented',
+      defaultChannels: ['in_app'],
+      defaultAudience: 2, // Bravo+
+      severity: 'warning',
+    },
   ],
 };
 
