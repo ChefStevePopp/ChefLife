@@ -425,3 +425,163 @@ const columns: ExcelColumn[] = [
   - Icon columns, progress bars, action buttons
 - **MasterIngredientList:** `src/features/admin/components/sections/recipe/MasterIngredientList/index.tsx`
   - Standard columns with allergen/status special types
+
+---
+
+## Entity Card Pattern
+
+ChefLife uses a consistent card pattern for displaying entities in grids. All cards share the same visual structure from `TeamList`.
+
+### Card Components
+
+| Component | Location | Entity Type |
+|-----------|----------|-------------|
+| `TeamList` | `@/features/team/components/TeamList` | Team Members (people) |
+| `VendorCard` | `@/shared/components/VendorCard` | Vendors (businesses) |
+| `IntegrationCard` | `@/shared/components/IntegrationCard` | Third-party integrations |
+| `FeatureCard` | `@/shared/components/FeatureCard` | Module features |
+
+### Shared Card Structure
+
+All entity cards follow this exact layout:
+
+```
+┌─────────────────────────────────┐
+│ [checkbox]                      │  ← Selection (optional)
+│         ┌─────┐                 │
+│         │LOGO │ ●               │  ← Avatar/Logo + active indicator
+│         └─────┘                 │
+│        Entity Name              │  ← Name
+│    [BADGE] [BADGE]              │  ← Role/Type badges
+│   (pill) (pill) (pill)          │  ← Tags/departments/stats
+│─────────────────────────────────│
+│  📧 info@email.com              │  ← Details line 1
+│  📞 555-1234                    │  ← Details line 2
+│              [Remove] [Edit] ⋮  │  ← 3-dot menu (slides in)
+└─────────────────────────────────┘
+```
+
+### VendorCard Usage (Updated Jan 13, 2026)
+
+```typescript
+import { VendorCard, type VendorCardData } from "@/shared/components";
+
+// Full data interface
+interface VendorCardData {
+  vendor_id: string;
+  vendor_name: string;
+  logo_url?: string;
+  // Template configuration status
+  has_csv_template: boolean;
+  has_pdf_template: boolean;
+  // Enabled invoice types
+  csv_enabled?: boolean;
+  pdf_enabled?: boolean;
+  photo_enabled?: boolean;
+  manual_enabled?: boolean;
+  // Default invoice method
+  default_invoice_type?: "csv" | "pdf" | "photo" | "manual";
+  // Stats (user-facing: "invoices" not "imports")
+  total_invoices: number;
+  last_invoice?: string;
+  // Optional vendor details
+  account_number?: string;
+  rep_name?: string;
+  rep_email?: string;
+  rep_phone?: string;
+}
+
+// Usage with controlled menu (like TeamList openMenuId pattern)
+const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+<VendorCard
+  vendor={vendorData}
+  onSettings={(v) => handleOpenSettings(v)}
+  onConfigureCSV={(v) => handleConfigureCSV(v)}
+  onConfigurePDF={(v) => handleConfigurePDF(v)}
+  onLogoUpdate={(vendorId, logoUrl) => handleLogoUpdate(vendorId, logoUrl)}
+  isMenuOpen={openMenuId === vendorData.vendor_id}
+  onMenuToggle={setOpenMenuId}
+/>
+```
+
+### Colored Initials Fallback
+
+When no logo is uploaded, VendorCard displays colored initials:
+- Single word: first 2 chars ("GFS" → "GF")
+- Multiple words: first letter of first 2 words ("Highland Packers" → "HP")
+- Color determined by hash of vendor name (consistent across renders)
+
+### Tablet-First Design (L6)
+
+VendorCard uses 44px+ touch targets for tablet use:
+- `min-h-[36px] min-w-[60px]` on invoice type badges
+- `min-h-[44px]` on menu buttons
+- Responsive sizing: `w-16 h-16 sm:w-20 sm:h-20` for logo area
+
+### Key Features
+
+1. **Selection Mode** - Checkbox in top-left for bulk operations
+2. **Active Indicator** - Green dot when entity is "active" (has template, is_active, etc.)
+3. **Clickable Badges** - Type badges (CSV, PDF) launch configuration
+4. **Logo Upload** - Hover over icon to upload (for VendorCard)
+5. **3-dot Menu** - Slides in from right on hover/click
+6. **Consistent Animations** - scale-[1.01] hover, scale-[1.02] selected
+
+### Creating New Entity Cards
+
+When creating a new entity card, copy the structure from `TeamList` or `VendorCard`:
+
+1. Same container classes: `bg-gray-800/50 backdrop-blur-sm rounded-lg p-4 border...`
+2. Same selection checkbox position and animation
+3. Same avatar/logo container: `w-16 h-16 rounded-full/xl ring-2...`
+4. Same badge pattern: `px-3 py-1 rounded-md text-xs font-medium uppercase tracking-wide border...`
+5. Same footer: `mt-auto pt-3 border-t border-gray-700/30`
+6. Same menu animation: `transition-all duration-200 ease-out opacity-0 translate-x-4`
+
+---
+
+## Zustand Stores
+
+### vendorConfigsStore (Added Jan 13, 2026)
+
+**File:** `src/stores/vendorConfigsStore.ts`
+
+Manages vendor-level settings (separate from templates in `vendorTemplatesStore`).
+
+```typescript
+import { useVendorConfigsStore, inferVendorDefaults } from "@/stores/vendorConfigsStore";
+
+// In component
+const { configs, fetchConfigs, saveConfig, getOrCreateConfig } = useVendorConfigsStore();
+
+// Fetch all configs for org
+await fetchConfigs(organizationId);
+
+// Get or create config with smart defaults
+const config = getOrCreateConfig(orgId, vendorId, vendorName);
+
+// Save config (upserts)
+await saveConfig({
+  organization_id: orgId,
+  vendor_id: "GFS",
+  csv_enabled: true,
+  pdf_enabled: false,
+  photo_enabled: false,
+  manual_enabled: true,
+  default_invoice_type: "csv",
+  account_number: "12345",
+  rep_name: "John Smith",
+});
+
+// Get smart defaults based on vendor name
+const defaults = inferVendorDefaults("GFS");  // { csv_enabled: true, default_invoice_type: 'csv' }
+const defaults = inferVendorDefaults("Flanagan's");  // { pdf_enabled: true, default_invoice_type: 'pdf' }
+const defaults = inferVendorDefaults("Local Farm");  // { manual_enabled: true, default_invoice_type: 'manual' }
+```
+
+**Smart Defaults Logic:**
+- GFS, Sysco, US Foods, Gordon → CSV enabled, default CSV
+- Flanagan's, Highland → PDF enabled, default PDF  
+- Farm, Market, Local, Butcher → Photo + Manual, default Manual
+- Everything else → All enabled, default Manual

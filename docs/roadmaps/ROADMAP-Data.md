@@ -53,6 +53,16 @@
   - [x] **filterType property** — Custom columns specify filter behavior independently
   - [x] **Center-aligned visual hierarchy** — Eliminates middle void
   - [x] **Canada theme badge** — Red/white triage count badge
+- [x] **Vendor Settings L6** — Tablet-first vendor configuration (Jan 13, 2026)
+  - [x] `vendor_configs` table for per-vendor settings
+  - [x] `vendorConfigsStore.ts` with smart defaults based on vendor name
+  - [x] VendorCard shared component with colored initials fallback
+  - [x] VendorSettingsModal with toggles, rep details, smart defaults
+  - [x] Search, filter (All/Ready/Needs Setup), sort (Name/Invoices/Recent)
+  - [x] Responsive grid: 1 col mobile → 2 tablet → 3-4 desktop
+  - [x] 44px+ touch targets for tablet-first design
+  - [x] Logo upload to Supabase Storage (Logos bucket)
+  - [x] Architecture: Vendor CRUD in Operations, config in VIM Settings
 
 ### Food Inventory Review 🔄
 - [x] Basic inventory list with DataTable
@@ -321,5 +331,5 @@ src/shared/components/
 ---
 
 *Created: January 8, 2026*
-*Updated: January 12, 2026 - Price Source Tracking with override protection*
+*Updated: January 13, 2026 - Vendor Settings L6 with tablet-first design*
 *Section: Data Management*

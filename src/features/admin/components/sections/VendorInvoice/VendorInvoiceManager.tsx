@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { CSVUploader } from "./components/CSVUploader";
 import { ImportSettings } from "./components/ImportSettings";
+import { VendorSettings } from "./components/VendorSettings";
 import { PriceHistory } from "./components/PriceHistory";
 import { VendorSelector } from "./components/VendorSelector";
 import { ImportHeader } from "./components/ImportHeader";
@@ -707,7 +708,7 @@ export const VendorInvoiceManager = () => {
                 />
               )}
               {activeTab === "triage" && <TriagePanel />}
-              {activeTab === "settings" && <ImportSettings />}
+              {activeTab === "settings" && <VendorSettings />}
             </>
           )}
         </div>

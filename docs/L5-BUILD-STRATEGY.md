@@ -94,6 +94,67 @@ See: [PROMISE-System-Learns.md](promises/PROMISE-System-Learns.md)
 
 ---
 
+## Database Patterns
+
+### Auth & Organization Relationship
+
+**CRITICAL:** ChefLife has TWO tables that look similar but serve different purposes:
+
+| Table | Purpose | Has `user_id`? | Use For |
+|-------|---------|----------------|--------|
+| `organization_roles` | Auth user → Organization link | ✅ Yes (`auth.uid()`) | RLS policies, permission checks |
+| `organization_team_members` | HR roster / employee data | ❌ No (uses `email`) | Team display, scheduling, contact info |
+
+**RLS Policy Pattern (copy this):**
+
+```sql
+-- Standard RLS for org-scoped tables
+CREATE POLICY "Users can manage their organization's [table_name]"
+    ON [table_name] FOR ALL
+    USING (
+        -- Check user belongs to this org via organization_roles
+        EXISTS (
+            SELECT 1 FROM organization_roles
+            WHERE organization_id = [table_name].organization_id
+            AND user_id = auth.uid()
+        )
+        -- OR dev override
+        OR EXISTS (
+            SELECT 1 FROM auth.users u 
+            WHERE u.id = auth.uid() 
+            AND u.raw_user_meta_data->>'system_role' = 'dev'
+        )
+    );
+```
+
+**With Role Restriction (owner/admin only):**
+
+```sql
+CREATE POLICY "Admins can manage [table_name]"
+    ON [table_name] FOR ALL
+    USING (
+        EXISTS (
+            SELECT 1 FROM organization_roles
+            WHERE organization_id = [table_name].organization_id
+            AND user_id = auth.uid()
+            AND role IN ('owner', 'admin')
+        )
+        OR EXISTS (
+            SELECT 1 FROM auth.users u 
+            WHERE u.id = auth.uid() 
+            AND u.raw_user_meta_data->>'system_role' = 'dev'
+        )
+    );
+```
+
+**Common Mistake:** Using `organization_team_members` for RLS - this table has no `user_id` column!
+
+**Reference Migrations:**
+- `20240306000006_create_operations_settings.sql` - uses `organization_roles`
+- `20240328000000_create_vendor_templates.sql` - older pattern (avoid)
+
+---
+
 ## The 6 Phases
 
 ### Phase 1: Foundation
@@ -1373,7 +1434,7 @@ src/features/mobile/
 
 ---
 
-*Last updated: January 11, 2026 - Mobile-First Design paradigm added*
+*Last updated: January 13, 2026 - VendorSettings L6 tablet-first pattern added*
 
 ---
 
@@ -1529,3 +1590,29 @@ src/features/mobile/
 - Documented Lucide-only icon policy
 - Added toggle switch to CSS component library
 - Added highlighted editor styles reference
+
+**Jan 13, 2026 (Session 57 - VendorSettings L6):**
+- **VendorConfigsStore** (`src/stores/vendorConfigsStore.ts`) - New Zustand store:
+  - CRUD for `vendor_configs` table
+  - `inferVendorDefaults(vendorName)` - smart defaults based on vendor name patterns
+  - GFS/Sysco → CSV, Flanagan's → PDF, Farms/Markets → Manual
+- **VendorCard Shared Component** (`src/shared/components/VendorCard/`):
+  - Colored initials fallback (like Slack/Gmail)
+  - 44px+ touch targets for tablet-first design
+  - Invoice type badges: CSV, PDF, Photo, Manual
+  - Logo upload on hover to Supabase Storage
+  - 3-dot menu with slide animation
+- **VendorSettingsModal** - Full config panel:
+  - Toggle switches for each invoice method
+  - "Smart Defaults" button with sparkle icon
+  - Vendor details: account #, rep name/email/phone
+  - "Manage vendor list" link to Operations (not Remove)
+- **VendorSettings L6 Features**:
+  - Search by vendor name
+  - Filter: All / Ready / Needs Setup
+  - Sort: Name A-Z / Most Invoices / Recent First
+  - Responsive grid: 1 col mobile → 2 tablet → 3-4 desktop
+  - Database persistence via `vendor_configs` table
+- **Architecture Decision**: Vendor CRUD in Operations, config in VIM Settings
+- **Terminology**: "imports" → "invoices" in user-facing UI
+- **Reference Implementation**: VendorSettings as tablet-first L6 pattern
