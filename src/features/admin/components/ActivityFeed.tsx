@@ -62,9 +62,11 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
       return <Users className="w-10 h-10 text-green-400" />;
     if (lowerType.includes("inventory"))
       return <Package className="w-10 h-10 text-yellow-400" />;
+    if (lowerType.includes("vendor") || lowerType.includes("invoice") || lowerType.includes("price"))
+      return <Package className="w-10 h-10 text-emerald-400" />;
     if (lowerType.includes("notification"))
       return <Bell className="w-10 h-10 text-purple-400" />;
-    if (lowerType.includes("alert") || lowerType.includes("warning"))
+    if (lowerType.includes("alert") || lowerType.includes("warning") || lowerType.includes("override"))
       return <AlertCircle className="w-10 h-10 text-rose-400" />;
     if (lowerType.includes("setting") || lowerType.includes("config"))
       return <Settings className="w-10 h-10 text-gray-400" />;
@@ -81,9 +83,11 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
     if (lowerType.includes("team") || lowerType.includes("user"))
       return "from-green-900 to-gray-900";
     if (lowerType.includes("inventory")) return "from-yellow-900 to-gray-900";
+    if (lowerType.includes("vendor") || lowerType.includes("invoice") || lowerType.includes("price"))
+      return "from-emerald-900 to-gray-900";
     if (lowerType.includes("notification"))
       return "from-purple-900 to-gray-900";
-    if (lowerType.includes("alert") || lowerType.includes("warning"))
+    if (lowerType.includes("alert") || lowerType.includes("warning") || lowerType.includes("override"))
       return "from-rose-900 to-gray-900";
     if (lowerType.includes("setting") || lowerType.includes("config"))
       return "from-gray-800 to-gray-900";

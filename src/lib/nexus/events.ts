@@ -376,6 +376,20 @@ export const INVENTORY_EVENTS: ModuleEventCategory = {
       defaultAudience: 1, // Alpha+ (Owner/Admin only)
       severity: 'critical',
     },
+    {
+      id: 'vendor_config_updated',
+      label: 'Vendor Settings Updated',
+      description: 'When vendor invoice settings are changed (methods, defaults, contact info)',
+      defaultChannels: ['in_app'],
+      defaultAudience: 2, // Bravo+
+    },
+    {
+      id: 'vendor_template_saved',
+      label: 'Vendor Template Saved',
+      description: 'When a CSV or PDF import template is configured for a vendor',
+      defaultChannels: ['in_app'],
+      defaultAudience: 2, // Bravo+
+    },
   ],
 };
 

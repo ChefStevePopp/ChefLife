@@ -15,6 +15,14 @@ import { useVendorTemplatesStore } from "@/stores/vendorTemplatesStore";
 import { useVendorInvoiceStore } from "@/stores/vendorInvoiceStore";
 import { formatDateForDisplay } from "@/utils/dateUtils";
 
+// =============================================================================
+// VENDOR SELECTOR - L5 Sub-header Pattern
+// =============================================================================
+// Uses standardized .subheader classes from index.css
+// Structure: Icon (grey) | Title | Dropdown | Toggle Icons | Status Badges
+// Toggle icons: Grey when inactive, colored when active
+// =============================================================================
+
 interface Props {
   selectedVendor: string;
   onVendorChange: (vendor: string) => void;
@@ -47,22 +55,22 @@ export const VendorSelector: React.FC<Props> = ({
   const hasTemplate = templates.some((t) => t.vendor_id === selectedVendor);
 
   return (
-    <div className="card p-4">
-      {/* Compact Header Row - Fully Justified */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        {/* Icon + Title */}
-        <div className="flex items-center gap-3 flex-shrink-0">
-          <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
-            <FileText className="w-5 h-5 text-purple-400" />
+    <div className="subheader">
+      {/* Main Row - Fully Justified */}
+      <div className="subheader-row">
+        {/* Left: Icon + Title */}
+        <div className="subheader-left">
+          <div className="subheader-icon">
+            <FileText />
           </div>
           <div>
-            <h3 className="text-lg font-medium text-white">Invoice Processing</h3>
-            <p className="text-xs text-gray-500">Select vendor and method</p>
+            <h3 className="subheader-title">Invoice Processing</h3>
+            <p className="subheader-subtitle">Select vendor and method</p>
           </div>
         </div>
 
-        {/* Vendor Selector */}
-        <div className="flex-1 min-w-[200px] max-w-[400px]">
+        {/* Center: Vendor Selector */}
+        <div className="subheader-center">
           <select
             value={selectedVendor}
             onChange={(e) => onVendorChange(e.target.value)}
@@ -78,73 +86,49 @@ export const VendorSelector: React.FC<Props> = ({
           </select>
         </div>
 
-        {/* Upload Method Icons */}
-        <div className="flex items-center gap-2">
+        {/* Right: Upload Method Toggles */}
+        <div className="subheader-right">
           {/* CSV */}
           <button
             type="button"
             onClick={() => onFileTypeChange("csv")}
-            className="flex flex-col items-center gap-0.5 group"
+            className={`subheader-toggle ${fileType === "csv" ? "active primary" : ""}`}
             title="CSV Import"
           >
-            <div className={`
-              w-10 h-10 rounded-lg flex items-center justify-center transition-all
-              ${fileType === "csv" 
-                ? "bg-primary-500/30 ring-2 ring-primary-500" 
-                : "bg-gray-700/50 hover:bg-gray-700 group-hover:ring-1 group-hover:ring-gray-600"
-              }
-            `}>
-              <FileSpreadsheet className={`w-5 h-5 ${fileType === "csv" ? "text-primary-400" : "text-gray-400 group-hover:text-gray-300"}`} />
+            <div className="subheader-toggle-icon">
+              <FileSpreadsheet />
             </div>
-            <span className={`text-[10px] font-medium ${fileType === "csv" ? "text-primary-400" : "text-gray-500"}`}>
-              CSV
-            </span>
+            <span className="subheader-toggle-label">CSV</span>
           </button>
 
           {/* PDF */}
           <button
             type="button"
             onClick={() => onFileTypeChange("pdf")}
-            className="flex flex-col items-center gap-0.5 group"
+            className={`subheader-toggle ${fileType === "pdf" ? "active green" : ""}`}
             title="PDF Import"
           >
-            <div className={`
-              w-10 h-10 rounded-lg flex items-center justify-center transition-all
-              ${fileType === "pdf" 
-                ? "bg-green-500/30 ring-2 ring-green-500" 
-                : "bg-gray-700/50 hover:bg-gray-700 group-hover:ring-1 group-hover:ring-gray-600"
-              }
-            `}>
-              <FileText className={`w-5 h-5 ${fileType === "pdf" ? "text-green-400" : "text-gray-400 group-hover:text-gray-300"}`} />
+            <div className="subheader-toggle-icon">
+              <FileText />
             </div>
-            <span className={`text-[10px] font-medium ${fileType === "pdf" ? "text-green-400" : "text-gray-500"}`}>
-              PDF
-            </span>
+            <span className="subheader-toggle-label">PDF</span>
           </button>
 
           {/* Manual */}
           <button
             type="button"
             onClick={() => onFileTypeChange("manual")}
-            className="flex flex-col items-center gap-0.5 group"
+            className={`subheader-toggle ${fileType === "manual" ? "active amber" : ""}`}
             title="Manual Entry"
           >
-            <div className={`
-              w-10 h-10 rounded-lg flex items-center justify-center transition-all
-              ${fileType === "manual" 
-                ? "bg-purple-500/30 ring-2 ring-purple-500" 
-                : "bg-gray-700/50 hover:bg-gray-700 group-hover:ring-1 group-hover:ring-gray-600"
-              }
-            `}>
-              <Edit className={`w-5 h-5 ${fileType === "manual" ? "text-purple-400" : "text-gray-400 group-hover:text-gray-300"}`} />
+            <div className="subheader-toggle-icon">
+              <Edit />
             </div>
-            <span className={`text-[10px] font-medium ${fileType === "manual" ? "text-purple-400" : "text-gray-500"}`}>
-              Manual
-            </span>
+            <span className="subheader-toggle-label">Manual</span>
           </button>
         </div>
 
-        {/* Status Badges */}
+        {/* Status Badges (when vendor selected) */}
         {selectedVendor && (
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-shrink-0">
             {/* Template Status */}
@@ -177,7 +161,7 @@ export const VendorSelector: React.FC<Props> = ({
             {/* Invoice History Info */}
             {(lastInvoice || lastUpload) && (
               <div className="flex items-center gap-2 px-2.5 py-1.5 bg-gray-800/50 rounded-lg border border-gray-700/50">
-                <Calendar className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                <Calendar className="w-4 h-4 text-gray-400 flex-shrink-0" />
                 <div className="flex flex-col text-xs leading-relaxed">
                   {/* Last Invoice Date (by calendar) - fall back to upload date for legacy */}
                   {(lastInvoice?.invoice_date || lastInvoice?.created_at) && (
@@ -213,13 +197,13 @@ export const VendorSelector: React.FC<Props> = ({
       </div>
 
       {/* Expandable Info Section */}
-      <div className={`expandable-info-section mt-4 ${isInfoExpanded ? "expanded" : ""}`}>
+      <div className={`subheader-info expandable-info-section ${isInfoExpanded ? "expanded" : ""}`}>
         <button
           onClick={() => setIsInfoExpanded(!isInfoExpanded)}
           className="expandable-info-header w-full justify-between"
         >
           <div className="flex items-center gap-2">
-            <Info className="w-4 h-4 text-purple-400 flex-shrink-0" />
+            <Info className="w-4 h-4 text-gray-400 flex-shrink-0" />
             <span className="text-sm font-medium text-gray-300">
               Import Methods Guide
             </span>
@@ -249,8 +233,8 @@ export const VendorSelector: React.FC<Props> = ({
               </div>
               <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
                 <div className="flex items-center gap-2 mb-2">
-                  <Edit className="w-4 h-4 text-purple-400" />
-                  <span className="text-sm font-medium text-purple-400">Manual Entry</span>
+                  <Edit className="w-4 h-4 text-amber-400" />
+                  <span className="text-sm font-medium text-amber-400">Manual Entry</span>
                 </div>
                 <p className="text-xs text-gray-500">
                   Photo upload for audit trail + manual data entry. Best for receipts and paper invoices.

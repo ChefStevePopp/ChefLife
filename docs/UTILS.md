@@ -585,3 +585,414 @@ const defaults = inferVendorDefaults("Local Farm");  // { manual_enabled: true, 
 - Flanagan's, Highland → PDF enabled, default PDF  
 - Farm, Market, Local, Butcher → Photo + Manual, default Manual
 - Everything else → All enabled, default Manual
+
+---
+
+## ImageUploadModal - Universal Image Upload Component
+
+**Location:** `@/shared/components/ImageUploadModal`
+
+**Added:** January 13, 2026
+
+**⚠️ IMPORTANT:** This is the **universal choice** for ALL image uploads in ChefLife. Do not create custom upload UIs - use this component.
+
+### Use Cases
+
+| Entity | Title | Subtitle | Aspect Hint |
+|--------|-------|----------|-------------|
+| Vendor Logo | "Vendor Logo" | Vendor name | "Square logos work best" |
+| Team Avatar | "Profile Photo" | Member name | "Square photos work best" |
+| Recipe Photo | "Recipe Photo" | Recipe name | "16:9 recommended for cards" |
+| Ingredient | "Ingredient Photo" | Ingredient name | "Square works best" |
+| Organization | "Organization Logo" | Org name | "Square logos work best" |
+
+### L5 Design Compliance
+
+This component follows full L5 design standards:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│ HEADER                                                                  │
+│ ┌──────┐                                                                │
+│ │ icon │  Title                                              [X]       │
+│ │ box  │  Subtitle                                                     │
+│ └──────┘                                                                │
+├─────────────────────────────────────────────────────────────────────────┤
+│ BODY                                                                    │
+│                                                                         │
+│ ┌─────────────────────────────────────────────────────────────────────┐ │
+│ │                         DROP ZONE                                   │ │
+│ │                    ┌──────────────┐                                │ │
+│ │                    │   PREVIEW    │  ← Hero element               │ │
+│ │                    └──────────────┘                                │ │
+│ │              Drag & drop an image here                             │ │
+│ │                         or                                         │ │
+│ │                  [ Browse files ]  ← 44px touch target            │ │
+│ │            Max size: 2MB • PNG, JPG, GIF, WebP                     │ │
+│ └─────────────────────────────────────────────────────────────────────┘ │
+│                                                                         │
+│ ┌─────────────────────────────────────────────────────────────────────┐ │
+│ │ ✓ New image selected                              [Clear]          │ │
+│ └─────────────────────────────────────────────────────────────────────┘ │
+├─────────────────────────────────────────────────────────────────────────┤
+│ FOOTER                                                                  │
+│ [Remove image]                              [Cancel]  [Upload]         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Design Standards Applied
+
+| Standard | Implementation |
+|----------|----------------|
+| Touch Targets | All buttons ≥44px height |
+| Visual Hierarchy | Preview (hero) → Instructions (secondary) → Hints (tertiary) |
+| Header Pattern | Icon box (bg-primary-500/20) + title/subtitle |
+| State Feedback | Drag over, uploading, error, success states |
+| Accessibility | Keyboard nav, focus rings, ARIA labels, screen reader support |
+| Body Scroll Lock | Prevents background scroll when modal open |
+| Backdrop | bg-black/60 + backdrop-blur-sm |
+| Animation | animate-in fade-in zoom-in-95 |
+
+### Props
+
+```typescript
+interface ImageUploadModalProps {
+  /** Modal open state */
+  isOpen: boolean;
+  /** Close handler */
+  onClose: () => void;
+  /** Upload handler - receives File, returns URL of uploaded image */
+  onUpload: (file: File) => Promise<string>;
+  /** Optional remove handler - if provided, shows "Remove image" button */
+  onRemove?: () => Promise<void>;
+  /** Current image URL (shows in preview) */
+  currentImageUrl?: string;
+  /** Modal title (default: "Upload Image") */
+  title?: string;
+  /** Modal subtitle (e.g., entity name) */
+  subtitle?: string;
+  /** Max file size in MB (default: 2) */
+  maxSizeMB?: number;
+  /** Aspect ratio hint shown to user */
+  aspectHint?: string;
+  /** Text shown in empty placeholder */
+  placeholderText?: string;
+  /** Custom icon for empty placeholder */
+  placeholderIcon?: React.ReactNode;
+  /** Accepted file types (default: "image/*") */
+  accept?: string;
+}
+```
+
+### Usage Examples
+
+**Vendor Logo:**
+```typescript
+import { ImageUploadModal } from "@/shared/components";
+
+const [isOpen, setIsOpen] = useState(false);
+
+const handleUpload = async (file: File): Promise<string> => {
+  const fileExt = file.name.split('.').pop();
+  const baseFileName = `${orgId}/vendors/${vendorId}`;
+  const newFileName = `${baseFileName}.${fileExt}`;
+  
+  // Delete all possible extensions to catch orphaned files
+  const extensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'];
+  const filesToDelete = extensions.map(ext => `${baseFileName}.${ext}`);
+  await supabase.storage.from("Logos").remove(filesToDelete).catch(() => {});
+  
+  // Upload new file
+  await supabase.storage.from("Logos").upload(newFileName, file);
+  const { data } = supabase.storage.from("Logos").getPublicUrl(newFileName);
+  return `${data.publicUrl}?t=${Date.now()}`;
+};
+
+const handleRemove = async (): Promise<void> => {
+  // Clear URL from database (actual file cleanup can be deferred)
+  await updateVendor({ logo_url: null });
+};
+
+<ImageUploadModal
+  isOpen={isOpen}
+  onClose={() => setIsOpen(false)}
+  onUpload={handleUpload}
+  onRemove={currentLogoUrl ? handleRemove : undefined}
+  currentImageUrl={currentLogoUrl}
+  title="Vendor Logo"
+  subtitle={vendorName}
+  aspectHint="Square logos work best"
+  placeholderText={vendorInitials}
+/>
+```
+
+**Team Member Avatar:**
+```typescript
+<ImageUploadModal
+  isOpen={isAvatarModalOpen}
+  onClose={() => setIsAvatarModalOpen(false)}
+  onUpload={handleAvatarUpload}
+  onRemove={member.avatar_url ? handleAvatarRemove : undefined}
+  currentImageUrl={member.avatar_url}
+  title="Profile Photo"
+  subtitle={`${member.first_name} ${member.last_name}`}
+  aspectHint="Square photos work best"
+/>
+```
+
+**Recipe Photo:**
+```typescript
+<ImageUploadModal
+  isOpen={isPhotoModalOpen}
+  onClose={() => setIsPhotoModalOpen(false)}
+  onUpload={handleRecipePhotoUpload}
+  onRemove={recipe.photo_url ? handlePhotoRemove : undefined}
+  currentImageUrl={recipe.photo_url}
+  title="Recipe Photo"
+  subtitle={recipe.name}
+  maxSizeMB={5}
+  aspectHint="16:9 recommended for recipe cards"
+/>
+```
+
+### Trigger Pattern
+
+The standard trigger is an avatar/image with a pencil overlay on hover:
+
+```typescript
+// In your component
+const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+
+// Avatar with edit overlay
+<div 
+  className="relative group cursor-pointer"
+  onClick={() => setIsUploadModalOpen(true)}
+>
+  <div className="w-16 h-16 rounded-full overflow-hidden ring-2 ring-gray-700 ...">
+    {imageUrl ? (
+      <img src={imageUrl} alt="" className="w-full h-full object-contain" />
+    ) : (
+      <span className="text-gray-400">{initials}</span>
+    )}
+  </div>
+  
+  {/* Edit overlay */}
+  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 
+                  transition-opacity flex items-center justify-center rounded-full">
+    <Pencil className="w-4 h-4 text-white" />
+  </div>
+</div>
+
+{/* Modal */}
+<ImageUploadModal
+  isOpen={isUploadModalOpen}
+  onClose={() => setIsUploadModalOpen(false)}
+  onUpload={handleUpload}
+  {...otherProps}
+/>
+```
+
+### State Flow
+
+```
+1. User clicks avatar → Modal opens
+2. User drags file OR clicks "Browse files"
+3. File validated (type + size)
+   ├─ Invalid → Error shown, can retry
+   └─ Valid → Preview shown + "New image selected" indicator
+4. User clicks "Upload"
+   ├─ onUpload() called with File
+   ├─ Loading spinner shown
+   └─ On success → Modal closes
+5. OR User clicks "Remove image" (if current image exists)
+   ├─ onRemove() called
+   └─ On success → Modal closes
+6. OR User clicks "Cancel" / "X" / Escape → Modal closes
+```
+
+### Error Handling
+
+The modal handles these error cases:
+
+| Error | Message |
+|-------|--------|
+| Wrong file type | "Please select an image file (PNG, JPG, GIF, WebP)" |
+| File too large | "Image must be less than {X}MB (yours is {Y}MB)" |
+| Upload failed | Shows error from onUpload or "Failed to upload image" |
+| Remove failed | Shows error from onRemove or "Failed to remove image" |
+
+### Accessibility
+
+- **Keyboard:** Escape closes, Tab navigates, Enter/Space activates
+- **Focus:** Initial focus on "Browse files" button
+- **ARIA:** `role="dialog"`, `aria-modal="true"`, `aria-labelledby`
+- **Screen readers:** All interactive elements have labels
+
+### Do NOT
+
+❌ Create custom file upload UIs - use this component  
+❌ Use inline drag-drop zones for images - open this modal instead  
+❌ Skip the preview step - always let users confirm before upload  
+❌ Forget the `onRemove` prop when there's an existing image
+
+### Supabase Storage Note
+
+**Why we delete before upload (not upsert):**
+
+Supabase Storage's `upsert: true` option can fail with RLS policies that only allow INSERT. The workaround is to delete first, then upload.
+
+**Handling orphaned files:**
+
+Sometimes a file exists in storage but the URL wasn't saved to the database. To handle this, always delete all possible extensions for the entity:
+
+```typescript
+// ❌ DON'T - upsert can fail with RLS
+await supabase.storage.from("Logos").upload(path, file, { upsert: true });
+
+// ❌ PARTIAL - only works if URL is saved
+if (currentUrl) {
+  await supabase.storage.from("Logos").remove([extractPath(currentUrl)]);
+}
+
+// ✅ DO - delete all possible extensions to catch orphaned files
+const baseFileName = `${orgId}/vendors/${vendorId}`;
+const extensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'];
+const filesToDelete = extensions.map(ext => `${baseFileName}.${ext}`);
+await supabase.storage.from("Logos").remove(filesToDelete).catch(() => {});
+await supabase.storage.from("Logos").upload(`${baseFileName}.${newExt}`, file);
+```
+
+Supabase's `remove()` silently ignores files that don't exist, so this is safe.
+
+---
+
+## L5 Sub-header Pattern
+
+**Location:** `src/index.css` (`.subheader` classes)
+
+**Added:** January 13, 2026
+
+**Purpose:** Standardized tab content headers that sit below the main module header, creating clear visual hierarchy.
+
+### Visual Hierarchy
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│ MODULE HEADER (bg-[#1a1f2b])                                 │
+│ ┌─────┐ Title                              [Actions]     │
+│ │Icon │ Subtitle                                          │
+│ └─────┘ (colored icon box)                               │
+├───────────────────────────────────────────────────────────────┤
+│ [Tab 1] [Tab 2] [Tab 3] ...                                  │
+├───────────────────────────────────────────────────────────────┤
+│ SUB-HEADER (.subheader - slate-800/60)                       │
+│ ┌─────┐ Title       [Dropdown]    [□][□][□]  Stats     │
+│ │Icon │ Subtitle                   toggles              │
+│ └─────┘ (grey icon box)                                  │
+│ ⓘ Expandable Info Section                                   │
+├───────────────────────────────────────────────────────────────┤
+│ CONTENT                                                      │
+└───────────────────────────────────────────────────────────────┘
+```
+
+### Key Design Rules
+
+| Element | Module Header | Sub-header |
+|---------|--------------|------------|
+| Background | `bg-[#1a1f2b]` (blue-tinted) | `bg-slate-800/60` (neutral) |
+| Icon box | Colored (`bg-{color}-500/20`) | Grey (`bg-gray-700/50`) |
+| Purpose | Branding, module identity | Workspace, context |
+
+### Classes
+
+```css
+.subheader            /* Container: slate-800/60 background */
+.subheader-row        /* Flex row with responsive wrapping */
+.subheader-left       /* Icon + title group */
+.subheader-center     /* Dropdown/search area */
+.subheader-right      /* Toggles/stats/actions */
+.subheader-icon       /* Grey icon box (40x40) */
+.subheader-title      /* text-lg font-medium text-white */
+.subheader-subtitle   /* text-xs text-gray-500 */
+.subheader-toggle     /* Toggle button container */
+.subheader-toggle-icon/* Icon container (grey default) */
+.subheader-toggle-label/* Small label below icon */
+.subheader-stat       /* Stat pill (grey background) */
+.subheader-stat-label /* Uppercase label */
+.subheader-stat-value /* Large white number */
+.subheader-info       /* Expandable help section */
+```
+
+### Toggle States
+
+Toggles are **grey by default**, colored only when active:
+
+```tsx
+{/* Inactive: grey */}
+<button className="subheader-toggle">
+  <div className="subheader-toggle-icon"><FileText /></div>
+  <span className="subheader-toggle-label">PDF</span>
+</button>
+
+{/* Active: colored - add "active {color}" */}
+<button className="subheader-toggle active primary">
+  <div className="subheader-toggle-icon"><FileSpreadsheet /></div>
+  <span className="subheader-toggle-label">CSV</span>
+</button>
+```
+
+**Available colors:** `primary`, `green`, `amber`, `rose`, `purple`
+
+### Usage Example
+
+```tsx
+<div className="subheader">
+  <div className="subheader-row">
+    {/* Left: Icon + Title */}
+    <div className="subheader-left">
+      <div className="subheader-icon">
+        <FileText />
+      </div>
+      <div>
+        <h3 className="subheader-title">Invoice Processing</h3>
+        <p className="subheader-subtitle">Select vendor and method</p>
+      </div>
+    </div>
+
+    {/* Center: Dropdown */}
+    <div className="subheader-center">
+      <select className="input w-full">...</select>
+    </div>
+
+    {/* Right: Toggles */}
+    <div className="subheader-right">
+      <button className={`subheader-toggle ${active === 'csv' ? 'active primary' : ''}`}>
+        <div className="subheader-toggle-icon"><FileSpreadsheet /></div>
+        <span className="subheader-toggle-label">CSV</span>
+      </button>
+      <button className={`subheader-toggle ${active === 'pdf' ? 'active green' : ''}`}>
+        <div className="subheader-toggle-icon"><FileText /></div>
+        <span className="subheader-toggle-label">PDF</span>
+      </button>
+    </div>
+  </div>
+
+  {/* Expandable Info */}
+  <div className="subheader-info expandable-info-section">
+    ...
+  </div>
+</div>
+```
+
+### Reference Implementation
+
+**VendorSelector:** `src/features/admin/components/sections/VendorInvoice/components/VendorSelector.tsx`
+
+This is the canonical example of the sub-header pattern with toggles, dropdown, and expandable info.
+
+### Do NOT
+
+❌ Use colored icon boxes in sub-headers (reserve for module headers)  
+❌ Use blue-tinted backgrounds for sub-headers (use slate/neutral)  
+❌ Make toggles colored by default (grey until active)  
+❌ Skip the sub-header when tab content needs context

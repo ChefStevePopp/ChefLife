@@ -70,8 +70,14 @@ const ACTIVITY_TYPE_TO_CATEGORY: Record<string, string> = {
   task_assigned: "system",
   // Vendor/Financial activities
   invoice_imported: "financial",
+  invoice_superseded: "financial",
   price_change_detected: "financial",
+  invoice_discrepancy_recorded: "financial",
   vendor_added: "financial",
+  vendor_config_updated: "financial",
+  vendor_template_saved: "financial",
+  system_override_initiated: "financial",
+  system_override_price: "financial",
   // Security activities
   login: "security",
   logout: "security",

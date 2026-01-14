@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 
 export interface VendorTemplate {
   id: string;
+  organization_id: string;
   vendor_id: string;
   name: string;
   file_type: "csv" | "pdf" | "photo";
@@ -20,10 +21,11 @@ interface VendorTemplatesStore {
   templates: VendorTemplate[];
   isLoading: boolean;
   error: string | null;
-  fetchTemplates: (vendorId: string) => Promise<void>;
+  fetchTemplates: (organizationId: string, vendorId?: string) => Promise<void>;
+  getTemplate: (vendorId: string, fileType: "csv" | "pdf") => VendorTemplate | undefined;
   saveTemplate: (
     template: Omit<VendorTemplate, "id" | "created_at" | "updated_at">,
-  ) => Promise<void>;
+  ) => Promise<VendorTemplate>;
   updateTemplate: (
     id: string,
     updates: Partial<VendorTemplate>,
@@ -37,13 +39,26 @@ export const useVendorTemplatesStore = create<VendorTemplatesStore>(
     isLoading: false,
     error: null,
 
-    fetchTemplates: async (vendorId: string) => {
+    getTemplate: (vendorId: string, fileType: "csv" | "pdf") => {
+      return get().templates.find(
+        t => t.vendor_id === vendorId && t.file_type === fileType
+      );
+    },
+
+    fetchTemplates: async (organizationId: string, vendorId?: string) => {
       try {
         set({ isLoading: true, error: null });
-        const { data, error } = await supabase
+        
+        let query = supabase
           .from("vendor_templates")
           .select("*")
-          .eq("vendor_id", vendorId);
+          .eq("organization_id", organizationId);
+        
+        if (vendorId) {
+          query = query.eq("vendor_id", vendorId);
+        }
+        
+        const { data, error } = await query;
 
         if (error) throw error;
 
@@ -63,17 +78,32 @@ export const useVendorTemplatesStore = create<VendorTemplatesStore>(
 
     saveTemplate: async (template) => {
       try {
+        // Upsert based on organization_id + vendor_id + file_type
         const { data, error } = await supabase
           .from("vendor_templates")
-          .insert([template])
+          .upsert([template], {
+            onConflict: 'organization_id,vendor_id,file_type',
+          })
           .select()
           .single();
 
         if (error) throw error;
 
-        set((state) => ({
-          templates: [...state.templates, data],
-        }));
+        set((state) => {
+          // Replace if exists, otherwise add
+          const exists = state.templates.some(
+            t => t.vendor_id === data.vendor_id && t.file_type === data.file_type
+          );
+          return {
+            templates: exists
+              ? state.templates.map(t => 
+                  t.vendor_id === data.vendor_id && t.file_type === data.file_type ? data : t
+                )
+              : [...state.templates, data],
+          };
+        });
+        
+        return data;
       } catch (error) {
         console.error("Error saving template:", error);
         throw error;

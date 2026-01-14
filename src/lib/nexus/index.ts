@@ -64,6 +64,8 @@ export type ActivityType =
   | "price_change_detected"
   | "invoice_discrepancy_recorded"
   | "vendor_added"
+  | "vendor_config_updated"
+  | "vendor_template_saved"
   // Settings activities
   | "settings_changed"
   | "permissions_changed"
@@ -161,6 +163,8 @@ const ACTIVITY_TYPE_TO_CATEGORY: Record<ActivityType, ActivityCategory> = {
   price_change_detected: 'financial',
   invoice_discrepancy_recorded: 'financial',
   vendor_added: 'financial',
+  vendor_config_updated: 'financial',
+  vendor_template_saved: 'financial',
   
   // System
   settings_changed: 'system',
@@ -320,6 +324,12 @@ const ACTIVITY_TOAST_CONFIG: Partial<Record<ActivityType, ToastConfig | null>> =
   invoice_discrepancy_recorded: {
     message: (d) => `Delivery discrepancy: ${d.vendor || 'Vendor'} - ${d.discrepancy_count || 0} item(s), ${(d.discrepancy_value || 0).toFixed(2)} short`,
     severity: 'warning'
+  },
+  vendor_config_updated: {
+    message: (d) => `${d.vendor || 'Vendor'} settings updated`,
+  },
+  vendor_template_saved: {
+    message: (d) => `${d.template_type?.toUpperCase() || 'Template'} template saved for ${d.vendor || 'vendor'}`,
   },
   
   // System - mostly silent

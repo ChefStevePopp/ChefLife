@@ -23,12 +23,12 @@ export interface VendorConfig {
   vendor_id: string;
   // Display
   logo_url?: string;
-  // Enabled invoice types
+  // Enabled invoice types (UI uses 'mobile', DB uses 'photo_enabled')
   csv_enabled: boolean;
   pdf_enabled: boolean;
   manual_enabled: boolean;
-  mobile_enabled: boolean;
-  default_invoice_type: "csv" | "pdf" | "manual" | "mobile";
+  mobile_enabled: boolean;  // Maps to DB column 'photo_enabled'
+  default_invoice_type: "csv" | "pdf" | "manual" | "photo";  // DB constraint uses 'photo' not 'mobile'
   // Vendor contact details
   account_number?: string;
   rep_name?: string;
@@ -71,7 +71,7 @@ export const inferVendorDefaults = (vendorName: string): Partial<VendorConfig> =
     };
   }
   
-  // Local farms, markets = typically manual/mobile
+  // Local farms, markets = typically manual/mobile (photo)
   if (nameUpper.includes('FARM') || 
       nameUpper.includes('MARKET') || 
       nameUpper.includes('LOCAL') ||
@@ -81,7 +81,7 @@ export const inferVendorDefaults = (vendorName: string): Partial<VendorConfig> =
       pdf_enabled: false,
       manual_enabled: true,
       mobile_enabled: true,
-      default_invoice_type: 'mobile',
+      default_invoice_type: 'photo',  // DB uses 'photo'
     };
   }
   
@@ -135,8 +135,14 @@ export const useVendorConfigsStore = create<VendorConfigsStore>((set, get) => ({
         throw error;
       }
 
+      // Map DB column 'photo_enabled' to UI field 'mobile_enabled'
+      const mappedConfigs = (data || []).map((row: any) => ({
+        ...row,
+        mobile_enabled: row.photo_enabled,  // DB: photo_enabled → UI: mobile_enabled
+      }));
+
       set({
-        configs: data || [],
+        configs: mappedConfigs,
         isLoading: false,
       });
     } catch (error) {
@@ -175,23 +181,25 @@ export const useVendorConfigsStore = create<VendorConfigsStore>((set, get) => ({
   saveConfig: async (config: VendorConfig) => {
     try {
       // Upsert - insert or update based on org+vendor unique constraint
+      const payload = {
+        organization_id: config.organization_id,
+        vendor_id: config.vendor_id,
+        logo_url: config.logo_url,
+        csv_enabled: config.csv_enabled,
+        pdf_enabled: config.pdf_enabled,
+        manual_enabled: config.manual_enabled,
+        photo_enabled: config.mobile_enabled,  // UI: mobile_enabled → DB: photo_enabled
+        default_invoice_type: config.default_invoice_type,
+        account_number: config.account_number,
+        rep_name: config.rep_name,
+        rep_email: config.rep_email,
+        rep_phone: config.rep_phone,
+        updated_at: new Date().toISOString(),
+      };
+      
       const { data, error } = await supabase
         .from("vendor_configs")
-        .upsert({
-          organization_id: config.organization_id,
-          vendor_id: config.vendor_id,
-          logo_url: config.logo_url,
-          csv_enabled: config.csv_enabled,
-          pdf_enabled: config.pdf_enabled,
-          manual_enabled: config.manual_enabled,
-          mobile_enabled: config.mobile_enabled,
-          default_invoice_type: config.default_invoice_type,
-          account_number: config.account_number,
-          rep_name: config.rep_name,
-          rep_email: config.rep_email,
-          rep_phone: config.rep_phone,
-          updated_at: new Date().toISOString(),
-        }, {
+        .upsert(payload, {
           onConflict: 'organization_id,vendor_id',
         })
         .select()
@@ -199,18 +207,24 @@ export const useVendorConfigsStore = create<VendorConfigsStore>((set, get) => ({
 
       if (error) throw error;
 
+      // Map DB response back to UI field names
+      const mappedData = {
+        ...data,
+        mobile_enabled: data.photo_enabled,  // DB: photo_enabled → UI: mobile_enabled
+      };
+
       // Update local state
       set((state) => {
         const exists = state.configs.some(c => c.vendor_id === config.vendor_id);
         if (exists) {
           return {
             configs: state.configs.map(c => 
-              c.vendor_id === config.vendor_id ? { ...c, ...data } : c
+              c.vendor_id === config.vendor_id ? { ...c, ...mappedData } : c
             ),
           };
         } else {
           return {
-            configs: [...state.configs, data],
+            configs: [...state.configs, mappedData],
           };
         }
       });

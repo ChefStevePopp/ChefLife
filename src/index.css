@@ -167,6 +167,152 @@ select::-ms-expand {
     @apply bg-gray-800/50 backdrop-blur-xl border border-gray-700/50 rounded-2xl shadow-xl;
   }
 
+  /* ==========================================================================
+   * L5 SUB-HEADER PATTERN
+   * Use for tab content headers that sit below the main module header.
+   * Creates visual hierarchy: Module Header (branded) → Sub-header (workspace)
+   * 
+   * Background: Slate-tinted (neutral workspace zone)
+   * Icon box: Always grey for informational context
+   * Toggle icons: Grey inactive, colored when active
+   * 
+   * Structure:
+   *   .subheader
+   *     .subheader-left (icon + title + subtitle)
+   *     .subheader-center (optional: dropdown, search, etc.)
+   *     .subheader-right (stats, toggles, actions)
+   *     .subheader-info (expandable help section)
+   * ==========================================================================
+   */
+  .subheader {
+    @apply bg-slate-800/60 backdrop-blur-sm border border-gray-700/40 rounded-xl p-4;
+  }
+
+  .subheader-row {
+    @apply flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4;
+  }
+
+  .subheader-left {
+    @apply flex items-center gap-3 flex-shrink-0;
+  }
+
+  .subheader-center {
+    @apply flex-1 min-w-[200px] max-w-[400px];
+  }
+
+  .subheader-right {
+    @apply flex items-center gap-2 flex-shrink-0;
+  }
+
+  /* Sub-header icon box - always grey (informational, not interactive) */
+  .subheader-icon {
+    @apply w-10 h-10 rounded-lg bg-gray-700/50 flex items-center justify-center;
+  }
+  .subheader-icon svg {
+    @apply w-5 h-5 text-gray-400;
+  }
+
+  /* Sub-header title block */
+  .subheader-title {
+    @apply text-lg font-medium text-white;
+  }
+  .subheader-subtitle {
+    @apply text-xs text-gray-500;
+  }
+
+  /* Sub-header toggle icons (like CSV/PDF/Manual selector) */
+  .subheader-toggle {
+    @apply flex flex-col items-center gap-0.5;
+  }
+  .subheader-toggle-icon {
+    @apply w-10 h-10 rounded-lg flex items-center justify-center transition-all
+           bg-gray-700/50 hover:bg-gray-700;
+  }
+  .subheader-toggle-icon svg {
+    @apply w-5 h-5 text-gray-400;
+  }
+  .subheader-toggle-icon:hover svg {
+    @apply text-gray-300;
+  }
+  .subheader-toggle-label {
+    @apply text-[10px] font-medium text-gray-500;
+  }
+
+  /* Active state - colored */
+  .subheader-toggle.active .subheader-toggle-icon {
+    @apply ring-2;
+  }
+  .subheader-toggle.active .subheader-toggle-label {
+    @apply text-white;
+  }
+
+  /* Toggle color variants (only applied when .active) */
+  .subheader-toggle.active.primary .subheader-toggle-icon {
+    @apply bg-primary-500/30 ring-primary-500;
+  }
+  .subheader-toggle.active.primary .subheader-toggle-icon svg {
+    @apply text-primary-400;
+  }
+  .subheader-toggle.active.primary .subheader-toggle-label {
+    @apply text-primary-400;
+  }
+
+  .subheader-toggle.active.green .subheader-toggle-icon {
+    @apply bg-green-500/30 ring-green-500;
+  }
+  .subheader-toggle.active.green .subheader-toggle-icon svg {
+    @apply text-green-400;
+  }
+  .subheader-toggle.active.green .subheader-toggle-label {
+    @apply text-green-400;
+  }
+
+  .subheader-toggle.active.amber .subheader-toggle-icon {
+    @apply bg-amber-500/30 ring-amber-500;
+  }
+  .subheader-toggle.active.amber .subheader-toggle-icon svg {
+    @apply text-amber-400;
+  }
+  .subheader-toggle.active.amber .subheader-toggle-label {
+    @apply text-amber-400;
+  }
+
+  .subheader-toggle.active.rose .subheader-toggle-icon {
+    @apply bg-rose-500/30 ring-rose-500;
+  }
+  .subheader-toggle.active.rose .subheader-toggle-icon svg {
+    @apply text-rose-400;
+  }
+  .subheader-toggle.active.rose .subheader-toggle-label {
+    @apply text-rose-400;
+  }
+
+  .subheader-toggle.active.purple .subheader-toggle-icon {
+    @apply bg-purple-500/30 ring-purple-500;
+  }
+  .subheader-toggle.active.purple .subheader-toggle-icon svg {
+    @apply text-purple-400;
+  }
+  .subheader-toggle.active.purple .subheader-toggle-label {
+    @apply text-purple-400;
+  }
+
+  /* Sub-header stat pills - grey palette */
+  .subheader-stat {
+    @apply flex flex-col items-center gap-0.5 px-3 py-2 bg-gray-700/50 rounded-lg border border-gray-600/50;
+  }
+  .subheader-stat-label {
+    @apply text-[10px] font-medium text-gray-400 uppercase tracking-wide;
+  }
+  .subheader-stat-value {
+    @apply text-lg font-semibold text-white;
+  }
+
+  /* Sub-header info section - expandable */
+  .subheader-info {
+    @apply mt-4;
+  }
+
   /* Button Base */
   .btn {
     @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl 
