@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Thermometer, ThermometerSnowflake, Wifi, WifiOff, AlertTriangle, CheckCircle } from "lucide-react";
+import { ThermometerSnowflake, Wifi, WifiOff, AlertTriangle, CheckCircle } from "lucide-react";
 import { useSensorPush } from "@/hooks/useSensorPush";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
@@ -12,12 +12,13 @@ import { supabase } from "@/lib/supabase";
  * Displays real-time temperature monitoring on the admin dashboard.
  * Animates through all fridges and freezers being tracked via SensorPush.
  * 
- * Features:
- * - Cycles through equipment every 4 seconds
- * - Shows temperature, status, and equipment type
- * - Color-coded status indicators (green/amber/red)
- * - Click to navigate to HACCP Manager
- * - Graceful handling when no sensors configured
+ * Design Notes:
+ * - Temperature value: White (neutral) - not colored by status
+ * - Status icons: Colored (emerald checkmark, amber/red triangle)
+ * - Fridge icon: Primary blue
+ * - Freezer icon: Darker blue (blue-700)
+ * - Summary: AlertTriangle with count pill for warnings/critical
+ * - Progress bar: Subtle, 1 shade darker than card
  * 
  * Data Sources:
  * - SensorPush integration (useSensorPush hook)
@@ -103,7 +104,6 @@ export const TemperatureStatCard: React.FC = () => {
       sensors.forEach((sensor) => {
         const latestReading = getLatestReading(sensor.id);
         const temperature = latestReading?.temperature ?? null;
-        // Default to fridge status thresholds for unassigned sensors
         const status = temperature
           ? getTemperatureStatus(temperature, "fridge")
           : "normal";
@@ -111,7 +111,7 @@ export const TemperatureStatCard: React.FC = () => {
         items.push({
           id: sensor.id,
           name: sensor.name,
-          type: "fridge", // Default assumption
+          type: "fridge",
           temperature,
           status,
           isConnected: sensor.active,
@@ -143,33 +143,29 @@ export const TemperatureStatCard: React.FC = () => {
     const critical = equipmentWithReadings.filter((e) => e.status === "critical").length;
     const warning = equipmentWithReadings.filter((e) => e.status === "warning").length;
     const normal = equipmentWithReadings.filter((e) => e.status === "normal").length;
-    const disconnected = equipmentWithReadings.filter((e) => !e.isConnected).length;
 
-    return { total, critical, warning, normal, disconnected };
+    return { total, critical, warning, normal };
   }, [equipmentWithReadings]);
 
-  // Determine card color based on worst status
-  const getCardColor = () => {
-    if (statusSummary.critical > 0) return "red";
-    if (statusSummary.warning > 0) return "amber";
-    return "cyan";
-  };
+  // Icon colors by equipment type
+  const iconBgClass = currentItem?.type === "freezer" 
+    ? "bg-blue-700/20" 
+    : "bg-primary-500/20";
+  
+  const iconTextClass = currentItem?.type === "freezer"
+    ? "text-blue-400"
+    : "text-primary-400";
 
-  const cardColor = getCardColor();
-
-  // Status color classes
-  const getStatusClasses = (status: string) => {
+  // Status icon color only (not text)
+  const getStatusIconColor = (status: string) => {
     switch (status) {
-      case "critical":
-        return "text-red-400";
-      case "warning":
-        return "text-amber-400";
-      default:
-        return "text-green-400";
+      case "critical": return "text-red-400";
+      case "warning": return "text-amber-400";
+      default: return "text-emerald-400";
     }
   };
 
-  // No integration or no equipment
+  // No integration
   if (!integration) {
     return (
       <div 
@@ -178,19 +174,18 @@ export const TemperatureStatCard: React.FC = () => {
       >
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-gray-500/20 flex items-center justify-center">
-            <Thermometer className="w-6 h-6 text-gray-400" />
+            <ThermometerSnowflake className="w-6 h-6 text-gray-400" />
           </div>
           <div>
             <p className="text-sm text-gray-400">Temperature Monitor</p>
-            <div className="flex items-baseline gap-2">
-              <p className="text-lg font-medium text-gray-500">Not Configured</p>
-            </div>
+            <p className="text-lg font-medium text-gray-500">Not Configured</p>
           </div>
         </div>
       </div>
     );
   }
 
+  // No equipment
   if (equipmentWithReadings.length === 0) {
     return (
       <div 
@@ -198,14 +193,12 @@ export const TemperatureStatCard: React.FC = () => {
         onClick={() => window.location.href = '/admin/haccp'}
       >
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-cyan-500/20 flex items-center justify-center">
-            <Thermometer className="w-6 h-6 text-cyan-400" />
+          <div className="w-12 h-12 rounded-xl bg-primary-500/20 flex items-center justify-center">
+            <ThermometerSnowflake className="w-6 h-6 text-primary-400" />
           </div>
           <div>
             <p className="text-sm text-gray-400">Temperature Monitor</p>
-            <div className="flex items-baseline gap-2">
-              <p className="text-lg font-medium text-cyan-400">Add Equipment</p>
-            </div>
+            <p className="text-lg font-medium text-primary-400">Add Equipment</p>
           </div>
         </div>
       </div>
@@ -219,11 +212,11 @@ export const TemperatureStatCard: React.FC = () => {
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Progress indicator for cycling */}
+      {/* Progress indicator - subtle, 1 shade darker than card */}
       {equipmentWithReadings.length > 1 && (
-        <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-700">
+        <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800/50">
           <div
-            className={`h-full bg-${cardColor}-500/50 transition-all duration-300`}
+            className="h-full bg-gray-600/50 transition-all duration-300"
             style={{
               width: `${((currentIndex + 1) / equipmentWithReadings.length) * 100}%`,
             }}
@@ -233,16 +226,12 @@ export const TemperatureStatCard: React.FC = () => {
 
       <div className="flex items-center gap-4">
         {/* Icon */}
-        <div className={`w-12 h-12 rounded-xl bg-${cardColor}-500/20 flex items-center justify-center relative`}>
-          {currentItem?.type === "freezer" ? (
-            <ThermometerSnowflake className={`w-6 h-6 text-${cardColor}-400`} />
-          ) : (
-            <Thermometer className={`w-6 h-6 text-${cardColor}-400`} />
-          )}
+        <div className={`w-12 h-12 rounded-xl ${iconBgClass} flex items-center justify-center relative`}>
+          <ThermometerSnowflake className={`w-6 h-6 ${iconTextClass}`} />
           {/* Connection indicator */}
           <div className="absolute -bottom-1 -right-1">
             {currentItem?.isConnected ? (
-              <Wifi className="w-3 h-3 text-green-500" />
+              <Wifi className="w-3 h-3 text-emerald-500" />
             ) : (
               <WifiOff className="w-3 h-3 text-red-500" />
             )}
@@ -251,36 +240,23 @@ export const TemperatureStatCard: React.FC = () => {
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-          {/* Equipment name with truncation */}
+          {/* Equipment name */}
           <p className="text-sm text-gray-400 truncate" title={currentItem?.name}>
             {currentItem?.name || "Temperature Monitor"}
           </p>
           
-          {/* Temperature and status */}
+          {/* Temperature (white/neutral) + Status Icon (colored) */}
           <div className="flex items-baseline gap-2">
             {currentItem?.temperature !== null ? (
               <>
-                <p className={`text-2xl font-bold ${getStatusClasses(currentItem.status)}`}>
+                <p className="text-2xl font-bold text-white">
                   {currentItem.temperature.toFixed(1)}°F
                 </p>
-                <span className={`text-xs ${getStatusClasses(currentItem.status)}`}>
-                  {currentItem.status === "critical" && (
-                    <span className="flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3" />
-                      Critical
-                    </span>
-                  )}
-                  {currentItem.status === "warning" && (
-                    <span className="flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3" />
-                      Warning
-                    </span>
-                  )}
-                  {currentItem.status === "normal" && (
-                    <span className="flex items-center gap-1">
-                      <CheckCircle className="w-3 h-3" />
-                      OK
-                    </span>
+                <span className={getStatusIconColor(currentItem.status)}>
+                  {currentItem.status === "critical" || currentItem.status === "warning" ? (
+                    <AlertTriangle className="w-4 h-4" />
+                  ) : (
+                    <CheckCircle className="w-4 h-4" />
                   )}
                 </span>
               </>
@@ -290,25 +266,30 @@ export const TemperatureStatCard: React.FC = () => {
           </div>
         </div>
 
-        {/* Summary badge */}
-        <div className="text-right">
+        {/* Summary - Alert icon with count pill OR checkmark */}
+        <div className="flex flex-col items-end gap-1">
+          {/* Cycling indicator */}
           <div className="text-xs text-gray-500">
             {currentIndex + 1}/{equipmentWithReadings.length}
           </div>
-          {statusSummary.critical > 0 && (
-            <div className="text-xs text-red-400 font-medium">
-              {statusSummary.critical} critical
+          
+          {/* Status summary as icon + pill */}
+          {statusSummary.critical > 0 ? (
+            <div className="flex items-center gap-1">
+              <AlertTriangle className="w-4 h-4 text-red-400" />
+              <span className="px-1.5 py-0.5 text-xs font-medium text-red-400 bg-red-500/20 rounded-full">
+                {statusSummary.critical}
+              </span>
             </div>
-          )}
-          {statusSummary.warning > 0 && statusSummary.critical === 0 && (
-            <div className="text-xs text-amber-400 font-medium">
-              {statusSummary.warning} warning
+          ) : statusSummary.warning > 0 ? (
+            <div className="flex items-center gap-1">
+              <AlertTriangle className="w-4 h-4 text-amber-400" />
+              <span className="px-1.5 py-0.5 text-xs font-medium text-amber-400 bg-amber-500/20 rounded-full">
+                {statusSummary.warning}
+              </span>
             </div>
-          )}
-          {statusSummary.critical === 0 && statusSummary.warning === 0 && (
-            <div className="text-xs text-green-400 font-medium">
-              All OK
-            </div>
+          ) : (
+            <CheckCircle className="w-4 h-4 text-emerald-400" />
           )}
         </div>
       </div>
