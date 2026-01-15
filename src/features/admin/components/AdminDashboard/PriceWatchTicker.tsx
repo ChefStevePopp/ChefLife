@@ -71,9 +71,9 @@ export function PriceWatchTicker() {
           )}
         </div>
 
-        {/* Ticker Content */}
+        {/* Ticker Content - Hidden on mobile/tablet, visible on desktop */}
         <div
-          className="flex-1 overflow-hidden relative"
+          className="hidden lg:block flex-1 overflow-hidden relative"
           onMouseEnter={() => setIsPaused(true)}
           onMouseLeave={() => setIsPaused(false)}
         >
@@ -118,6 +118,15 @@ export function PriceWatchTicker() {
               </span>
             ))}
           </div>
+        </div>
+
+        {/* Mobile/Tablet: Show summary instead of ticker */}
+        <div className="lg:hidden flex-1 text-sm text-gray-400">
+          <span className="text-rose-400">{allChanges.filter(c => c.change_percent > 0).length} up</span>
+          <span className="mx-2">·</span>
+          <span className="text-emerald-400">{allChanges.filter(c => c.change_percent < 0).length} down</span>
+          <span className="mx-2">·</span>
+          <span>last 30 days</span>
         </div>
 
         {/* Expand Toggle */}
