@@ -11,6 +11,12 @@ import {
   Truck,
   Eye,
   Flame,
+  Info,
+  ChevronUp,
+  ChevronDown,
+  Bell,
+  Target,
+  Zap,
 } from "lucide-react";
 import { useVendorPriceChangesStore } from "@/stores/vendorPriceChangesStore";
 import { useVendorCodesStore } from "@/stores/vendorCodesStore";
@@ -57,6 +63,9 @@ export const PriceHistory = () => {
 
   // Sort mode for the shortcuts
   const [sortMode, setSortMode] = useState<"created" | "invoice" | "vendor">("created");
+
+  // Expandable info state
+  const [showInfo, setShowInfo] = useState(false);
 
   useEffect(() => {
     fetchPriceChanges(daysToShow, activeFilter, sortMode);
@@ -221,7 +230,7 @@ export const PriceHistory = () => {
       <div className="subheader">
         <div className="subheader-row">
           <div className="subheader-left">
-            <div className="subheader-icon-box amber">
+            <div className="subheader-icon-box primary">
               <LineChart className="w-7 h-7" />
             </div>
             <div>
@@ -241,6 +250,58 @@ export const PriceHistory = () => {
               <RefreshCw className="w-4 h-4 mr-2" />
               Refresh
             </button>
+          </div>
+        </div>
+
+        {/* Expandable Info */}
+        <div className={`subheader-info expandable-info-section ${showInfo ? 'expanded' : ''}`}>
+          <button
+            className="expandable-info-header w-full justify-between"
+            onClick={() => setShowInfo(!showInfo)}
+          >
+            <div className="flex items-center gap-2">
+              <Info className="w-4 h-4 text-gray-400" />
+              <span className="text-sm font-medium text-gray-300">About Price History</span>
+            </div>
+            {showInfo ? (
+              <ChevronUp className="w-4 h-4 text-gray-400" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-gray-400" />
+            )}
+          </button>
+          <div className="expandable-info-content">
+            <div className="p-4 pt-2">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="subheader-feature-card">
+                  <Zap className="w-4 h-4 text-primary-400" />
+                  <div>
+                    <span className="subheader-feature-title text-primary-400">Auto-Tracked</span>
+                    <p className="subheader-feature-desc">Every invoice import logs price changes automatically</p>
+                  </div>
+                </div>
+                <div className="subheader-feature-card">
+                  <Bell className="w-4 h-4 text-purple-400" />
+                  <div>
+                    <span className="subheader-feature-title text-purple-400">Watch List</span>
+                    <p className="subheader-feature-desc">Enable alerts on MIL ingredients to track significant changes</p>
+                  </div>
+                </div>
+                <div className="subheader-feature-card">
+                  <Target className="w-4 h-4 text-amber-400" />
+                  <div>
+                    <span className="subheader-feature-title text-amber-400">Vendor Insights</span>
+                    <p className="subheader-feature-desc">See which vendors are raising prices most frequently</p>
+                  </div>
+                </div>
+                <div className="subheader-feature-card">
+                  <TrendingUp className="w-4 h-4 text-rose-400" />
+                  <div>
+                    <span className="subheader-feature-title text-rose-400">Cost Impact</span>
+                    <p className="subheader-feature-desc">Changes ripple through to recipe costs automatically</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -281,7 +342,7 @@ export const PriceHistory = () => {
               <TrendingUp className="w-5 h-5 text-rose-400" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Top Increase</p>
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Biggest Jump</p>
               {priceStats.topIncrease ? (
                 <>
                   <p className="text-lg font-bold text-rose-400">
@@ -313,7 +374,7 @@ export const PriceHistory = () => {
               <TrendingDown className="w-5 h-5 text-emerald-400" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Top Decrease</p>
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Best Savings</p>
               {priceStats.topDecrease ? (
                 <>
                   <p className="text-lg font-bold text-emerald-400">
@@ -345,16 +406,16 @@ export const PriceHistory = () => {
               <Flame className="w-5 h-5 text-amber-400" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Hottest Vendor</p>
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Most Active</p>
               {priceStats.hottestVendor ? (
                 <>
                   <p className="text-lg font-bold text-amber-400 truncate">
                     {priceStats.hottestVendor.vendorId}
                   </p>
                   <p className="text-xs text-gray-400">
-                    <span className="text-rose-400">{priceStats.hottestVendor.increases}↑</span>
-                    {" "}
-                    <span className="text-emerald-400">{priceStats.hottestVendor.decreases}↓</span>
+                    <span className="text-rose-400">{priceStats.hottestVendor.increases} up</span>
+                    <span className="text-gray-600 mx-1">·</span>
+                    <span className="text-emerald-400">{priceStats.hottestVendor.decreases} down</span>
                   </p>
                 </>
               ) : (
@@ -364,7 +425,7 @@ export const PriceHistory = () => {
           </div>
         </div>
 
-        {/* Watch List */}
+        {/* Watch List - Price Alerts */}
         <div
           className="card p-4 bg-gray-800/50 border border-gray-700/50 hover:border-purple-500/50 transition-colors cursor-pointer"
           onClick={() => {
@@ -379,13 +440,13 @@ export const PriceHistory = () => {
               <Eye className="w-5 h-5 text-purple-400" />
             </div>
             <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Watch List</p>
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Price Alerts</p>
               <p className={`text-2xl font-bold ${
                 priceStats.watchListCount > 0 ? "text-purple-400" : "text-gray-600"
               }`}>
                 {priceStats.watchListCount}
               </p>
-              <p className="text-xs text-gray-500">&gt;15% changes</p>
+              <p className="text-xs text-gray-500">flagged items</p>
             </div>
           </div>
         </div>

@@ -1075,3 +1075,24 @@ select::-ms-expand {
 .toggle-switch.rose input:checked + .toggle-switch-track {
   background-color: rgb(244, 63, 94);
 }
+
+/* ============================================================================
+   PRICE WATCH TICKER ANIMATION
+   ============================================================================ */
+
+@keyframes ticker {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-ticker {
+  animation: ticker 30s linear infinite;
+}
+
+.animate-ticker:hover {
+  animation-play-state: paused;
+}

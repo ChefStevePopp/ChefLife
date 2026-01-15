@@ -26,6 +26,7 @@ Detailed roadmaps are maintained per section. See the `/docs/roadmaps/` folder:
 | **Team** | [ROADMAP-Team.md](roadmaps/ROADMAP-Team.md) | Team Performance, Communications, App Access, Roster |
 | **Data** | [ROADMAP-Data.md](roadmaps/ROADMAP-Data.md) | Ingredients, Vendor Invoices, Inventory |
 | **Communications** | [ROADMAP-Communications.md](roadmaps/ROADMAP-Communications.md) | Templates, Merge Fields, Triggers |
+| **NEXUS** | [ROADMAP-NEXUS.md](roadmaps/ROADMAP-NEXUS.md) | Prep Forecast, Guest Intelligence, Yield Tracking |
 
 ---
 
@@ -91,19 +92,31 @@ Each module works independently. No module requires another module.
 - [ ] Team: Weekly report automation, Communications triggers
 - [x] Data: **Master Ingredient List L5/L6 complete**
 - [ ] Data: Sysco/US Foods invoice support
-- [ ] Data: Vendor Invoice Manager L5 refresh
+- [x] Data: Vendor Invoice Manager L5 refresh
+- [x] NEXUS: **Price History with actionable stats**
+- [ ] NEXUS: Price Watch dashboard widget
 
 ### Q2 2026
 - [ ] Organization: Square POS, QuickBooks integrations
 - [ ] Kitchen: Task Manager build, Checks & Specs
 - [ ] Team: Native scheduling, Policies module
 - [ ] Data: Waste tracking, Ordering integration
+- [ ] NEXUS: **OpenTable integration (Guest Count Tracking)**
+- [ ] NEXUS: **POS report consolidation (Square)**
+- [ ] NEXUS: Cover Forecast widget
 
 ### Q3 2026
 - [ ] Organization: International address support (UK/EU)
 - [ ] Kitchen: KDS, Production planning
 - [ ] Team: Employee self-service, Enhanced app access
 - [ ] Data: Advanced analytics, Perpetual inventory
+- [ ] NEXUS: **Prep Forecast ("What to Put On")**
+- [ ] NEXUS: Attachment rate calculations
+
+### Q4 2026
+- [ ] NEXUS: **Yield Variance Tracking**
+- [ ] NEXUS: Shrink detection & alerts
+- [ ] NEXUS: Priority-based tracking cadence
 
 ---
 
