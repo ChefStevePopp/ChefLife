@@ -1,14 +1,23 @@
 import React from 'react';
 import { format } from 'date-fns';
 import type { Activity } from '@/shared/types';
+import { useDiagnostics } from '@/hooks/useDiagnostics';
 
 interface ActivityFeedProps {
   activities: Activity[];
 }
 
 const ActivityFeed: React.FC<ActivityFeedProps> = ({ activities }) => {
+  const { showDiagnostics } = useDiagnostics();
+  
   return (
     <div className="card p-6">
+      {/* L5 Diagnostic Path */}
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono mb-2">
+          src/features/admin/components/dashboard/ActivityFeed.tsx
+        </div>
+      )}
       <h2 className="text-xl font-semibold text-white mb-4">Recent Activity</h2>
       <div className="space-y-4">
         {activities.map((activity) => (

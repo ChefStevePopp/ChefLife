@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import { LoadingLogo } from "@/components/LoadingLogo";
 import { motion } from "framer-motion";
 // Define Activity type if not already defined in shared types
@@ -43,6 +44,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
   reviewCount: initialReviewCount,
   defaultDaysLimit = 14,
 }) => {
+  const { showDiagnostics } = useDiagnostics();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const [scrollPosition, setScrollPosition] = useState(0);
@@ -740,6 +742,12 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
 
   return (
     <div className="card p-6">
+      {/* L5 Diagnostic Path */}
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono mb-2">
+          src/features/admin/components/ActivityFeed.tsx
+        </div>
+      )}
       <div className="flex justify-between items-center mb-4">
         <div className="flex items-center gap-2">
           <h2 className="text-xl font-semibold text-white">Recent Activity</h2>

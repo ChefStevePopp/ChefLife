@@ -1,7 +1,6 @@
 import React from "react";
 import {
   Users,
-  Package,
   AlertTriangle,
   TrendingUp,
   LayoutDashboard,
@@ -12,6 +11,7 @@ import { StatsCard } from "./StatsCard";
 import { ActivityFeed } from "./ActivityFeed";
 import { AlertsList } from "./AlertsList";
 import { PriceWatchTicker } from "./AdminDashboard/PriceWatchTicker";
+import { TemperatureStatCard } from "./AdminDashboard/TemperatureStatCard";
 
 /**
  * =============================================================================
@@ -27,7 +27,8 @@ import { PriceWatchTicker } from "./AdminDashboard/PriceWatchTicker";
  * Phase 2: Card Design                                              🔄 IN PROGRESS
  * - [x] L5 Sub-header with icon box
  * - [x] Price Watch Ticker widget
- * - [ ] Stat cards with real data (currently stubbed)
+ * - [x] Temperature Monitor stat card (live SensorPush data)
+ * - [ ] Remaining stat cards with real data
  * - [ ] Clickable cards → drill-down navigation
  * 
  * Phase 3: Search & Filter                                          ⏳ PENDING
@@ -41,6 +42,7 @@ import { PriceWatchTicker } from "./AdminDashboard/PriceWatchTicker";
  * 
  * Phase 5: Core Feature                                             🔄 IN PROGRESS
  * - [x] Price Watch Ticker (live data)
+ * - [x] Temperature Monitor (live SensorPush data)
  * - [ ] Real-time stat card updates
  * - [ ] Activity log from NEXUS
  * - [ ] System alerts from various modules
@@ -63,6 +65,7 @@ export function AdminDashboard() {
   const { stats, activities, alerts } = useAdminStore();
   const { showDiagnostics } = useDiagnostics();
 
+  // Remaining static stat cards (Temperature Monitor is now a live component)
   const statsCards = [
     {
       icon: Users,
@@ -71,13 +74,7 @@ export function AdminDashboard() {
       change: "+2",
       color: "blue",
     },
-    {
-      icon: Package,
-      label: "Low Stock Items",
-      value: stats.lowStockItems,
-      change: "-3",
-      color: "yellow",
-    },
+    // Temperature Monitor is rendered separately as a live component
     {
       icon: AlertTriangle,
       label: "Pending Tasks",
@@ -124,11 +121,19 @@ export function AdminDashboard() {
       {/* Price Watch Ticker */}
       <PriceWatchTicker />
 
-      {/* Stats Cards */}
+      {/* Stats Cards - Mixed: Static cards + Live Temperature Monitor */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {statsCards.map((stat) => (
-          <StatsCard key={stat.label} {...stat} />
-        ))}
+        {/* Active Staff */}
+        <StatsCard {...statsCards[0]} />
+        
+        {/* Temperature Monitor - Live component cycling through fridges/freezers */}
+        <TemperatureStatCard />
+        
+        {/* Pending Tasks */}
+        <StatsCard {...statsCards[1]} />
+        
+        {/* Prep Completion */}
+        <StatsCard {...statsCards[2]} />
       </div>
 
       {/* Activity & Alerts */}

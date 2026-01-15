@@ -1,5 +1,6 @@
 import React from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import { ActivityFeed } from "../ActivityFeed";
 import { supabase } from "@/lib/supabase";
 import { AlertCircle, CheckCircle, Clock, TrendingUp } from "lucide-react";
@@ -7,6 +8,7 @@ import { useEffect, useState } from "react";
 
 export const AdminDashboard: React.FC = () => {
   const { user, organization } = useAuth();
+  const { showDiagnostics } = useDiagnostics();
   const [daysFilter, setDaysFilter] = React.useState(7);
   const [recipeActivities, setRecipeActivities] = React.useState([]);
   const [loadingRecipes, setLoadingRecipes] = React.useState(true);
@@ -116,6 +118,13 @@ export const AdminDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* L5 Diagnostic Path */}
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/admin/components/AdminDashboard/index.tsx
+        </div>
+      )}
+
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-white mb-2">Admin Dashboard</h1>

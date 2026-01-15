@@ -2,14 +2,23 @@ import React from 'react';
 import { AlertTriangle, Info } from 'lucide-react';
 import { format } from 'date-fns';
 import type { Alert } from '@/shared/types';
+import { useDiagnostics } from '@/hooks/useDiagnostics';
 
 interface AlertsListProps {
   alerts: Alert[];
 }
 
 export const AlertsList: React.FC<AlertsListProps> = ({ alerts }) => {
+  const { showDiagnostics } = useDiagnostics();
+  
   return (
     <div className="card p-6">
+      {/* L5 Diagnostic Path */}
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono mb-2">
+          src/features/admin/components/AlertsList.tsx
+        </div>
+      )}
       <h2 className="text-xl font-semibold text-white mb-4">System Alerts</h2>
       <div className="space-y-4">
         {alerts.map((alert) => (
