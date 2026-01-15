@@ -7,13 +7,61 @@ import {
   LayoutDashboard,
 } from "lucide-react";
 import { useAdminStore } from "@/stores/adminStore";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import { StatsCard } from "./StatsCard";
 import { ActivityFeed } from "./ActivityFeed";
 import { AlertsList } from "./AlertsList";
 import { PriceWatchTicker } from "./AdminDashboard/PriceWatchTicker";
 
+/**
+ * =============================================================================
+ * ADMIN DASHBOARD - L5 BUILD PHASES
+ * =============================================================================
+ * 
+ * Phase 1: Foundation                                               ✅ COMPLETE
+ * - [x] Route at /admin
+ * - [x] L5 Sub-header pattern
+ * - [x] Basic stat cards
+ * - [x] Activity feed and alerts list
+ * 
+ * Phase 2: Card Design                                              🔄 IN PROGRESS
+ * - [x] L5 Sub-header with icon box
+ * - [x] Price Watch Ticker widget
+ * - [ ] Stat cards with real data (currently stubbed)
+ * - [ ] Clickable cards → drill-down navigation
+ * 
+ * Phase 3: Search & Filter                                          ⏳ PENDING
+ * - [ ] Activity feed filtering by type
+ * - [ ] Alerts filtering by priority
+ * - [ ] Date range for activity
+ * 
+ * Phase 4: Pagination                                               ⏳ PENDING
+ * - [ ] Activity feed pagination/infinite scroll
+ * - [ ] Alerts pagination
+ * 
+ * Phase 5: Core Feature                                             🔄 IN PROGRESS
+ * - [x] Price Watch Ticker (live data)
+ * - [ ] Real-time stat card updates
+ * - [ ] Activity log from NEXUS
+ * - [ ] System alerts from various modules
+ * 
+ * Phase 6: Polish                                                   ⏳ PENDING
+ * - [ ] Refresh button wired to live data
+ * - [ ] Keyboard shortcuts
+ * - [ ] Custom widget arrangement
+ * - [ ] Dashboard export/print
+ * 
+ * FUTURE WIDGETS (per ROADMAP-NEXUS.md):
+ * - [ ] Cover Forecast (OpenTable integration) - Q2 2026
+ * - [ ] Today's Prep (Prep Forecast) - Q3 2026
+ * - [ ] Yield Alerts (Variance Tracking) - Q4 2026
+ * - [ ] Cost Trends (MIL + Invoice History) - Q2 2026
+ * =============================================================================
+ */
+
 export function AdminDashboard() {
   const { stats, activities, alerts } = useAdminStore();
+  const { showDiagnostics } = useDiagnostics();
 
   const statsCards = [
     {
@@ -48,6 +96,13 @@ export function AdminDashboard() {
 
   return (
     <div className="space-y-6">
+      {/* L5 Diagnostic Path */}
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/admin/components/AdminDashboard.tsx
+        </div>
+      )}
+
       {/* L5 Sub-Header */}
       <div className="subheader">
         <div className="subheader-row">

@@ -20,11 +20,64 @@ import {
 } from "lucide-react";
 import { useVendorPriceChangesStore } from "@/stores/vendorPriceChangesStore";
 import { useVendorCodesStore } from "@/stores/vendorCodesStore";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import { ExcelDataGrid } from "@/shared/components/ExcelDataGrid";
 import { priceHistoryColumns } from "./PriceHistory/columns.tsx";
 import { PriceChangeCell } from "./PriceHistory/PriceChangeCell";
 
+/**
+ * =============================================================================
+ * PRICE HISTORY - L5 BUILD PHASES
+ * =============================================================================
+ * 
+ * Phase 1: Foundation                                               ✅ COMPLETE
+ * - [x] Route integration (tab in VendorInvoiceManager)
+ * - [x] Loading states
+ * - [x] Error handling
+ * - [x] Data fetching from vendorPriceChangesStore
+ * 
+ * Phase 2: Card Design                                              ✅ COMPLETE
+ * - [x] L5 Sub-header with expandable info
+ * - [x] Actionable stat cards (Total, Biggest Jump, Best Savings, Most Active, Price Alerts)
+ * - [x] Color-coded borders on hover
+ * - [x] Icon boxes with semantic colors
+ * 
+ * Phase 3: Search & Filter                                          ✅ COMPLETE
+ * - [x] Filter by increases/decreases
+ * - [x] Filter by vendor
+ * - [x] Filter by price alerts (tracked items)
+ * - [x] Days selector (7/14/30/45/60/90)
+ * - [x] Sort shortcuts (created date, invoice date, vendor group)
+ * 
+ * Phase 4: Pagination                                               ✅ COMPLETE
+ * - [x] ExcelDataGrid handles pagination
+ * - [x] Virtual scrolling for large datasets
+ * 
+ * Phase 5: Core Feature                                             ✅ COMPLETE
+ * - [x] Price change tracking from invoice imports
+ * - [x] Vendor logo display
+ * - [x] Change percent calculations
+ * - [x] Link to MIL ingredient settings (alert_price_change)
+ * 
+ * Phase 6: Polish                                                   🔄 IN PROGRESS
+ * - [x] Filter state feedback banner
+ * - [x] Refresh button
+ * - [ ] Keyboard shortcuts (Esc to clear filter)
+ * - [ ] Sparkline charts in stat cards
+ * - [ ] Export to CSV
+ * - [ ] Date range picker (custom range)
+ * 
+ * FUTURE ENHANCEMENTS:
+ * - [ ] Sparkline trend charts in expanded dropdown
+ * - [ ] Quarterly/annual trend analysis
+ * - [ ] Price prediction based on historical patterns
+ * - [ ] Vendor comparison view
+ * - [ ] Integration with NEXUS dashboard widget
+ * =============================================================================
+ */
+
 export const PriceHistory = () => {
+  const { showDiagnostics } = useDiagnostics();
   const [daysToShow, setDaysToShow] = useState(45);
   const {
     priceChanges,
@@ -56,7 +109,7 @@ export const PriceHistory = () => {
   const error = priceChangesError || trendsError;
 
   const [activeFilter, setActiveFilter] = useState<{
-    filterType?: "increase" | "decrease" | "vendor" | "watchlist";
+    filterType?: "increase" | "decrease" | "vendor" | "pricealerts";
     ingredientId?: string;
     vendorId?: string;
   }>({});
@@ -111,10 +164,10 @@ export const PriceHistory = () => {
     const hottestVendor = Object.entries(vendorIncreases)
       .sort((a, b) => b[1].count - a[1].count)[0] || null;
 
-    // 5. Watch List - items with alert_price_change AND change > 15%
-    const watchThreshold = 15;
-    const watchListItems = validChanges.filter(
-      (item) => item.alert_price_change && Math.abs(item.change_percent) > watchThreshold
+    // 5. Price Alerts - items with alert_price_change enabled that have changed
+    // No threshold - if you're tracking it and it changed, you want to know
+    const priceAlertItems = validChanges.filter(
+      (item) => item.alert_price_change
     );
 
     return {
@@ -126,8 +179,8 @@ export const PriceHistory = () => {
         increases: hottestVendor[1].count,
         decreases: hottestVendor[1].decreases,
       } : null,
-      watchListCount: watchListItems.length,
-      watchListItems,
+      priceAlertCount: priceAlertItems.length,
+      priceAlertItems,
     };
   }, [priceChanges]);
 
@@ -157,10 +210,10 @@ export const PriceHistory = () => {
       filtered = [...filtered].sort(
         (a, b) => b.change_percent - a.change_percent,
       );
-    } else if (activeFilter.filterType === "watchlist") {
-      // Show only items with alert_price_change AND > 15% change
+    } else if (activeFilter.filterType === "pricealerts") {
+      // Show only items with alert_price_change enabled
       filtered = filtered.filter(
-        (change) => change.alert_price_change && Math.abs(change.change_percent) > 15,
+        (change) => change.alert_price_change,
       );
       // Sort by absolute change descending
       filtered = [...filtered].sort(
@@ -226,6 +279,13 @@ export const PriceHistory = () => {
 
   return (
     <div className="space-y-6">
+      {/* L5 Diagnostic Path */}
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/admin/components/sections/VendorInvoice/components/PriceHistory.tsx
+        </div>
+      )}
+
       {/* L5 Sub-Header */}
       <div className="subheader">
         <div className="subheader-row">
@@ -282,8 +342,8 @@ export const PriceHistory = () => {
                 <div className="subheader-feature-card">
                   <Bell className="w-4 h-4 text-purple-400" />
                   <div>
-                    <span className="subheader-feature-title text-purple-400">Watch List</span>
-                    <p className="subheader-feature-desc">Enable alerts on MIL ingredients to track significant changes</p>
+                    <span className="subheader-feature-title text-purple-400">Price Alerts</span>
+                    <p className="subheader-feature-desc">Track specific ingredients by enabling alerts in MIL</p>
                   </div>
                 </div>
                 <div className="subheader-feature-card">
@@ -425,15 +485,15 @@ export const PriceHistory = () => {
           </div>
         </div>
 
-        {/* Watch List - Price Alerts */}
+        {/* Price Alerts - Tracked Items */}
         <div
           className="card p-4 bg-gray-800/50 border border-gray-700/50 hover:border-purple-500/50 transition-colors cursor-pointer"
           onClick={() => {
-            if (priceStats.watchListCount > 0) {
-              setActiveFilter({ filterType: "watchlist" });
+            if (priceStats.priceAlertCount > 0) {
+              setActiveFilter({ filterType: "pricealerts" });
             }
           }}
-          title="Items with Price Alerts enabled and >15% change"
+          title="Items with Price Alerts enabled that have changed"
         >
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
@@ -442,11 +502,11 @@ export const PriceHistory = () => {
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide">Price Alerts</p>
               <p className={`text-2xl font-bold ${
-                priceStats.watchListCount > 0 ? "text-purple-400" : "text-gray-600"
+                priceStats.priceAlertCount > 0 ? "text-purple-400" : "text-gray-600"
               }`}>
-                {priceStats.watchListCount}
+                {priceStats.priceAlertCount}
               </p>
-              <p className="text-xs text-gray-500">flagged items</p>
+              <p className="text-xs text-gray-500">tracked items</p>
             </div>
           </div>
         </div>
@@ -536,8 +596,8 @@ export const PriceHistory = () => {
                   "Showing price decreases only"}
                 {activeFilter.filterType === "vendor" && activeFilter.vendorId &&
                   `Showing changes from ${activeFilter.vendorId}`}
-                {activeFilter.filterType === "watchlist" &&
-                  "Showing watch list items (>15% with alerts enabled)"}
+                {activeFilter.filterType === "pricealerts" &&
+                  "Showing items with Price Alerts enabled"}
                 {activeFilter.ingredientId &&
                   "Showing specific ingredient details"}
               </div>

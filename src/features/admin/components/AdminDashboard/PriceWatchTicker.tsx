@@ -9,9 +9,34 @@ import {
 } from "lucide-react";
 import { useVendorPriceChangesStore } from "@/stores/vendorPriceChangesStore";
 import { useNavigate } from "react-router-dom";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
+
+/**
+ * ============================================================================
+ * PRICE WATCH TICKER
+ * ============================================================================
+ * Dashboard widget showing scrolling price changes with expandable alerts
+ * 
+ * L5 BUILD PHASES:
+ * ────────────────────────────────────────────────────────────────────────────
+ * [x] Phase 1: Foundation - Component structure, store connection, routing
+ * [x] Phase 2: Card Design - Ticker row, expanded section, vendor logos
+ * [x] Phase 3: Search & Filter - Critical items filter, click-to-navigate
+ * [ ] Phase 4: Pagination - Handle large datasets (virtual scroll?)
+ * [x] Phase 5: Core Feature - Scrolling animation, responsive breakpoints
+ * [ ] Phase 6: Polish - Sparkline trends, priority badges, keyboard nav
+ * 
+ * FUTURE ENHANCEMENTS:
+ * - Sparkline charts showing trend over quarter/annum
+ * - Priority level badges (Critical/High/Standard)
+ * - Keyboard navigation (arrow keys to scroll through items)
+ * - Click-to-pause with item highlight
+ * ============================================================================
+ */
 
 export function PriceWatchTicker() {
   const navigate = useNavigate();
+  const { showDiagnostics } = useDiagnostics();
   const [expanded, setExpanded] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const tickerRef = useRef<HTMLDivElement>(null);
@@ -25,9 +50,9 @@ export function PriceWatchTicker() {
   // Filter to non-zero changes
   const allChanges = priceChanges.filter((c) => c.change_percent !== 0);
 
-  // Critical items: alert_price_change enabled AND > 15%
+  // Critical items: alert_price_change enabled (any change)
   const criticalItems = allChanges.filter(
-    (c) => c.alert_price_change && Math.abs(c.change_percent) > 15
+    (c) => c.alert_price_change
   );
 
   // Sort critical by absolute change descending
@@ -53,7 +78,14 @@ export function PriceWatchTicker() {
   }
 
   return (
-    <div className="bg-slate-800/50 border border-slate-700/50 rounded-lg overflow-hidden">
+    <>
+      {/* L5 Diagnostic Path */}
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/admin/components/AdminDashboard/PriceWatchTicker.tsx
+        </div>
+      )}
+      <div className="bg-slate-800/50 border border-slate-700/50 rounded-lg overflow-hidden">
       {/* Ticker Row - Always Visible */}
       <div
         className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-700/30 transition-colors"
@@ -211,9 +243,9 @@ export function PriceWatchTicker() {
           ) : (
             <div className="p-6 text-center">
               <AlertTriangle className="w-8 h-8 text-gray-600 mx-auto mb-2" />
-              <p className="text-sm text-gray-400">No critical price alerts</p>
+              <p className="text-sm text-gray-400">No tracked price changes</p>
               <p className="text-xs text-gray-500 mt-1">
-                Enable "Price Change Alerts" on ingredients to track significant changes
+                Enable "Price Change Alerts" on MIL ingredients to track them here
               </p>
               <button
                 onClick={handleViewAll}
@@ -225,6 +257,7 @@ export function PriceWatchTicker() {
           )}
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }
