@@ -68,7 +68,8 @@ const vendorParsers: VendorConfig[] = [
           productName: item.productName,
           brand: item.brand,
           packSize: item.packSize,
-          rawDescription: item.rawDescription
+          rawDescription: item.rawDescription,
+
         })),
         parseConfidence: result.parseConfidence,
         parseWarnings: result.parseWarnings

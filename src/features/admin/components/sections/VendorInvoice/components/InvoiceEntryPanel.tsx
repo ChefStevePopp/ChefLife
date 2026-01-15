@@ -15,6 +15,9 @@ import {
   MessageSquare,
   ChevronDown,
   ChevronUp,
+  Info,
+  CheckCircle,
+  LifeBuoy,
 } from "lucide-react";
 import { TwoStageButton } from "@/components/ui/TwoStageButton";
 import { useOperationsStore } from "@/stores/operationsStore";
@@ -24,17 +27,20 @@ import { ParsedInvoice, ParsedLineItem } from "@/lib/vendorPdfParsers";
 import toast from "react-hot-toast";
 
 // =============================================================================
-// INVOICE ENTRY PANEL - L5 Design
+// INVOICE ENTRY PANEL - L5 Design (Hybrid Workflow)
 // =============================================================================
-// Left panel of two-column import workspace
-// Editable item table with verification workflow
-// C-suite accounting: Order vs Delivery tracking, discrepancy notes
+// Unified review table for all import types (CSV, PDF, Photo)
+// 
+// WORKFLOW:
+// 1. Parse spills items into editable table
+// 2. User reviews, edits, adds missed rows
+// 3. Process button splits items:
+//    - Matched items → Audit Trail (prices updated)
+//    - Unmatched items → Triage (for later completion)
 //
 // PRICING MODES:
 // 1. Catch Weight: Order by case, price by weight (meat products)
-//    Total = Weight Received × Price/unit
 // 2. Fixed Price: Order by case, price per case (boxed items)
-//    Total = Qty Received × Unit Price
 // =============================================================================
 
 // Weight-based units trigger catch weight pricing mode
@@ -45,18 +51,19 @@ export type PricingMode = 'catch_weight' | 'fixed_price';
 
 export interface LineItemState extends ParsedLineItem {
   id: string;
-  isVerified: boolean;
+  isIncluded: boolean;  // Whether to process this row (replaces isVerified)
+  isVerified?: boolean; // Legacy compatibility - maps from isIncluded
   matchedIngredientId?: string;
   matchedIngredientName?: string;
   matchConfidence?: number;
   isEditing?: boolean;
   // Order vs Delivery tracking
-  quantityOrdered: number;      // Cases ordered
-  quantityReceived: number;     // Cases received (for fixed price) OR used for legacy
+  quantityOrdered: number;
+  quantityReceived: number;
   // Catch weight support
   pricingMode: PricingMode;
-  weightReceived?: number;      // Actual weight in KG (catch weight only)
-  pricePerUnit: number;         // $/KG (catch weight) or $/Case (fixed)
+  weightReceived?: number;
+  pricePerUnit: number;
   // Discrepancy tracking
   discrepancyType: 'none' | 'short' | 'over' | 'damaged' | 'substituted' | 'rejected' | 'other';
   discrepancyReason?: string;
@@ -92,6 +99,7 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [items, setItems] = useState<LineItemState[]>([]);
   const [isMatchingItems, setIsMatchingItems] = useState(false);
+  const [isParseInfoExpanded, setIsParseInfoExpanded] = useState(false);
   
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -129,21 +137,19 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
         setInvoiceNumber(parsedInvoice.invoiceNumber);
       }
       
-      // Initialize items - detect pricing mode from unit
+      // Initialize items - ALL included by default
       const initialItems: LineItemState[] = parsedInvoice.lineItems.map((item, index) => {
-        // Detect catch weight based on unit
         const unit = item.unit || 'Case';
         const isCatchWeight = WEIGHT_UNITS.some(w => unit.toLowerCase() === w.toLowerCase());
         
         return {
           ...item,
           id: `item-${index}-${Date.now()}`,
-          isVerified: false,
+          isIncluded: true,  // All items included by default
           matchConfidence: 0,
-          // Pricing mode based on unit
+
           pricingMode: isCatchWeight ? 'catch_weight' : 'fixed_price',
           unit: unit,
-          // For catch weight: qty ordered is cases (default 1), weight received is the parsed quantity
           quantityOrdered: isCatchWeight ? 1 : item.quantity,
           quantityReceived: isCatchWeight ? 1 : item.quantity,
           weightReceived: isCatchWeight ? item.quantity : undefined,
@@ -162,18 +168,18 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
   }, [parsedInvoice, vendorId]);
 
   // ---------------------------------------------------------------------------
-  // NOTIFY PARENT OF CHANGES
+  // NOTIFY PARENT OF CHANGES (only included items)
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    // Convert back to standard format for parent
-    const normalizedItems = items.map(item => ({
+    const includedItems = items.filter(item => item.isIncluded);
+    const normalizedItems = includedItems.map(item => ({
       ...item,
-      // For parent processing: quantity = what was received
       quantity: item.pricingMode === 'catch_weight' 
         ? (item.weightReceived || 0) 
         : item.quantityReceived,
-      // unitPrice is always the price per unit (kg or case)
       unitPrice: item.pricePerUnit,
+      // Map isIncluded back to isVerified for parent compatibility
+      isVerified: item.isIncluded,
     }));
     onItemsChange(normalizedItems);
   }, [items]);
@@ -206,12 +212,10 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
         .eq("vendor_invoices.vendor_id", vendorId)
         .not("master_ingredient_id", "is", null);
 
-      // Get unique ingredient IDs from history
       const historyIds = [...new Set(
         (historyItems || []).map((h: any) => h.master_ingredient_id)
       )];
 
-      // Fetch those ingredients too
       let allIngredients = vendorIngredients || [];
       
       if (historyIds.length > 0) {
@@ -221,7 +225,6 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
           .in("id", historyIds);
         
         if (historicalIngredients) {
-          // Merge, avoiding duplicates
           const existingIds = new Set(allIngredients.map(i => i.id));
           historicalIngredients.forEach(ing => {
             if (!existingIds.has(ing.id)) {
@@ -234,26 +237,28 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
       // Match each item
       const matchedItems = itemsToMatch.map(item => {
         const match = findBestMatch(item, allIngredients);
+        const confidence = match ? calculateMatchConfidence(item, match) : 0;
         return {
           ...item,
           matchedIngredientId: match?.id,
           matchedIngredientName: match?.product,
-          matchConfidence: match ? calculateMatchConfidence(item, match) : 0,
-          isVerified: match ? calculateMatchConfidence(item, match) >= 90 : false,
+          matchConfidence: confidence,
+          // Keep included - matching doesn't affect inclusion
         };
       });
 
       setItems(matchedItems);
       
       // Report match results
-      const autoVerified = matchedItems.filter(i => i.isVerified).length;
-      const needsReview = matchedItems.filter(i => !i.isVerified).length;
+      const matchedCount = matchedItems.filter(i => i.matchedIngredientId).length;
+      const unmatchedCount = matchedItems.filter(i => !i.matchedIngredientId).length;
       
-      if (autoVerified > 0) {
-        toast.success(`Auto-matched ${autoVerified} items`);
-      }
-      if (needsReview > 0) {
-        toast(`${needsReview} items need review`, { icon: "👀" });
+      if (matchedCount > 0 && unmatchedCount === 0) {
+        toast.success(`All ${matchedCount} items matched to ingredients`);
+      } else if (matchedCount > 0) {
+        toast.success(`Matched ${matchedCount} items, ${unmatchedCount} will go to Triage`);
+      } else if (unmatchedCount > 0) {
+        toast(`${unmatchedCount} new items will go to Triage`, { icon: "📥" });
       }
     } catch (error) {
       console.error("Error matching items:", error);
@@ -287,7 +292,6 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
   };
 
   const calculateNameSimilarity = (a: string, b: string): number => {
-    // Simple word overlap scoring
     const wordsA = a.split(/\s+/).filter(w => w.length > 2);
     const wordsB = b.split(/\s+/).filter(w => w.length > 2);
     
@@ -303,12 +307,10 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
   const calculateMatchConfidence = (item: ParsedLineItem, ingredient: MasterIngredient): number => {
     let confidence = 0;
     
-    // Item code match (high confidence)
     if (ingredient.item_code?.toLowerCase() === item.itemCode.toLowerCase()) {
       confidence += 60;
     }
     
-    // Name similarity
     confidence += calculateNameSimilarity(
       item.productName.toLowerCase(),
       ingredient.product?.toLowerCase() || ""
@@ -324,7 +326,6 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
     setSearchQuery(query);
     setActiveSearchIndex(index);
     
-    // Calculate dropdown position from input
     const input = inputRefs.current.get(index);
     if (input) {
       const rect = input.getBoundingClientRect();
@@ -335,7 +336,6 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
       });
     }
     
-    // Debounce search
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
@@ -390,12 +390,10 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
       
       const updates: Partial<LineItemState> = { [field]: value };
       
-      // Auto-detect pricing mode when unit changes
       if (field === 'unit') {
         const newMode: PricingMode = isWeightUnit(value) ? 'catch_weight' : 'fixed_price';
         if (newMode !== item.pricingMode) {
           updates.pricingMode = newMode;
-          // Swap values when mode changes
           if (newMode === 'catch_weight') {
             updates.weightReceived = item.quantityReceived;
             updates.quantityReceived = 1;
@@ -410,9 +408,9 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
     }));
   };
 
-  const toggleVerify = (index: number) => {
+  const toggleInclude = (index: number) => {
     setItems(prev => prev.map((item, i) => 
-      i === index ? { ...item, isVerified: !item.isVerified } : item
+      i === index ? { ...item, isIncluded: !item.isIncluded } : item
     ));
   };
 
@@ -429,7 +427,7 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
       unitPrice: 0,
       lineTotal: 0,
       productName: "",
-      isVerified: false,
+      isIncluded: true,
       isEditing: true,
       pricingMode: 'fixed_price',
       quantityOrdered: 1,
@@ -466,11 +464,7 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
       
       const newItem = { ...item, [field]: value };
       
-      // For catch weight, compare weights for discrepancy
-      // For fixed price, compare quantities
       if (item.pricingMode === 'catch_weight') {
-        // Catch weight doesn't track ordered weight (just cases ordered)
-        // Discrepancy would be: ordered 1 case, received 0 cases
         if (field === 'quantityReceived') {
           if (value < item.quantityOrdered) {
             newItem.discrepancyType = 'short';
@@ -481,7 +475,6 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
           }
         }
       } else {
-        // Fixed price: compare ordered vs received quantities
         const ordered = field === 'quantityOrdered' ? value : item.quantityOrdered;
         const received = field === 'quantityReceived' ? value : item.quantityReceived;
         
@@ -505,23 +498,26 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
   };
 
   // ---------------------------------------------------------------------------
-  // COMPUTED
+  // COMPUTED - Split stats for action bar
   // ---------------------------------------------------------------------------
-  const verifiedCount = items.filter(i => i.isVerified).length;
-  const totalCount = items.length;
-  const allVerified = totalCount > 0 && verifiedCount === totalCount;
-  const invoiceTotal = items.reduce((sum, item) => sum + calculateLineTotal(item), 0);
-  const hasDiscrepancies = items.some(i => i.discrepancyType !== 'none');
+  const includedItems = items.filter(i => i.isIncluded);
+  const matchedItems = includedItems.filter(i => i.matchedIngredientId);
+  const unmatchedItems = includedItems.filter(i => !i.matchedIngredientId);
   
-  // Calculate short value based on pricing mode
-  const totalShortValue = items.reduce((sum, item) => {
+  const totalCount = items.length;
+  const includedCount = includedItems.length;
+  const matchedCount = matchedItems.length;
+  const unmatchedCount = unmatchedItems.length;
+  
+  const invoiceTotal = includedItems.reduce((sum, item) => sum + calculateLineTotal(item), 0);
+  const hasDiscrepancies = includedItems.some(i => i.discrepancyType !== 'none');
+  
+  const totalShortValue = includedItems.reduce((sum, item) => {
     if (item.discrepancyType === 'short') {
       if (item.pricingMode === 'fixed_price') {
         return sum + ((item.quantityOrdered - item.quantityReceived) * item.pricePerUnit);
       }
-      // For catch weight shorts (missing cases), estimate based on average weight
-      // This is a rough estimate since we don't know expected weight per case
-      return sum + ((item.quantityOrdered - item.quantityReceived) * item.pricePerUnit * 10); // Assume 10kg avg
+      return sum + ((item.quantityOrdered - item.quantityReceived) * item.pricePerUnit * 10);
     }
     return sum;
   }, 0);
@@ -533,7 +529,6 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
   const [invoiceNumberPing, setInvoiceNumberPing] = useState(false);
   const pingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Start 30 sec timer when field is empty and not confirmed
   useEffect(() => {
     if (!invoiceNumber.trim() && !noInvoiceNumberConfirmed) {
       pingTimerRef.current = setTimeout(() => {
@@ -555,7 +550,8 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
   };
 
   const handleSubmit = () => {
-    const incompleteItems = items.filter(item => 
+    // Validate included items have required fields
+    const incompleteItems = includedItems.filter(item => 
       !item.productName.trim() || 
       item.pricePerUnit <= 0
     );
@@ -571,6 +567,11 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
 
     if (!invoiceNumber.trim() && !noInvoiceNumberConfirmed) {
       toast.error('Confirm "No Invoice #" before saving');
+      return;
+    }
+
+    if (includedCount === 0) {
+      toast.error('No items selected for import');
       return;
     }
 
@@ -643,40 +644,82 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
           </div>
         </div>
         
-        {/* Parse Confidence */}
+        {/* Parse Confidence - Expandable Info Section */}
         {parsedInvoice && (
-          <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
-            parsedInvoice.parseConfidence >= 80 
-              ? "bg-emerald-500/10 text-emerald-400"
-              : parsedInvoice.parseConfidence >= 50
-              ? "bg-amber-500/10 text-amber-400"
-              : "bg-rose-500/10 text-rose-400"
-          }`}>
-            {parsedInvoice.parseConfidence >= 80 ? (
-              <Check className="w-4 h-4" />
-            ) : (
-              <AlertTriangle className="w-4 h-4" />
-            )}
-            <span>Parse confidence: {parsedInvoice.parseConfidence}%</span>
-            {parsedInvoice.parseWarnings.length > 0 && (
-              <span className="text-xs opacity-70">
-                ({parsedInvoice.parseWarnings.length} warnings)
-              </span>
-            )}
+          <div className={`expandable-info-section ${isParseInfoExpanded ? 'expanded' : ''}`}>
+            <button
+              onClick={() => setIsParseInfoExpanded(!isParseInfoExpanded)}
+              className="expandable-info-header w-full justify-between"
+            >
+              <div className="flex items-center gap-2">
+                {parsedInvoice.parseConfidence >= 80 ? (
+                  <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                ) : parsedInvoice.parseConfidence >= 50 ? (
+                  <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+                )}
+                <span className="text-sm font-medium text-gray-300">
+                  Parse Results: {parsedInvoice.parseConfidence}% confidence
+                </span>
+                {parsedInvoice.parseWarnings.length > 0 && (
+                  <span className="px-1.5 py-0.5 rounded text-xs bg-amber-500/20 text-amber-400">
+                    {parsedInvoice.parseWarnings.length} warning{parsedInvoice.parseWarnings.length > 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+              <ChevronUp className="w-4 h-4 text-gray-400" />
+            </button>
+            <div className="expandable-info-content">
+              <div className="p-4 pt-2 space-y-3">
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <div className="bg-gray-800/50 rounded-lg p-2 text-center">
+                    <div className="text-xs text-gray-500 uppercase tracking-wider">Parsed</div>
+                    <div className="text-lg font-semibold text-white">{parsedInvoice.totalItems}</div>
+                  </div>
+                  <div className="bg-gray-800/50 rounded-lg p-2 text-center">
+                    <div className="text-xs text-gray-500 uppercase tracking-wider">Matched</div>
+                    <div className="text-lg font-semibold text-emerald-400">{matchedCount}</div>
+                  </div>
+                  <div className="bg-gray-800/50 rounded-lg p-2 text-center">
+                    <div className="text-xs text-gray-500 uppercase tracking-wider">→ Triage</div>
+                    <div className="text-lg font-semibold text-amber-400">{unmatchedCount}</div>
+                  </div>
+                </div>
+                
+                {parsedInvoice.parseWarnings.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Warnings</p>
+                    <ul className="space-y-1">
+                      {parsedInvoice.parseWarnings.map((warning, i) => (
+                        <li key={i} className="text-sm text-amber-400 flex items-start gap-2">
+                          <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                          {warning}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                <p className="text-xs text-gray-500">
+                  Matched items will update prices. Unmatched items go to Triage for ingredient creation.
+                </p>
+              </div>
+            </div>
           </div>
         )}
       </div>
 
       {/* Items Table */}
       <div className="flex-1 overflow-hidden flex flex-col border border-gray-700/50 rounded-lg">
-        {/* Table Header - Dynamic based on most common pricing mode */}
-        <div className="grid grid-cols-12 gap-2 p-3 bg-gray-800/50 text-xs font-medium text-gray-400 uppercase tracking-wider border-b border-gray-700/50">
-          <div className="col-span-3 text-center">Product</div>
+        {/* Table Header */}
+        <div className="grid grid-cols-12 gap-1 p-3 bg-gray-800/50 text-xs font-medium text-gray-400 uppercase tracking-wider border-b border-gray-700/50">
+          <div className="col-span-4 text-left pl-2">Product</div>
           <div className="col-span-1 text-center">Code</div>
           <div className="col-span-1 text-center">Ord</div>
           <div className="col-span-1 text-center">Rcvd</div>
           <div className="col-span-1 text-center">Unit</div>
-          <div className="col-span-2 text-center">Price</div>
+          <div className="col-span-1 text-center">Price</div>
           <div className="col-span-1 text-center">Total</div>
           <div className="col-span-2 text-center">Actions</div>
         </div>
@@ -704,16 +747,18 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
               <div key={item.id}>
                 {/* Main Row */}
                 <div
-                  className={`grid grid-cols-12 gap-2 p-2 border-b border-gray-800/50 items-center hover:bg-gray-800/30 ${
-                    item.discrepancyType !== 'none' 
+                  className={`grid grid-cols-12 gap-1 p-2 border-b border-gray-800/50 items-center hover:bg-gray-800/30 ${
+                    !item.isIncluded 
+                      ? "opacity-40" 
+                      : item.discrepancyType !== 'none' 
                       ? "bg-rose-500/5 border-l-2 border-l-rose-500" 
-                      : !item.isVerified 
-                      ? "bg-amber-500/5" 
-                      : ""
+                      : !item.matchedIngredientId
+                      ? "bg-blue-950/40 border-l-2 border-l-blue-500"  // Dark blue for unmatched - matches CSV flow
+                      : "bg-emerald-500/5 border-l-2 border-l-emerald-500"
                   }`}
                 >
                   {/* Product Name with Search */}
-                  <div className="col-span-3 relative">
+                  <div className="col-span-4">
                     <input
                       ref={(el) => {
                         if (el) inputRefs.current.set(index, el);
@@ -725,27 +770,19 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
                       onFocus={() => handleSearch(item.productName, index)}
                       onBlur={() => setTimeout(() => {
                         if (activeSearchIndex === index) {
+                          // Save the edited name if user didn't select from search
+                          if (searchQuery !== item.productName) {
+                            updateItem(index, 'productName', searchQuery);
+                          }
                           setActiveSearchIndex(null);
                           setSearchResults([]);
                           setDropdownPosition(null);
                         }
                       }, 200)}
-                      className="input w-full bg-transparent border-0 p-1.5 text-sm text-center rounded-lg focus:bg-slate-700/50 focus:ring-1 focus:ring-primary-500/50"
-                      placeholder="Search..."
+                      className="input w-full bg-transparent border-0 p-1.5 text-sm text-left rounded-lg focus:bg-slate-700/50 focus:ring-1 focus:ring-primary-500/50 truncate"
+                      placeholder="Search or type product name..."
+                      title={item.productName}  // Full name on hover
                     />
-                    
-                    {/* Match indicator */}
-                    {item.matchConfidence !== undefined && item.matchConfidence > 0 && (
-                      <div className={`absolute right-1 top-1/2 -translate-y-1/2 text-xs px-1 rounded ${
-                        item.matchConfidence >= 90 
-                          ? "bg-emerald-500/20 text-emerald-400"
-                          : item.matchConfidence >= 50
-                          ? "bg-amber-500/20 text-amber-400"
-                          : "bg-rose-500/20 text-rose-400"
-                      }`}>
-                        {item.matchConfidence}%
-                      </div>
-                    )}
                   </div>
 
                   {/* Item Code */}
@@ -758,7 +795,7 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
                     />
                   </div>
 
-                  {/* Quantity Ordered (Cases) */}
+                  {/* Quantity Ordered */}
                   <div className="col-span-1">
                     <input
                       type="number"
@@ -771,7 +808,7 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
                     />
                   </div>
 
-                  {/* Received: Weight (catch) or Qty (fixed) */}
+                  {/* Received */}
                   <div className="col-span-1">
                     {item.pricingMode === 'catch_weight' ? (
                       <input
@@ -800,7 +837,7 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
                     )}
                   </div>
 
-                  {/* Unit - dropdown from Operations settings */}
+                  {/* Unit */}
                   <div className="col-span-1">
                     <select
                       value={item.unit}
@@ -810,10 +847,6 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
                           ? 'text-cyan-400' 
                           : 'text-gray-400'
                       }`}
-                      title={item.pricingMode === 'catch_weight' 
-                        ? 'Catch Weight: Price per unit weight'
-                        : 'Fixed Price: Price per unit'
-                      }
                     >
                       {purchaseUnits.map((unit) => (
                         <option key={unit} value={unit} className="bg-gray-800">
@@ -823,20 +856,17 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
                     </select>
                   </div>
 
-                  {/* Price Per Unit */}
-                  <div className="col-span-2">
+                  {/* Price */}
+                  <div className="col-span-1">
                     <div className="relative flex items-center">
-                      <span className="absolute left-2 text-gray-600 text-sm">$</span>
+                      <span className="absolute left-1 text-gray-600 text-xs">$</span>
                       <input
                         type="number"
                         step="0.01"
                         value={item.pricePerUnit}
                         onChange={(e) => updateItem(index, "pricePerUnit", parseFloat(e.target.value) || 0)}
-                        className="input w-full bg-transparent border-0 p-1.5 pl-5 pr-10 text-sm text-center rounded-lg focus:bg-slate-700/50 focus:ring-1 focus:ring-primary-500/50"
+                        className="input w-full bg-transparent border-0 p-1 pl-4 text-sm text-center rounded-lg focus:bg-slate-700/50 focus:ring-1 focus:ring-primary-500/50"
                       />
-                      <span className="absolute right-2 text-xs text-gray-500">
-                        /{item.unit?.toLowerCase() || 'ea'}
-                      </span>
                     </div>
                   </div>
 
@@ -845,35 +875,52 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
                     ${calculateLineTotal(item).toFixed(2)}
                   </div>
 
-                  {/* Actions */}
-                  <div className="col-span-2 flex items-center justify-center gap-1">
+                  {/* Actions - Status icon + buttons */}
+                  <div className="col-span-2 flex items-center justify-end gap-1">
+                    {/* Match status indicator */}
+                    {item.matchedIngredientId ? (
+                      <div 
+                        className="h-7 w-7 rounded-lg flex items-center justify-center bg-emerald-500/20 text-emerald-400 flex-shrink-0"
+                        title={`Matched: ${item.matchedIngredientName}`}
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                      </div>
+                    ) : (
+                      <div 
+                        className="h-7 w-7 rounded-lg flex items-center justify-center bg-blue-500/20 text-blue-400 flex-shrink-0"
+                        title="Will go to Triage"
+                      >
+                        <LifeBuoy className="w-3.5 h-3.5" />
+                      </div>
+                    )}
                     <button
                       onClick={() => toggleExpanded(index)}
-                      className={`h-8 w-8 rounded-lg flex items-center justify-center transition-colors ${
+                      className={`h-7 w-7 rounded-lg flex items-center justify-center transition-colors flex-shrink-0 ${
                         item.notes || item.discrepancyType !== 'none'
-                          ? "bg-blue-500/20 text-blue-400"
+                          ? "bg-amber-500/20 text-amber-400"
                           : "bg-gray-700/50 text-gray-500 hover:text-gray-300"
                       }`}
                       title="Notes & Discrepancy"
                     >
-                      {item.isExpanded ? <ChevronUp className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />}
+                      {item.isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <MessageSquare className="w-3.5 h-3.5" />}
                     </button>
                     <button
-                      onClick={() => toggleVerify(index)}
-                      className={`h-8 w-8 rounded-lg flex items-center justify-center transition-colors ${
-                        item.isVerified
+                      onClick={() => toggleInclude(index)}
+                      className={`h-7 w-7 rounded-lg flex items-center justify-center transition-colors flex-shrink-0 ${
+                        item.isIncluded
                           ? "bg-emerald-500/20 text-emerald-400"
                           : "bg-gray-700/50 text-gray-500 hover:text-gray-300"
                       }`}
-                      title={item.isVerified ? "Verified" : "Click to verify"}
+                      title={item.isIncluded ? "Included - click to exclude" : "Excluded - click to include"}
                     >
-                      <Check className="w-4 h-4" />
+                      <Check className="w-3.5 h-3.5" />
                     </button>
                     <TwoStageButton
                       onConfirm={() => removeItem(index)}
                       icon={Trash2}
                       confirmText="Sure?"
                       variant="danger"
+                      size="sm"
                     />
                   </div>
                 </div>
@@ -941,16 +988,27 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
         )}
       </div>
 
-      {/* Floating Action Bar */}
+      {/* Floating Action Bar - Shows split */}
       {totalCount > 0 && (
-        <div className={`floating-action-bar ${hasDiscrepancies ? 'danger' : !allVerified ? 'warning' : ''}`}>
+        <div className={`floating-action-bar ${hasDiscrepancies ? 'danger' : unmatchedCount > 0 ? 'warning' : ''}`}>
           <div className="floating-action-bar-inner">
             <div className="floating-action-bar-content">
-              <div className="flex items-center gap-1.5 text-sm">
-                <span className="text-gray-400">Verified:</span>
-                <span className={verifiedCount === totalCount ? "text-emerald-400 font-medium" : "text-amber-400 font-medium"}>
-                  {verifiedCount}/{totalCount}
-                </span>
+              {/* Split indicator */}
+              <div className="flex items-center gap-3 text-sm">
+                {matchedCount > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle className="w-4 h-4 text-emerald-400" />
+                    <span className="text-emerald-400 font-medium">{matchedCount}</span>
+                    <span className="text-gray-500 text-xs">→ prices</span>
+                  </div>
+                )}
+                {unmatchedCount > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <LifeBuoy className="w-4 h-4 text-amber-400" />
+                    <span className="text-amber-400 font-medium">{unmatchedCount}</span>
+                    <span className="text-gray-500 text-xs">→ triage</span>
+                  </div>
+                )}
               </div>
               
               {hasDiscrepancies && (
@@ -980,18 +1038,18 @@ export const InvoiceEntryPanel: React.FC<Props> = ({
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={!allVerified || totalCount === 0 || isSubmitting}
+                disabled={includedCount === 0 || isSubmitting}
                 className="btn-primary text-sm py-1.5 px-4 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Saving...
+                    Processing...
                   </>
                 ) : (
                   <>
                     <Check className="w-4 h-4" />
-                    Save Invoice
+                    Process {includedCount} Item{includedCount !== 1 ? 's' : ''}
                   </>
                 )}
               </button>

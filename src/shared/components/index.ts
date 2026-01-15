@@ -10,3 +10,4 @@ export { VendorCard, type VendorCardData, type VendorCardProps } from './VendorC
 export { ModuleMergeFields } from './ModuleMergeFields';
 export { StatBar, type StatItem } from './StatBar';
 export { ImageUploadModal, type ImageUploadModalProps } from './ImageUploadModal';
+export { FileDropzone, type FileDropzoneProps } from './FileDropzone';

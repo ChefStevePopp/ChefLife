@@ -351,17 +351,17 @@ export const ImportWorkspace: React.FC<Props> = ({
         console.log(`[VIM] ${unmatchedItems.length} unmatched items going to triage:`, 
           unmatchedItems.map(i => ({ code: i.itemCode, name: i.productName })));
         
-        // Build pending items array
+        // Build pending items array - using actual column names from schema
+        // vendor_description (not product_name), import_batch_id (not vendor_import_id)
         const pendingItems = unmatchedItems.map(item => ({
           organization_id: organizationId,
           vendor_id: vendorId,
-          vendor_import_id: importRecord.id,
+          import_batch_id: importRecord.id,
           item_code: item.itemCode || `UNKNOWN-${Date.now()}`,
-          product_name: item.productName,
+          vendor_description: item.productName,
           unit_price: item.unitPrice,
           unit_of_measure: item.unit || null,
           status: 'pending',
-          created_by: user.id,
         }));
 
         // Upsert to handle re-imports of same item codes

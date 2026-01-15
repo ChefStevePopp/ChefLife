@@ -18,7 +18,7 @@ import {
   Trash2,
   Edit3,
 } from "lucide-react";
-import { VendorCard, type VendorCardData } from "@/shared/components";
+import { VendorCard, type VendorCardData, FileDropzone } from "@/shared/components";
 import { VendorSettingsModal } from "./VendorSettingsModal";
 import { useVendorTemplatesStore, type VendorTemplate } from "@/stores/vendorTemplatesStore";
 import { useVendorConfigsStore, inferVendorDefaults, type VendorConfig } from "@/stores/vendorConfigsStore";
@@ -976,48 +976,19 @@ export const VendorSettings: React.FC = () => {
             </p>
           </div>
           
-          {/* Upload area */}
-          <div className={`border-2 border-dashed rounded-xl p-6 text-center ${
-            pdfParseResult ? 'border-gray-700/50' : 'border-gray-700'
-          }`}>
-            {pdfParsing ? (
-              <div className="py-4">
-                <div className="w-10 h-10 border-3 border-green-400/30 border-t-green-400 rounded-full animate-spin mx-auto mb-3" />
-                <p className="text-gray-400">Parsing PDF...</p>
-              </div>
-            ) : (
-              <>
-                <Upload className={`w-8 h-8 mx-auto mb-2 ${pdfParseResult ? 'text-gray-600' : 'text-gray-500'}`} />
-                <p className={`mb-1 ${pdfParseResult ? 'text-gray-500 text-sm' : 'text-gray-400'}`}>
-                  {pdfParseResult ? 'Upload different PDF to test' : `Upload a sample PDF from ${selectedVendor}`}
-                </p>
-                {!pdfParseResult && (
-                  <p className="text-sm text-gray-500 mb-3">We'll extract text and show you the parsed results</p>
-                )}
-                <input
-                  type="file"
-                  accept=".pdf"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handlePDFUpload(file);
-                  }}
-                  className="hidden"
-                  id="pdf-upload"
-                />
-                <label
-                  htmlFor="pdf-upload"
-                  className={`cursor-pointer inline-flex items-center gap-2 px-4 ${
-                    pdfParseResult 
-                      ? 'btn-ghost min-h-[40px] text-sm' 
-                      : 'btn-primary min-h-[48px] px-6'
-                  }`}
-                >
-                  <Upload className="w-4 h-4" />
-                  {pdfParseResult ? 'Upload New PDF' : 'Select PDF File'}
-                </label>
-              </>
-            )}
-          </div>
+          {/* Upload area - L6 Dropzone */}
+          <FileDropzone
+            accept=".pdf"
+            onFile={handlePDFUpload}
+            isLoading={pdfParsing}
+            loadingMessage="Parsing PDF..."
+            label={`Upload a sample PDF from ${selectedVendor}`}
+            hint="Drag & drop or click to browse"
+            reuploadLabel="Drop new PDF to test"
+            hasResult={!!pdfParseResult}
+            variant="green"
+            id="pdf-upload"
+          />
           
           {/* Parse Results */}
           {pdfParseResult && (

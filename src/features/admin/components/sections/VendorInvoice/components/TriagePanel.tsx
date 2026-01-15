@@ -296,23 +296,25 @@ export const TriagePanel: React.FC = () => {
     setIsLoading(true);
     try {
       // 1. Fetch skipped items from pending_import_items
+      // vendor_id is TEXT (stores vendor name from operations_settings.vendors)
+      // Note: actual columns are vendor_description (not product_name), import_batch_id (not vendor_import_id)
       const { data: skippedItems, error: skippedError } = await supabase
         .from("pending_import_items")
         .select(`
           id,
           item_code,
-          product_name,
+          vendor_description,
           unit_price,
           unit_of_measure,
           vendor_id,
-          created_at,
-          vendors(name)
+          import_batch_id,
+          created_at
         `)
         .eq("organization_id", user.user_metadata.organizationId)
         .eq("status", "pending");
 
       if (skippedError) {
-        console.warn("Could not fetch pending items:", skippedError);
+        console.error("Could not fetch pending items:", skippedError);
       }
 
       // 2. Get incomplete ingredients from store
@@ -320,14 +322,15 @@ export const TriagePanel: React.FC = () => {
       const currentIngredients = useMasterIngredientsStore.getState().ingredients;
 
       // Transform skipped items (always purchased - they come from VIM)
+      // vendor_id column stores TEXT vendor name (e.g., "HIGHLAND")
       const skippedPending: PendingItem[] = (skippedItems || []).map((item: any) => ({
         id: item.id,
         item_code: item.item_code,
-        product_name: item.product_name,
+        product_name: item.vendor_description, // actual column name
         unit_price: item.unit_price,
         unit_of_measure: item.unit_of_measure,
         vendor_id: item.vendor_id,
-        vendor_name: item.vendors?.name,
+        vendor_name: item.vendor_id, // vendor_id IS the vendor name (TEXT)
         source: "skipped" as const,
         ingredient_type: "purchased" as const,
         percent_complete: 0,

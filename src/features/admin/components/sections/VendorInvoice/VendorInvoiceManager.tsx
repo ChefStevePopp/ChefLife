@@ -204,10 +204,10 @@ export const VendorInvoiceManager = () => {
   // EFFECTS
   // ---------------------------------------------------------------------------
   React.useEffect(() => {
-    if (selectedVendor) {
-      fetchTemplates(selectedVendor);
+    if (selectedVendor && organizationId) {
+      fetchTemplates(organizationId, selectedVendor);
     }
-  }, [selectedVendor, fetchTemplates]);
+  }, [selectedVendor, organizationId, fetchTemplates]);
 
   // ---------------------------------------------------------------------------
   // HANDLERS

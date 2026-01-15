@@ -1,222 +1,349 @@
 // =============================================================================
-// FLANAGAN PDF PARSER
+// FLANAGAN PDF PARSER - Physical Invoice Format (2026)
 // =============================================================================
-// Parses Flanagan Foodservice invoices (2026+ format)
-// Structure: Grid data → Totals → Header info → Descriptions
+// Parses Flanagan Foodservice ACTUAL COMPANY INVOICES (not portal exports)
+// 
+// Invoice Structure:
+// - Header with customer info, dates, order numbers
+// - Tabular line items with columns:
+//   REF.NO | PRODUCT NO | ORDER QTY | UNIT | PACK/SIZE | DESCRIPTION | TAX | QTY SHIPPED | CODE | QTY BO | UNIT PRICE | EXTENSION
+// - Multi-line descriptions (WEIGHT: appears on continuation line)
+// - Footer with totals
+//
+// Philosophy: Parse the SOURCE OF TRUTH - physical invoices don't change
 // =============================================================================
 
 export interface FlanaganLineItem {
-  quantity: number;
-  itemCode: string;
-  unit: string;
-  unitPrice: number;
-  lineTotal: number;
-  productName: string;
-  brand?: string;
-  packSize?: string;
+  quantity: number;        // QTY SHIPPED (what we actually received)
+  quantityOrdered: number; // ORDER QTY
+  itemCode: string;        // PRODUCT NO (asterisk stripped for MIL matching)
+  unit: string;            // UNIT (CA, etc.)
+  packSize: string;        // PACK/SIZE (1/19KG, 12/1LT, etc.)
+  unitPrice: number;       // UNIT PRICE
+  lineTotal: number;       // EXTENSION
+  productName: string;     // DESCRIPTION
+  weight?: number;         // Extracted from "WEIGHT: X.XX" line
   rawDescription?: string;
 }
 
 export interface FlanaganInvoice {
   invoiceDate: Date | null;
-  fulfillmentType: string;
+  invoiceNumber: string;
+  orderNumber: string;
   customerNumber: string;
   customerName: string;
   vendorName: string;
   totalItems: number;
   estimatedTotal: number;
   lineItems: FlanaganLineItem[];
-  parseConfidence: number; // 0-100
+  parseConfidence: number;
   parseWarnings: string[];
 }
 
 /**
- * Parse Flanagan PDF text into structured invoice data
+ * Parse Flanagan physical invoice PDF text
  */
 export function parseFlanaganInvoice(pdfText: string): FlanaganInvoice {
-  const lines = pdfText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
   const warnings: string[] = [];
   
-  // ---------------------------------------------------------------------------
-  // STEP 1: Find section boundaries
-  // ---------------------------------------------------------------------------
-  const headerEndIndex = lines.findIndex(l => l === 'Line total') + 1;
-  const totalItemsIndex = lines.findIndex(l => l === 'Total Items');
-  const deliveryIndex = lines.findIndex(l => l === 'Delivery' || l === 'Pickup');
+  // Normalize text - pdf.js can give us weird spacing
+  const rawLines = pdfText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
   
-  if (totalItemsIndex === -1) {
-    warnings.push('Could not find "Total Items" marker');
-  }
-  if (deliveryIndex === -1) {
-    warnings.push('Could not find fulfillment type marker');
-  }
-
-  // ---------------------------------------------------------------------------
-  // STEP 2: Extract grid data (between header and "Total Items")
-  // ---------------------------------------------------------------------------
-  const gridLines = lines.slice(headerEndIndex, totalItemsIndex > 0 ? totalItemsIndex : undefined);
-  const gridItems: Array<{qty: number; code: string; unit: string; price: number; total: number}> = [];
+  console.log('[Flanagan Parser] Raw lines count:', rawLines.length);
+  console.log('[Flanagan Parser] First 30 lines:', rawLines.slice(0, 30));
   
-  let i = 0;
-  while (i < gridLines.length) {
-    const qty = parseInt(gridLines[i]);
-    
-    // If we hit a non-number, we've reached the end of grid data
-    if (isNaN(qty)) break;
-    
-    // Parse 5-value group: qty, code, unit, price, total
-    const itemCode = gridLines[i + 1] || '';
-    const unit = gridLines[i + 2] || 'Case';
-    const price = parsePrice(gridLines[i + 3]);
-    const total = parsePrice(gridLines[i + 4]);
-    
-    gridItems.push({ qty, code: itemCode, unit, price, total });
-    i += 5;
-  }
-
   // ---------------------------------------------------------------------------
-  // STEP 3: Extract totals
-  // ---------------------------------------------------------------------------
-  let totalItems = gridItems.length;
-  let estimatedTotal = 0;
-  
-  if (totalItemsIndex > 0) {
-    // Line after "Total Items" should be the count
-    const countLine = lines[totalItemsIndex + 1];
-    const parsedCount = parseInt(countLine);
-    if (!isNaN(parsedCount)) {
-      totalItems = parsedCount;
-    }
-    
-    // Next line should be the total amount
-    const totalLine = lines[totalItemsIndex + 2];
-    estimatedTotal = parsePrice(totalLine);
-  }
-
-  // ---------------------------------------------------------------------------
-  // STEP 4: Extract invoice metadata
+  // STEP 1: Extract header metadata
   // ---------------------------------------------------------------------------
   let invoiceDate: Date | null = null;
-  let fulfillmentType = 'Delivery';
+  let invoiceNumber = '';
+  let orderNumber = '';
   let customerNumber = '';
   let customerName = '';
   
-  // Find fulfillment date (line before "Delivery" or "Pickup")
-  if (deliveryIndex > 0) {
-    const dateStr = lines[deliveryIndex - 1];
-    invoiceDate = parseFlanaganDate(dateStr);
-    fulfillmentType = lines[deliveryIndex];
-  }
-  
-  // Find customer info
-  const customerIndex = lines.findIndex(l => l.startsWith('Customer:'));
-  if (customerIndex > 0) {
-    const customerLine = lines[customerIndex + 1] || '';
-    // Format: "31607 MEMPHIS FIRE BARBEQUE COMPANY INC"
-    const match = customerLine.match(/^(\d+)\s+(.+)$/);
-    if (match) {
-      customerNumber = match[1];
-      customerName = match[2];
-    } else {
-      customerName = customerLine;
+  // Look for date pattern: "07-JAN-26" or "14-JAN-26"
+  const datePattern = /(\d{1,2})-([A-Z]{3})-(\d{2})/i;
+  for (const line of rawLines.slice(0, 50)) {
+    const dateMatch = line.match(datePattern);
+    if (dateMatch && !invoiceDate) {
+      const day = parseInt(dateMatch[1]);
+      const monthStr = dateMatch[2].toUpperCase();
+      const year = 2000 + parseInt(dateMatch[3]);
+      
+      const months: Record<string, number> = {
+        'JAN': 0, 'FEB': 1, 'MAR': 2, 'APR': 3, 'MAY': 4, 'JUN': 5,
+        'JUL': 6, 'AUG': 7, 'SEP': 8, 'OCT': 9, 'NOV': 10, 'DEC': 11
+      };
+      
+      if (months[monthStr] !== undefined) {
+        invoiceDate = new Date(year, months[monthStr], day);
+      }
     }
-  }
-
-  // ---------------------------------------------------------------------------
-  // STEP 5: Extract product descriptions (after fulfillment type)
-  // ---------------------------------------------------------------------------
-  const descriptionLines = deliveryIndex > 0 ? lines.slice(deliveryIndex + 1) : [];
-  const descriptions: Array<{name: string; brand?: string; packSize?: string; raw: string}> = [];
-  
-  let currentDesc: string[] = [];
-  
-  for (const line of descriptionLines) {
-    // Product names are ALL CAPS, brand lines start with "Brand:" or "JIT |"
-    if (line.startsWith('Brand:') || line.startsWith('JIT |')) {
-      // This is metadata for the previous product
-      if (currentDesc.length > 0) {
-        const productName = currentDesc.join(' ').trim();
-        const parsed = parseDescriptionLine(line);
-        descriptions.push({
-          name: productName,
-          brand: parsed.brand,
-          packSize: parsed.packSize,
-          raw: `${productName}\n${line}`
-        });
-        currentDesc = [];
-      }
-    } else if (line.match(/^[A-Z0-9\s\/%"'&-]+$/) && line.length > 3) {
-      // Likely a product name (ALL CAPS)
-      if (currentDesc.length > 0) {
-        // Previous product had no brand line, save it
-        const productName = currentDesc.join(' ').trim();
-        descriptions.push({ name: productName, raw: productName });
-      }
-      currentDesc = [line];
-    } else if (currentDesc.length > 0 && !line.startsWith('|')) {
-      // Continuation of product name or metadata
-      currentDesc.push(line);
+    
+    // Look for order number (usually 5 digits like 44058)
+    if (line.match(/^\d{5}$/) && !orderNumber) {
+      orderNumber = line;
+    }
+    
+    // Customer number and name: "31607 MEMPHIS FIRE BARBEQUE COMPANY IN"
+    const customerMatch = line.match(/^(\d{5})\s+([A-Z\s]+(?:COMPANY|INC|LTD|LLC|CORP)?.*)/i);
+    if (customerMatch && !customerNumber) {
+      customerNumber = customerMatch[1];
+      customerName = customerMatch[2].trim();
     }
   }
   
-  // Don't forget the last product
-  if (currentDesc.length > 0) {
-    const productName = currentDesc.join(' ').trim();
-    descriptions.push({ name: productName, raw: productName });
-  }
-
-  // ---------------------------------------------------------------------------
-  // STEP 6: Merge grid data with descriptions
-  // ---------------------------------------------------------------------------
-  const lineItems: FlanaganLineItem[] = gridItems.map((item, index) => {
-    const desc = descriptions[index];
-    return {
-      quantity: item.qty,
-      itemCode: item.code,
-      unit: item.unit,
-      unitPrice: item.price,
-      lineTotal: item.total,
-      productName: desc?.name || `Unknown Product (${item.code})`,
-      brand: desc?.brand,
-      packSize: desc?.packSize,
-      rawDescription: desc?.raw
-    };
-  });
-
-  // ---------------------------------------------------------------------------
-  // STEP 7: Calculate confidence score
-  // ---------------------------------------------------------------------------
-  let confidence = 100;
-  
-  // Deduct for mismatched counts
-  if (gridItems.length !== descriptions.length) {
-    confidence -= 20;
-    warnings.push(`Grid items (${gridItems.length}) don't match descriptions (${descriptions.length})`);
-  }
-  
-  // Deduct for missing metadata
   if (!invoiceDate) {
-    confidence -= 10;
     warnings.push('Could not parse invoice date');
   }
   
-  // Deduct for each item with missing product name
-  const missingNames = lineItems.filter(i => i.productName.startsWith('Unknown')).length;
-  if (missingNames > 0) {
-    confidence -= missingNames * 5;
-    warnings.push(`${missingNames} items missing product names`);
+  // ---------------------------------------------------------------------------
+  // STEP 2: Find and parse line items
+  // ---------------------------------------------------------------------------
+  // Strategy: Look for lines that start with a product code (6 digits, possibly with *)
+  // Product codes: 167621, 209240*, 222847*, 222850*, 234259, etc.
+  
+  const lineItems: FlanaganLineItem[] = [];
+  const productCodePattern = /^(\d{6}\*?)$/;
+  
+  // First pass: identify product code positions
+  const productCodeIndices: number[] = [];
+  for (let i = 0; i < rawLines.length; i++) {
+    if (productCodePattern.test(rawLines[i])) {
+      productCodeIndices.push(i);
+    }
   }
   
-  // Deduct if totals don't match
-  const calculatedTotal = lineItems.reduce((sum, item) => sum + item.lineTotal, 0);
-  if (Math.abs(calculatedTotal - estimatedTotal) > 0.1) {
-    confidence -= 10;
-    warnings.push(`Calculated total ($${calculatedTotal.toFixed(2)}) differs from stated total ($${estimatedTotal.toFixed(2)})`);
+  // Also try to extract date from header area if not found yet
+  // Look for patterns like "14-JAN-26" or "07-JAN-26"
+  if (!invoiceDate) {
+    for (const line of rawLines) {
+      const altDateMatch = line.match(/(\d{1,2})-(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)-(\d{2})/i);
+      if (altDateMatch) {
+        const day = parseInt(altDateMatch[1]);
+        const monthStr = altDateMatch[2].toUpperCase();
+        const year = 2000 + parseInt(altDateMatch[3]);
+        
+        const months: Record<string, number> = {
+          'JAN': 0, 'FEB': 1, 'MAR': 2, 'APR': 3, 'MAY': 4, 'JUN': 5,
+          'JUL': 6, 'AUG': 7, 'SEP': 8, 'OCT': 9, 'NOV': 10, 'DEC': 11
+        };
+        
+        if (months[monthStr] !== undefined) {
+          invoiceDate = new Date(year, months[monthStr], day);
+          console.log('[Flanagan Parser] Found date in line:', line, '->', invoiceDate);
+          break;
+        }
+      }
+    }
   }
-
+  
+  console.log('[Flanagan Parser] Found product codes at indices:', productCodeIndices);
+  console.log('[Flanagan Parser] Product codes:', productCodeIndices.map(i => rawLines[i]));
+  
+  // Second pass: extract data around each product code
+  // The pattern in tabular PDFs is often:
+  // - Cells are extracted in reading order (left to right, top to bottom)
+  // - Each row's cells appear as consecutive lines
+  
+  for (let idx = 0; idx < productCodeIndices.length; idx++) {
+    const codeIndex = productCodeIndices[idx];
+    const nextCodeIndex = productCodeIndices[idx + 1] || rawLines.length;
+    
+    // Strip asterisk from item code (Flanagan's "must verify at delivery" marker)
+    // Not relevant for invoice processing, just need clean code for MIL matching
+    const itemCode = rawLines[codeIndex].replace('*', '');
+    
+    // Look backwards and forwards for related data
+    // Typical extraction order: ORDER QTY | PRODUCT NO | UNIT | PACK/SIZE | DESCRIPTION...
+    
+    // Search window: 5 lines before, up to next product code
+    const windowStart = Math.max(0, codeIndex - 5);
+    const windowEnd = Math.min(rawLines.length, nextCodeIndex);
+    const window = rawLines.slice(windowStart, windowEnd);
+    
+    console.log(`[Flanagan Parser] Item ${itemCode} window:`, window);
+    
+    // Extract quantity (usually "1" right before or after code)
+    let quantityOrdered = 1;
+    let quantityShipped = 1;
+    
+    // Look for numbers that look like quantities (1, 2, etc. or 1.00, 2.00)
+    for (let i = codeIndex - 3; i < codeIndex && i >= 0; i++) {
+      const qtyMatch = rawLines[i].match(/^(\d+)$/);
+      if (qtyMatch) {
+        quantityOrdered = parseInt(qtyMatch[1]);
+        break;
+      }
+    }
+    
+    // Extract unit (CA, EA, etc.) - usually right after product code
+    let unit = 'CA';
+    for (let i = codeIndex + 1; i < codeIndex + 3 && i < rawLines.length; i++) {
+      if (/^(CA|EA|BX|CS|PK|BG|LB|KG)$/i.test(rawLines[i])) {
+        unit = rawLines[i].toUpperCase();
+        break;
+      }
+    }
+    
+    // Extract pack size (pattern: number/number+unit like 1/19KG, 12/1LT, 6/10LB)
+    let packSize = '';
+    for (let i = codeIndex + 1; i < codeIndex + 5 && i < rawLines.length; i++) {
+      if (/^\d+\/\d+[A-Z]+$/i.test(rawLines[i])) {
+        packSize = rawLines[i];
+        break;
+      }
+    }
+    
+    // Extract description - look for text in parens or ALL CAPS product names
+    let productName = '';
+    let weight: number | undefined;
+    
+    for (let i = codeIndex + 1; i < windowEnd; i++) {
+      const line = rawLines[i];
+      
+      // Skip if it's another product code
+      if (productCodePattern.test(line)) break;
+      
+      // Weight line: "WEIGHT: 19.29"
+      const weightMatch = line.match(/WEIGHT:\s*([\d.]+)/i);
+      if (weightMatch) {
+        weight = parseFloat(weightMatch[1]);
+        continue;
+      }
+      
+      // Description: starts with ( or is ALL CAPS words
+      if (line.startsWith('(') || /^[A-Z][A-Z\s%\d"'\/]+$/.test(line)) {
+        if (productName) {
+          productName += ' ' + line;
+        } else {
+          productName = line;
+        }
+      }
+    }
+    
+    // Extract prices - look for decimal numbers in the window
+    // Unit price and extension are usually near the end
+    let unitPrice = 0;
+    let lineTotal = 0;
+    
+    const pricePattern = /^(\d+\.\d{2})$/;
+    const prices: number[] = [];
+    
+    for (let i = codeIndex + 1; i < windowEnd; i++) {
+      const match = rawLines[i].match(pricePattern);
+      if (match) {
+        prices.push(parseFloat(match[1]));
+      }
+    }
+    
+    // Also look for QTY SHIPPED (format: 1.00)
+    for (let i = codeIndex + 1; i < windowEnd; i++) {
+      const qtyShipMatch = rawLines[i].match(/^(\d+\.\d{2})$/);
+      if (qtyShipMatch) {
+        const val = parseFloat(qtyShipMatch[1]);
+        // If it's a small number (< 100), it might be qty shipped
+        if (val < 100 && val === Math.floor(val)) {
+          quantityShipped = val;
+        }
+      }
+    }
+    
+    console.log(`[Flanagan Parser] Item ${itemCode} prices found:`, prices);
+    
+    // Typically: smaller price is unit price, larger is extension (line total)
+    if (prices.length >= 2) {
+      // Sort to find unit price (smaller) vs extension (larger)
+      const sortedPrices = [...prices].sort((a, b) => a - b);
+      
+      // The largest is usually the extension
+      lineTotal = sortedPrices[sortedPrices.length - 1];
+      
+      // Look for a price that when multiplied by qty gives us the extension
+      for (const p of sortedPrices) {
+        // Check if this could be the unit price
+        // For catch weight items, total = weight * unit price
+        if (weight && Math.abs(weight * p - lineTotal) < 0.1) {
+          unitPrice = p;
+          break;
+        }
+        // For fixed qty items, total = qty * unit price
+        if (Math.abs(quantityOrdered * p - lineTotal) < 0.1) {
+          unitPrice = p;
+          break;
+        }
+      }
+      
+      // Fallback: second-to-last price is often unit price
+      if (!unitPrice && sortedPrices.length >= 2) {
+        unitPrice = sortedPrices[sortedPrices.length - 2];
+      }
+    } else if (prices.length === 1) {
+      lineTotal = prices[0];
+    }
+    
+    // If we have weight, this is a catch-weight item
+    // The quantity is actually the weight for pricing
+    if (weight) {
+      quantityShipped = weight;
+    }
+    
+    lineItems.push({
+      quantity: quantityShipped,
+      quantityOrdered,
+      itemCode,  // Already stripped of * above
+      unit,
+      packSize,
+      unitPrice,
+      lineTotal,
+      productName: productName || `Product ${itemCode}`,
+      weight,
+      rawDescription: productName,
+    });
+  }
+  
+  // ---------------------------------------------------------------------------
+  // STEP 3: Calculate totals and confidence
+  // ---------------------------------------------------------------------------
+  const totalItems = lineItems.length;
+  const estimatedTotal = lineItems.reduce((sum, item) => sum + item.lineTotal, 0);
+  
+  let confidence = 100;
+  
+  if (lineItems.length === 0) {
+    confidence = 0;
+    warnings.push('No line items could be parsed');
+  } else {
+    // Check for items missing key data
+    const missingPrices = lineItems.filter(i => !i.unitPrice).length;
+    const missingNames = lineItems.filter(i => i.productName.startsWith('Product ')).length;
+    
+    if (missingPrices > 0) {
+      confidence -= missingPrices * 10;
+      warnings.push(`${missingPrices} items missing unit price`);
+    }
+    
+    if (missingNames > 0) {
+      confidence -= missingNames * 5;
+      warnings.push(`${missingNames} items missing product name`);
+    }
+  }
+  
+  if (!invoiceDate) {
+    confidence -= 10;
+  }
+  
+  console.log('[Flanagan Parser] Final result:', {
+    lineItems: lineItems.length,
+    total: estimatedTotal,
+    confidence,
+    warnings,
+  });
+  
   return {
     invoiceDate,
-    fulfillmentType,
+    invoiceNumber,
+    orderNumber,
     customerNumber,
     customerName,
     vendorName: 'Flanagan Foodservice',
@@ -224,64 +351,8 @@ export function parseFlanaganInvoice(pdfText: string): FlanaganInvoice {
     estimatedTotal,
     lineItems,
     parseConfidence: Math.max(0, confidence),
-    parseWarnings: warnings
+    parseWarnings: warnings,
   };
-}
-
-// =============================================================================
-// HELPER FUNCTIONS
-// =============================================================================
-
-function parsePrice(str: string): number {
-  if (!str) return 0;
-  // Remove $ and commas, parse as float
-  const cleaned = str.replace(/[$,]/g, '').trim();
-  const parsed = parseFloat(cleaned);
-  return isNaN(parsed) ? 0 : parsed;
-}
-
-function parseFlanaganDate(str: string): Date | null {
-  if (!str) return null;
-  
-  // Format: "7 Jan 2026"
-  const match = str.match(/(\d{1,2})\s+(\w+)\s+(\d{4})/);
-  if (match) {
-    const day = parseInt(match[1]);
-    const monthStr = match[2];
-    const year = parseInt(match[3]);
-    
-    const months: Record<string, number> = {
-      'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
-      'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
-    };
-    
-    const month = months[monthStr];
-    if (month !== undefined) {
-      return new Date(year, month, day);
-    }
-  }
-  
-  // Try standard date parsing as fallback
-  const parsed = new Date(str);
-  return isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function parseDescriptionLine(line: string): { brand?: string; packSize?: string } {
-  const result: { brand?: string; packSize?: string } = {};
-  
-  // Extract brand
-  const brandMatch = line.match(/Brand:\s*([^|]+)/);
-  if (brandMatch) {
-    result.brand = brandMatch[1].trim();
-  }
-  
-  // Extract pack size
-  const packMatch = line.match(/Pack Size:\s*([^|]+)/);
-  if (packMatch) {
-    result.packSize = packMatch[1].trim();
-  }
-  
-  return result;
 }
 
 // =============================================================================
@@ -293,12 +364,14 @@ function parseDescriptionLine(line: string): { brand?: string; packSize?: string
  */
 export function isFlanaganInvoice(pdfText: string): boolean {
   const indicators = [
-    'Flanagan Foodservice',
+    'Flanagan',
+    'FOODSERVICE',
     'flanagan.ca',
     '145 Otonabee Dr',
-    'Kitchener, Ontario N2C'
+    'Kitchener, Ontario',
+    'KIT:FLANAGAN',
   ];
   
-  const lowerText = pdfText.toLowerCase();
-  return indicators.some(indicator => lowerText.includes(indicator.toLowerCase()));
+  const upperText = pdfText.toUpperCase();
+  return indicators.some(indicator => upperText.includes(indicator.toUpperCase()));
 }

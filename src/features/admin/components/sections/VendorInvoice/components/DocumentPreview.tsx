@@ -47,6 +47,7 @@ export const DocumentPreview: React.FC<Props> = ({
   const [error, setError] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [pdfPages, setPdfPages] = useState<HTMLCanvasElement[]>([]);
+  const [detectedFileType, setDetectedFileType] = useState<"pdf" | "photo">(fileType);
   
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -71,8 +72,13 @@ export const DocumentPreview: React.FC<Props> = ({
       setIsLoading(true);
       setError(null);
 
+      // Detect actual file type from file itself (handles recall mode where prop may not match)
+      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      const actualFileType = isPdf ? "pdf" : "photo";
+      setDetectedFileType(actualFileType);
+
       try {
-        if (fileType === "photo") {
+        if (actualFileType === "photo") {
           // Load image
           const url = URL.createObjectURL(file);
           setImageUrl(url);
@@ -145,7 +151,7 @@ export const DocumentPreview: React.FC<Props> = ({
   // DRAW CURRENT PAGE
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    if (fileType === "pdf" && pdfPages.length > 0 && canvasRef.current) {
+    if (detectedFileType === "pdf" && pdfPages.length > 0 && canvasRef.current) {
       const sourceCanvas = pdfPages[currentPage - 1];
       if (sourceCanvas) {
         const ctx = canvasRef.current.getContext("2d");
@@ -156,7 +162,7 @@ export const DocumentPreview: React.FC<Props> = ({
         }
       }
     }
-  }, [currentPage, pdfPages, fileType]);
+  }, [currentPage, pdfPages, detectedFileType]);
 
   // ---------------------------------------------------------------------------
   // HANDLERS
@@ -295,7 +301,7 @@ export const DocumentPreview: React.FC<Props> = ({
         </div>
 
         {/* Page Navigation (PDF only) */}
-        {fileType === "pdf" && totalPages > 1 && (
+        {detectedFileType === "pdf" && totalPages > 1 && (
           <div className="flex items-center gap-1">
             <button
               onClick={handlePrevPage}
@@ -347,7 +353,7 @@ export const DocumentPreview: React.FC<Props> = ({
             pointerEvents: zoom > 1 ? "none" : "auto",
           }}
         >
-          {fileType === "photo" && imageUrl ? (
+          {detectedFileType === "photo" && imageUrl ? (
             <img
               src={imageUrl}
               alt="Invoice"
