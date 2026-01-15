@@ -35,7 +35,7 @@ const getRelativeTime = (dateString: string | null): string => {
 // =============================================================================
 
 export const priceHistoryColumns: ExcelColumn[] = [
-  // --- Tier 3: Supporting (muted) ---
+  // --- Tier 3: Supporting (muted but legible) ---
   {
     key: "created_at",
     name: "Created Date",
@@ -45,7 +45,7 @@ export const priceHistoryColumns: ExcelColumn[] = [
     sortable: true,
     filterable: true,
     render: (value: string) => (
-      <span className="text-gray-500 text-sm">
+      <span className="text-gray-400 text-sm">
         {value ? new Date(value).toLocaleDateString() : "—"}
       </span>
     ),
@@ -59,7 +59,7 @@ export const priceHistoryColumns: ExcelColumn[] = [
     sortable: true,
     filterable: true,
     render: (value: string) => (
-      <span className="text-gray-500 text-sm">
+      <span className="text-gray-400 text-sm">
         {value ? new Date(value).toLocaleDateString() : "—"}
       </span>
     ),
@@ -123,13 +123,13 @@ export const priceHistoryColumns: ExcelColumn[] = [
     ),
   },
 
-  // --- Tier 3: Old Price with relative time ---
+  // --- Tier 3: Old Price with relative date ---
   {
     key: "old_price",
     name: "Old Price",
     type: "custom",
     filterType: "number",
-    width: 100,
+    width: 110,
     sortable: true,
     filterable: true,
     align: "right",
@@ -137,8 +137,8 @@ export const priceHistoryColumns: ExcelColumn[] = [
       const relativeTime = getRelativeTime(row?.previous_date);
       return (
         <div className="text-right">
-          <div className="text-gray-500">
-            <span className="text-gray-600">$</span> {value != null ? value.toFixed(2) : "—"}
+          <div className="text-gray-400 font-semibold">
+            <span className="text-gray-500">$</span> {value != null ? value.toFixed(2) : "—"}
           </div>
           {relativeTime && (
             <div className="text-[10px] text-gray-600">{relativeTime}</div>
@@ -163,26 +163,22 @@ export const priceHistoryColumns: ExcelColumn[] = [
 
       if (value == null) return <span className="text-gray-500">—</span>;
 
-      // Rose icon for price increases (bad) - matches Change % pattern
+      // Rose for price increases (bad) - matches Change % pattern exactly
       if (isIncrease) {
         return (
-          <span className="inline-flex items-center gap-1">
-            <TrendingUp className="w-4 h-4 text-rose-400" />
-            <span className="text-gray-300">
-              <span className="text-gray-500">$</span> {value.toFixed(2)}
-            </span>
+          <span className="inline-flex items-center gap-1 text-rose-400">
+            <TrendingUp className="w-4 h-4" />
+            $ {value.toFixed(2)}
           </span>
         );
       }
 
-      // Emerald icon for price decreases (good) - matches Change % pattern
+      // Emerald for price decreases (good) - matches Change % pattern exactly
       if (isDecrease) {
         return (
-          <span className="inline-flex items-center gap-1">
-            <TrendingDown className="w-4 h-4 text-emerald-400" />
-            <span className="text-gray-300">
-              <span className="text-gray-500">$</span> {value.toFixed(2)}
-            </span>
+          <span className="inline-flex items-center gap-1 text-emerald-400">
+            <TrendingDown className="w-4 h-4" />
+            $ {value.toFixed(2)}
           </span>
         );
       }

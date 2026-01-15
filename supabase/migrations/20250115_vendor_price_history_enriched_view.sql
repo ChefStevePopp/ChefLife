@@ -4,12 +4,14 @@
 -- Adds:
 -- 1. previous_effective_date - when was the old price from?
 -- 2. vendor logo_url - for visual identification
+-- 3. alert_price_change, show_on_dashboard - for filtering watch items
+-- 4. priority_level - for highlighting critical items
 -- ============================================================================
 
 -- Drop existing view if it exists
 DROP VIEW IF EXISTS vendor_price_history_enriched;
 
--- Create enhanced view with previous date and logo
+-- Create enhanced view with previous date, logo, and alert flags
 CREATE OR REPLACE VIEW vendor_price_history_enriched AS
 SELECT 
   vph.id,
@@ -35,6 +37,10 @@ SELECT
   -- Ingredient details
   mi.product as product_name,
   mi.item_code,
+  -- Alert and dashboard flags
+  COALESCE(mi.alert_price_change, false) as alert_price_change,
+  COALESCE(mi.show_on_dashboard, false) as show_on_dashboard,
+  COALESCE(mi.priority_level, 'standard') as priority_level,
   -- Vendor logo from configs
   vc.logo_url as vendor_logo_url
 FROM vendor_price_history vph
@@ -46,7 +52,7 @@ WHERE vph.previous_price IS NOT NULL
 
 -- Add comment
 COMMENT ON VIEW vendor_price_history_enriched IS 
-'Price history with previous date, change calculations, and vendor logos for display';
+'Price history with previous date, change calculations, vendor logos, and alert flags for display';
 
 -- Grant access (inherits from base table RLS)
 GRANT SELECT ON vendor_price_history_enriched TO authenticated;

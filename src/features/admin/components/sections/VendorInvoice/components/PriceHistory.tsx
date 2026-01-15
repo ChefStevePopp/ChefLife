@@ -7,6 +7,10 @@ import {
   RefreshCw,
   DollarSign,
   TrendingDown,
+  Calendar,
+  Truck,
+  Eye,
+  Flame,
 } from "lucide-react";
 import { useVendorPriceChangesStore } from "@/stores/vendorPriceChangesStore";
 import { useVendorCodesStore } from "@/stores/vendorCodesStore";
@@ -46,81 +50,79 @@ export const PriceHistory = () => {
   const error = priceChangesError || trendsError;
 
   const [activeFilter, setActiveFilter] = useState<{
-    filterType?: "increase" | "decrease";
+    filterType?: "increase" | "decrease" | "vendor" | "watchlist";
     ingredientId?: string;
+    vendorId?: string;
   }>({});
 
+  // Sort mode for the shortcuts
+  const [sortMode, setSortMode] = useState<"created" | "invoice" | "vendor">("created");
+
   useEffect(() => {
-    fetchPriceChanges(daysToShow, activeFilter);
+    fetchPriceChanges(daysToShow, activeFilter, sortMode);
     fetchPriceTrends();
-  }, [fetchPriceChanges, fetchPriceTrends, daysToShow, activeFilter]);
+  }, [fetchPriceChanges, fetchPriceTrends, daysToShow, activeFilter, sortMode]);
 
-  // Calculate price statistics from the table data (priceChanges)
+  // Calculate ACTIONABLE price statistics from live data
   const priceStats = React.useMemo(() => {
-    const stats = {
-      avgIncrease: 0,
-      avgDecrease: 0,
-      maxIncrease: 0,
-      maxDecrease: 0,
-      totalChanges: 0,
-      maxIncreaseItem: null,
-      maxDecreaseItem: null,
-    };
-
-    // Use the same data as the table (priceChanges)
-    const dataToUse = priceChanges;
-
     // Filter out items with no change
-    const validTrends = dataToUse.filter((t) => t.change_percent !== 0);
-    const increases = validTrends.filter((t) => t.change_percent > 0);
-    const decreases = validTrends.filter((t) => t.change_percent < 0);
+    const validChanges = priceChanges.filter((t) => t.change_percent !== 0);
+    const increases = validChanges.filter((t) => t.change_percent > 0);
+    const decreases = validChanges.filter((t) => t.change_percent < 0);
 
-    // Calculate average increase
-    stats.avgIncrease =
-      increases.length > 0
-        ? increases.reduce((sum, t) => sum + t.change_percent, 0) /
-          increases.length
-        : 0;
+    // 1. Total changes
+    const totalChanges = validChanges.length;
 
-    // Calculate average decrease (as a positive number)
-    stats.avgDecrease =
-      decreases.length > 0
-        ? Math.abs(
-            decreases.reduce((sum, t) => sum + t.change_percent, 0) /
-              decreases.length,
-          )
-        : 0;
+    // 2. Top Increase - item with highest increase
+    const topIncrease = increases.length > 0
+      ? increases.reduce((max, item) => 
+          item.change_percent > max.change_percent ? item : max
+        )
+      : null;
 
-    // Find the item with maximum increase
-    if (increases.length > 0) {
-      const maxIncreaseValue = Math.max(
-        ...increases.map((t) => t.change_percent),
-      );
-      stats.maxIncrease = maxIncreaseValue;
-      stats.maxIncreaseItem =
-        increases.find((t) => t.change_percent === maxIncreaseValue) || null;
-    }
+    // 3. Top Decrease - item with biggest decrease (most negative)
+    const topDecrease = decreases.length > 0
+      ? decreases.reduce((min, item) => 
+          item.change_percent < min.change_percent ? item : min
+        )
+      : null;
 
-    // Find the item with maximum decrease (as a positive number)
-    if (decreases.length > 0) {
-      const maxDecreaseValue = Math.abs(
-        Math.min(...decreases.map((t) => t.change_percent)),
-      );
-      stats.maxDecrease = maxDecreaseValue;
-      const minChangeValue = Math.min(
-        ...decreases.map((t) => t.change_percent),
-      );
-      stats.maxDecreaseItem =
-        decreases.find((t) => t.change_percent === minChangeValue) || null;
-    }
+    // 4. Hottest Vendor - vendor with most price increases
+    const vendorIncreases: Record<string, { count: number; decreases: number }> = {};
+    validChanges.forEach((item) => {
+      if (!vendorIncreases[item.vendor_id]) {
+        vendorIncreases[item.vendor_id] = { count: 0, decreases: 0 };
+      }
+      if (item.change_percent > 0) {
+        vendorIncreases[item.vendor_id].count++;
+      } else {
+        vendorIncreases[item.vendor_id].decreases++;
+      }
+    });
+    const hottestVendor = Object.entries(vendorIncreases)
+      .sort((a, b) => b[1].count - a[1].count)[0] || null;
 
-    // Total number of price changes
-    stats.totalChanges = validTrends.length;
+    // 5. Watch List - items with alert_price_change AND change > 15%
+    const watchThreshold = 15;
+    const watchListItems = validChanges.filter(
+      (item) => item.alert_price_change && Math.abs(item.change_percent) > watchThreshold
+    );
 
-    return stats;
+    return {
+      totalChanges,
+      topIncrease,
+      topDecrease,
+      hottestVendor: hottestVendor ? {
+        vendorId: hottestVendor[0],
+        increases: hottestVendor[1].count,
+        decreases: hottestVendor[1].decreases,
+      } : null,
+      watchListCount: watchListItems.length,
+      watchListItems,
+    };
   }, [priceChanges]);
 
-  // Filter price changes based on active filter
+  // Filter and sort price changes based on active filter and sort mode
   const filteredPriceChanges = React.useMemo(() => {
     // First filter out items with no change
     let filtered = priceChanges.filter((change) => change.change_percent !== 0);
@@ -138,6 +140,23 @@ export const PriceHistory = () => {
       filtered = [...filtered].sort(
         (a, b) => Math.abs(b.change_percent) - Math.abs(a.change_percent),
       );
+    } else if (activeFilter.filterType === "vendor" && activeFilter.vendorId) {
+      filtered = filtered.filter(
+        (change) => change.vendor_id === activeFilter.vendorId,
+      );
+      // Sort by change_percent descending to show biggest increases first
+      filtered = [...filtered].sort(
+        (a, b) => b.change_percent - a.change_percent,
+      );
+    } else if (activeFilter.filterType === "watchlist") {
+      // Show only items with alert_price_change AND > 15% change
+      filtered = filtered.filter(
+        (change) => change.alert_price_change && Math.abs(change.change_percent) > 15,
+      );
+      // Sort by absolute change descending
+      filtered = [...filtered].sort(
+        (a, b) => Math.abs(b.change_percent) - Math.abs(a.change_percent),
+      );
     } else if (activeFilter.ingredientId) {
       filtered = filtered.filter(
         (change) => change.ingredient_id === activeFilter.ingredientId,
@@ -147,10 +166,34 @@ export const PriceHistory = () => {
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       );
+    } else {
+      // Apply sort mode when no filter is active
+      switch (sortMode) {
+        case "created":
+          filtered = [...filtered].sort(
+            (a, b) =>
+              new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+          );
+          break;
+        case "invoice":
+          filtered = [...filtered].sort(
+            (a, b) =>
+              new Date(b.invoice_date).getTime() - new Date(a.invoice_date).getTime(),
+          );
+          break;
+        case "vendor":
+          // Group by vendor - sort by vendor name, then by created_at within each vendor
+          filtered = [...filtered].sort((a, b) => {
+            const vendorCompare = (a.vendor_id || "").localeCompare(b.vendor_id || "");
+            if (vendorCompare !== 0) return vendorCompare;
+            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          });
+          break;
+      }
     }
 
     return filtered;
-  }, [priceChanges, activeFilter]);
+  }, [priceChanges, activeFilter, sortMode]);
 
   if (isLoading) {
     return (
@@ -174,37 +217,42 @@ export const PriceHistory = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between mb-6 bg-[#262d3c] p-2 rounded-lg shadow-lg">
-        <div className="flex items-center gap-3 p-4 rounded-lg bg-[#262d3c]">
-          <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
-            <LineChart className="w-5 h-5 text-blue-400" />
+      {/* L5 Sub-Header */}
+      <div className="subheader">
+        <div className="subheader-row">
+          <div className="subheader-left">
+            <div className="subheader-icon-box amber">
+              <LineChart className="w-7 h-7" />
+            </div>
+            <div>
+              <h3 className="subheader-title">Price History</h3>
+              <p className="subheader-subtitle">Track and analyze vendor price changes</p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-lg font-medium text-white">
-              Price History Dashboard
-            </h3>
-            <p className="text-sm text-gray-400">
-              Track and analyze vendor price changes
-            </p>
+          <div className="subheader-right">
+            <button
+              onClick={() => {
+                setActiveFilter({});
+                fetchPriceChanges(daysToShow, {}, sortMode);
+                fetchPriceTrends();
+              }}
+              className="btn-ghost"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </button>
           </div>
         </div>
-        <button
+      </div>
+      {/* ACTIONABLE Price Statistics */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        {/* Total Changes */}
+        <div
+          className="card p-4 bg-gray-800/50 border border-gray-700/50 hover:border-primary-500/50 transition-colors cursor-pointer"
           onClick={() => {
             setActiveFilter({});
-            fetchPriceChanges(daysToShow);
-            fetchPriceTrends();
+            fetchPriceChanges(daysToShow, {}, sortMode);
           }}
-          className="btn-ghost mr-2"
-        >
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Refresh
-        </button>
-      </div>
-      {/* Price Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
-        <div
-          className="card p-4 bg-gray-800/50 hover:bg-gray-700/50 transition-colors cursor-pointer"
-          onClick={() => (window.location.hash = "#price-changes")}
           title="View all price changes"
         >
           <div className="flex items-center gap-3">
@@ -212,160 +260,149 @@ export const PriceHistory = () => {
               <DollarSign className="w-5 h-5 text-primary-400" />
             </div>
             <div>
-              <h3 className="text-sm font-medium text-gray-400">
-                Total Price Changes
-              </h3>
-              <p className="text-2xl font-bold text-white">
-                {priceStats.totalChanges}
-              </p>
-              <span className="text-xs text-gray-400 mt-1 block">
-                Click to view all
-              </span>
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Total Changes</p>
+              <p className="text-2xl font-bold text-primary-400">{priceStats.totalChanges}</p>
             </div>
           </div>
         </div>
 
+        {/* Top Increase - shows actual item */}
         <div
-          className="card p-4 bg-gray-800/50 hover:bg-gray-700/50 transition-colors cursor-pointer"
+          className="card p-4 bg-gray-800/50 border border-gray-700/50 hover:border-rose-500/50 transition-colors cursor-pointer"
           onClick={() => {
-            if (priceStats.avgDecrease > 0) {
-              const newFilter = { filterType: "decrease" as const };
-              setActiveFilter(newFilter);
-              fetchPriceChanges(daysToShow, newFilter);
+            if (priceStats.topIncrease) {
+              setActiveFilter({ filterType: "increase" });
             }
           }}
-          title="View price decreases"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
-              <TrendingDown className="w-5 h-5 text-green-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-medium text-gray-400">
-                Avg. Price Decrease
-              </h3>
-              <p className="text-2xl font-bold text-green-400">
-                {priceStats.avgDecrease > 0
-                  ? priceStats.avgDecrease.toFixed(1)
-                  : "0.0"}
-                %
-              </p>
-              <span className="text-xs text-gray-400 mt-1 block">
-                Click to filter
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div
-          className="card p-4 bg-gray-800/50 hover:bg-gray-700/50 transition-colors cursor-pointer"
-          onClick={() => {
-            if (priceStats.avgIncrease > 0) {
-              const newFilter = { filterType: "increase" as const };
-              setActiveFilter(newFilter);
-              fetchPriceChanges(daysToShow, newFilter);
-            }
-          }}
-          title="View price increases"
+          title={priceStats.topIncrease ? `View ${priceStats.topIncrease.product_name}` : "No increases"}
         >
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-rose-500/20 flex items-center justify-center">
               <TrendingUp className="w-5 h-5 text-rose-400" />
             </div>
-            <div>
-              <h3 className="text-sm font-medium text-gray-400">
-                Avg. Price Increase
-              </h3>
-              <p className="text-2xl font-bold text-rose-400">
-                {priceStats.avgIncrease > 0
-                  ? priceStats.avgIncrease.toFixed(1)
-                  : "0.0"}
-                %
-              </p>
-              <span className="text-xs text-gray-400 mt-1 block">
-                Click to filter
-              </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Top Increase</p>
+              {priceStats.topIncrease ? (
+                <>
+                  <p className="text-lg font-bold text-rose-400">
+                    +{priceStats.topIncrease.change_percent.toFixed(1)}%
+                  </p>
+                  <p className="text-xs text-gray-400 truncate" title={priceStats.topIncrease.product_name}>
+                    {priceStats.topIncrease.product_name}
+                  </p>
+                </>
+              ) : (
+                <p className="text-lg font-bold text-gray-600">—</p>
+              )}
             </div>
           </div>
         </div>
 
+        {/* Top Decrease - shows actual item */}
         <div
-          className="card p-4 bg-gray-800/50 hover:bg-gray-700/50 transition-colors cursor-pointer"
+          className="card p-4 bg-gray-800/50 border border-gray-700/50 hover:border-emerald-500/50 transition-colors cursor-pointer"
           onClick={() => {
-            // Show all price increases, sorted by highest first
-            const newFilter = { filterType: "increase" as const };
-            setActiveFilter(newFilter);
-            fetchPriceChanges(daysToShow, newFilter);
+            if (priceStats.topDecrease) {
+              setActiveFilter({ filterType: "decrease" });
+            }
           }}
-          title="View max price increase details"
+          title={priceStats.topDecrease ? `View ${priceStats.topDecrease.product_name}` : "No decreases"}
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+              <TrendingDown className="w-5 h-5 text-emerald-400" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Top Decrease</p>
+              {priceStats.topDecrease ? (
+                <>
+                  <p className="text-lg font-bold text-emerald-400">
+                    {priceStats.topDecrease.change_percent.toFixed(1)}%
+                  </p>
+                  <p className="text-xs text-gray-400 truncate" title={priceStats.topDecrease.product_name}>
+                    {priceStats.topDecrease.product_name}
+                  </p>
+                </>
+              ) : (
+                <p className="text-lg font-bold text-gray-600">—</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Hottest Vendor */}
+        <div
+          className="card p-4 bg-gray-800/50 border border-gray-700/50 hover:border-amber-500/50 transition-colors cursor-pointer"
+          onClick={() => {
+            if (priceStats.hottestVendor) {
+              setActiveFilter({ filterType: "vendor", vendorId: priceStats.hottestVendor.vendorId });
+            }
+          }}
+          title={priceStats.hottestVendor ? `View ${priceStats.hottestVendor.vendorId} changes` : "No vendor data"}
         >
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-amber-400" />
+              <Flame className="w-5 h-5 text-amber-400" />
             </div>
-            <div>
-              <h3 className="text-sm font-medium text-gray-400">
-                Max Price Increase
-              </h3>
-              <p className="text-2xl font-bold text-amber-400">
-                {priceStats.maxIncrease > 0
-                  ? priceStats.maxIncrease.toFixed(1)
-                  : "0.0"}
-                %
-              </p>
-              <span className="text-xs text-gray-400 mt-1 block">
-                Click to view all increases
-              </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Hottest Vendor</p>
+              {priceStats.hottestVendor ? (
+                <>
+                  <p className="text-lg font-bold text-amber-400 truncate">
+                    {priceStats.hottestVendor.vendorId}
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    <span className="text-rose-400">{priceStats.hottestVendor.increases}↑</span>
+                    {" "}
+                    <span className="text-emerald-400">{priceStats.hottestVendor.decreases}↓</span>
+                  </p>
+                </>
+              ) : (
+                <p className="text-lg font-bold text-gray-600">—</p>
+              )}
             </div>
           </div>
         </div>
 
+        {/* Watch List */}
         <div
-          className="card p-4 bg-gray-800/50 hover:bg-gray-700/50 transition-colors cursor-pointer"
+          className="card p-4 bg-gray-800/50 border border-gray-700/50 hover:border-purple-500/50 transition-colors cursor-pointer"
           onClick={() => {
-            // Show all price decreases, sorted by highest absolute decrease first
-            const newFilter = { filterType: "decrease" as const };
-            setActiveFilter(newFilter);
-            fetchPriceChanges(daysToShow, newFilter);
+            if (priceStats.watchListCount > 0) {
+              setActiveFilter({ filterType: "watchlist" });
+            }
           }}
-          title="View max price decrease details"
+          title="Items with Price Alerts enabled and >15% change"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
-              <TrendingDown className="w-5 h-5 text-green-400" />
+            <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
+              <Eye className="w-5 h-5 text-purple-400" />
             </div>
             <div>
-              <h3 className="text-sm font-medium text-gray-400">
-                Max Price Decrease
-              </h3>
-              <p className="text-2xl font-bold text-green-400">
-                {priceStats.maxDecrease > 0
-                  ? priceStats.maxDecrease.toFixed(1)
-                  : "0.0"}
-                %
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Watch List</p>
+              <p className={`text-2xl font-bold ${
+                priceStats.watchListCount > 0 ? "text-purple-400" : "text-gray-600"
+              }`}>
+                {priceStats.watchListCount}
               </p>
-              <span className="text-xs text-gray-400 mt-1 block">
-                Click to view all decreases
-              </span>
+              <p className="text-xs text-gray-500">&gt;15% changes</p>
             </div>
           </div>
         </div>
       </div>
-      {/* Recent Price Changes */}
-      <div className="bg-gray-800/50 rounded-lg p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <h4 className="text-lg font-medium text-white">
-              Recent Price Changes
-            </h4>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-400">Show last</span>
+      {/* Recent Price Changes - L5 Sub-Header */}
+      <div className="subheader">
+        <div className="subheader-row">
+          <div className="subheader-left">
+            <span className="text-sm font-medium text-gray-400 uppercase tracking-wider">Recent Price Changes</span>
+            <div className="flex items-center gap-2 ml-4">
+              <span className="text-sm text-gray-500">Show last</span>
               <select
                 value={daysToShow}
                 onChange={(e) => {
                   const newDays = Number(e.target.value);
                   setDaysToShow(newDays);
-                  fetchPriceChanges(newDays, activeFilter);
+                  fetchPriceChanges(newDays, activeFilter, sortMode);
                 }}
                 className="input input-sm bg-gray-900/50"
               >
@@ -377,47 +414,89 @@ export const PriceHistory = () => {
                 <option value="90">90 days</option>
               </select>
             </div>
-          </div>
-          <button
-            onClick={() => (window.location.hash = "#analytics")}
-            className="btn-ghost btn-sm"
-          >
-            <History className="w-4 h-4 mr-2" />
-            View All History
-          </button>
-        </div>
-
-        {/* Excel Data Grid */}
-        <div id="price-changes">
-          {Object.keys(activeFilter).length > 0 && (
-            <div className="mb-4 p-2 bg-blue-500/10 rounded-lg flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="text-sm text-blue-400">
-                  {activeFilter.filterType === "increase" &&
-                    "Showing price increases only"}
-                  {activeFilter.filterType === "decrease" &&
-                    "Showing price decreases only"}
-                  {activeFilter.ingredientId &&
-                    "Showing specific ingredient details"}
-                </div>
-              </div>
+            {/* Sort shortcuts */}
+            <div className="flex items-center gap-2 ml-2 border-l border-gray-700 pl-3">
               <button
-                className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
-                onClick={() => {
-                  setActiveFilter({});
-                  fetchPriceChanges(daysToShow);
-                }}
+                onClick={() => setSortMode("created")}
+                className={`p-1.5 rounded-md border transition-colors ${
+                  sortMode === "created"
+                    ? "bg-primary-500/20 text-primary-400 border-primary-500/50"
+                    : "text-gray-500 border-gray-600 hover:text-gray-300 hover:border-gray-500 hover:bg-gray-700/50"
+                }`}
+                title="Sort by Created Date"
               >
-                <RefreshCw className="w-3 h-3" /> Clear filter
+                <Calendar className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setSortMode("invoice")}
+                className={`p-1.5 rounded-md border transition-colors ${
+                  sortMode === "invoice"
+                    ? "bg-primary-500/20 text-primary-400 border-primary-500/50"
+                    : "text-gray-500 border-gray-600 hover:text-gray-300 hover:border-gray-500 hover:bg-gray-700/50"
+                }`}
+                title="Sort by Invoice Date"
+              >
+                <DollarSign className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setSortMode("vendor")}
+                className={`p-1.5 rounded-md border transition-colors ${
+                  sortMode === "vendor"
+                    ? "bg-primary-500/20 text-primary-400 border-primary-500/50"
+                    : "text-gray-500 border-gray-600 hover:text-gray-300 hover:border-gray-500 hover:bg-gray-700/50"
+                }`}
+                title="Group by Vendor"
+              >
+                <Truck className="w-4 h-4" />
               </button>
             </div>
-          )}
-          <ExcelDataGrid
-            columns={priceHistoryColumns}
-            data={filteredPriceChanges}
-            onRefresh={() => fetchPriceChanges(daysToShow, activeFilter)}
-          />
+          </div>
+          <div className="subheader-right">
+            <button
+              onClick={() => (window.location.hash = "#analytics")}
+              className="btn-ghost btn-sm"
+            >
+              <History className="w-4 h-4 mr-2" />
+              View All History
+            </button>
+          </div>
         </div>
+      </div>
+
+      {/* Excel Data Grid */}
+      <div id="price-changes">
+        {Object.keys(activeFilter).length > 0 && (
+          <div className="mb-4 p-2 bg-blue-500/10 rounded-lg flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="text-sm text-blue-400">
+                {activeFilter.filterType === "increase" &&
+                  "Showing price increases only"}
+                {activeFilter.filterType === "decrease" &&
+                  "Showing price decreases only"}
+                {activeFilter.filterType === "vendor" && activeFilter.vendorId &&
+                  `Showing changes from ${activeFilter.vendorId}`}
+                {activeFilter.filterType === "watchlist" &&
+                  "Showing watch list items (>15% with alerts enabled)"}
+                {activeFilter.ingredientId &&
+                  "Showing specific ingredient details"}
+              </div>
+            </div>
+            <button
+              className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
+              onClick={() => {
+                setActiveFilter({});
+                fetchPriceChanges(daysToShow, {}, sortMode);
+              }}
+            >
+              <RefreshCw className="w-3 h-3" /> Clear filter
+            </button>
+          </div>
+        )}
+        <ExcelDataGrid
+          columns={priceHistoryColumns}
+          data={filteredPriceChanges}
+          onRefresh={() => fetchPriceChanges(daysToShow, activeFilter, sortMode)}
+        />
       </div>
     </div>
   );

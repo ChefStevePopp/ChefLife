@@ -15,6 +15,10 @@ export interface PriceChange {
   invoice_date: string;
   previous_date: string | null;
   vendor_logo_url: string | null;
+  // Alert/Dashboard flags from MIL
+  alert_price_change: boolean;
+  show_on_dashboard: boolean;
+  priority_level: string;
   master_ingredient?: MasterIngredient;
   ingredient_id?: string;
 }
@@ -23,7 +27,7 @@ interface VendorPriceChangesStore {
   priceChanges: PriceChange[];
   isLoading: boolean;
   error: string | null;
-  fetchPriceChanges: (days?: number, filter?: { filterType?: 'increase' | 'decrease'; ingredientId?: string }) => Promise<void>;
+  fetchPriceChanges: (days?: number, filter?: { filterType?: 'increase' | 'decrease'; ingredientId?: string }, sortMode?: 'created' | 'invoice' | 'vendor') => Promise<void>;
   setFilter: (filter: { filterType?: 'increase' | 'decrease'; ingredientId?: string }) => void;
 }
 
@@ -33,11 +37,15 @@ export const useVendorPriceChangesStore = create<VendorPriceChangesStore>(
     isLoading: false,
     error: null,
 
-    fetchPriceChanges: async (days = 30, filter?: { filterType?: 'increase' | 'decrease'; ingredientId?: string }) => {
+    fetchPriceChanges: async (days = 30, filter?: { filterType?: 'increase' | 'decrease'; ingredientId?: string }, sortMode: 'created' | 'invoice' | 'vendor' = 'created') => {
       try {
         set({ isLoading: true, error: null });
 
-        // Try the enriched view first (has logos and previous_date)
+        // Determine which date field to filter on based on sort mode
+        const dateField = sortMode === 'invoice' ? 'effective_date' : 'created_at';
+        const cutoffDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+        // Try the enriched view first (has logos, previous_date, and alert flags)
         const { data: enrichedData, error: enrichedError } =
           await supabase
             .from("vendor_price_history_enriched")
@@ -54,13 +62,13 @@ export const useVendorPriceChangesStore = create<VendorPriceChangesStore>(
               created_at,
               product_name,
               item_code,
-              vendor_logo_url
+              vendor_logo_url,
+              alert_price_change,
+              show_on_dashboard,
+              priority_level
             `)
-            .gte(
-              "created_at",
-              new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString(),
-            )
-            .order("created_at", { ascending: false });
+            .gte(dateField, cutoffDate)
+            .order(dateField, { ascending: false });
 
         if (!enrichedError && enrichedData) {
           // Use enriched view data directly
@@ -77,6 +85,9 @@ export const useVendorPriceChangesStore = create<VendorPriceChangesStore>(
             invoice_date: row.effective_date,
             previous_date: row.previous_effective_date,
             vendor_logo_url: row.vendor_logo_url,
+            alert_price_change: row.alert_price_change || false,
+            show_on_dashboard: row.show_on_dashboard || false,
+            priority_level: row.priority_level || 'standard',
             ingredient_id: row.master_ingredient_id,
           }));
 
@@ -153,6 +164,9 @@ export const useVendorPriceChangesStore = create<VendorPriceChangesStore>(
             invoice_date: history.effective_date,
             previous_date: null, // Not available in fallback
             vendor_logo_url: null, // Not available in fallback
+            alert_price_change: ingredient?.alert_price_change || false,
+            show_on_dashboard: ingredient?.show_on_dashboard || false,
+            priority_level: ingredient?.priority_level || 'standard',
             master_ingredient: ingredient,
             ingredient_id: history.master_ingredient_id,
           };
