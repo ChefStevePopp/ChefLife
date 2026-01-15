@@ -11,7 +11,7 @@ import {
 import { useVendorPriceChangesStore } from "@/stores/vendorPriceChangesStore";
 import { useVendorCodesStore } from "@/stores/vendorCodesStore";
 import { ExcelDataGrid } from "@/shared/components/ExcelDataGrid";
-import { priceHistoryColumns } from "./PriceHistory/columns";
+import { priceHistoryColumns } from "./PriceHistory/columns.tsx";
 import { PriceChangeCell } from "./PriceHistory/PriceChangeCell";
 
 export const PriceHistory = () => {

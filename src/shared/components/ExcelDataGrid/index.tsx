@@ -574,7 +574,12 @@ export function ExcelDataGrid<T>({
 
     switch (column.type) {
       case "currency":
-        return `${Number(value).toFixed(2)}`;
+        return (
+          <span className="text-gray-300 font-medium">
+            <span className="text-gray-500 text-xs">$</span>
+            {Number(value).toFixed(2)}
+          </span>
+        );
       case "date":
         return new Date(value).toLocaleDateString();
       case "percent":

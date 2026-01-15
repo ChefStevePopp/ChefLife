@@ -168,20 +168,55 @@ select::-ms-expand {
   }
 
   /* ==========================================================================
-   * L5 SUB-HEADER PATTERN
+   * L5 SUB-HEADER PATTERN (Gold Standard: VendorSettings.tsx)
+   * ==========================================================================
    * Use for tab content headers that sit below the main module header.
    * Creates visual hierarchy: Module Header (branded) → Sub-header (workspace)
    * 
-   * Background: Slate-tinted (neutral workspace zone)
-   * Icon box: Always grey for informational context
-   * Toggle icons: Grey inactive, colored when active
+   * ANATOMY:
+   * ┌─────────────────────────────────────────────────────────────────────────┐
+   * │ [Icon Box]  Title                              [Stat] [Stat] [Stat]    │
+   * │             Subtitle                                                   │
+   * ├─────────────────────────────────────────────────────────────────────────┤
+   * │ ⓘ Expandable Info Section                                        ▼    │
+   * │   ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                  │
+   * │   │ Feature  │ │ Feature  │ │ Feature  │ │ Feature  │   (when open)   │
+   * │   └──────────┘ └──────────┘ └──────────┘ └──────────┘                  │
+   * └─────────────────────────────────────────────────────────────────────────┘
    * 
-   * Structure:
-   *   .subheader
-   *     .subheader-left (icon + title + subtitle)
-   *     .subheader-center (optional: dropdown, search, etc.)
-   *     .subheader-right (stats, toggles, actions)
-   *     .subheader-info (expandable help section)
+   * ICON BOX DESIGN:
+   * - Container: w-10 h-10 rounded-lg bg-{color}-500/20
+   * - Icon: w-7 h-7 (or w-5 h-5) text-{color}-400/80
+   * - Color matches tab color (rose for Settings, primary for Import, etc.)
+   * 
+   * STAT TOGGLES:
+   * - Grey inactive boxes with count/icon
+   * - Label below in text-[10px]
+   * - Click to filter (optional)
+   * 
+   * EXAMPLE USAGE:
+   *   <div className="subheader">
+   *     <div className="subheader-row">
+   *       <div className="subheader-left">
+   *         <div className="subheader-icon-box rose">
+   *           <Settings className="w-7 h-7" />
+   *         </div>
+   *         <div>
+   *           <h3 className="subheader-title">Page Title</h3>
+   *           <p className="subheader-subtitle">Brief description</p>
+   *         </div>
+   *       </div>
+   *       <div className="subheader-right">
+   *         <div className="subheader-toggle">
+   *           <div className="subheader-toggle-icon">42</div>
+   *           <span className="subheader-toggle-label">Items</span>
+   *         </div>
+   *       </div>
+   *     </div>
+   *     <div className="subheader-info expandable-info-section">
+   *       <!-- Expandable content -->
+   *     </div>
+   *   </div>
    * ==========================================================================
    */
   .subheader {
@@ -204,7 +239,69 @@ select::-ms-expand {
     @apply flex items-center gap-2 flex-shrink-0;
   }
 
-  /* Sub-header icon box - always grey (informational, not interactive) */
+  /* ---------------------------------------------------------------------------
+   * SUB-HEADER ICON BOX
+   * Colored icon box matching tab identity. Use color variants below.
+   * ---------------------------------------------------------------------------
+   */
+  .subheader-icon-box {
+    @apply w-10 h-10 rounded-lg flex items-center justify-center;
+  }
+  .subheader-icon-box svg {
+    @apply w-7 h-7;
+  }
+
+  /* Color variants - matches tab colors */
+  .subheader-icon-box.primary {
+    @apply bg-primary-500/20;
+  }
+  .subheader-icon-box.primary svg {
+    @apply text-primary-400/80;
+  }
+
+  .subheader-icon-box.green {
+    @apply bg-green-500/20;
+  }
+  .subheader-icon-box.green svg {
+    @apply text-green-400/80;
+  }
+
+  .subheader-icon-box.amber {
+    @apply bg-amber-500/20;
+  }
+  .subheader-icon-box.amber svg {
+    @apply text-amber-400/80;
+  }
+
+  .subheader-icon-box.rose {
+    @apply bg-rose-500/20;
+  }
+  .subheader-icon-box.rose svg {
+    @apply text-rose-400/80;
+  }
+
+  .subheader-icon-box.purple {
+    @apply bg-purple-500/20;
+  }
+  .subheader-icon-box.purple svg {
+    @apply text-purple-400/80;
+  }
+
+  .subheader-icon-box.cyan {
+    @apply bg-cyan-500/20;
+  }
+  .subheader-icon-box.cyan svg {
+    @apply text-cyan-400/80;
+  }
+
+  .subheader-icon-box.gray {
+    @apply bg-gray-700/50;
+  }
+  .subheader-icon-box.gray svg {
+    @apply text-gray-400;
+  }
+
+  /* Legacy: grey-only icon (deprecated, use .subheader-icon-box.gray) */
   .subheader-icon {
     @apply w-10 h-10 rounded-lg bg-gray-700/50 flex items-center justify-center;
   }
@@ -212,7 +309,10 @@ select::-ms-expand {
     @apply w-5 h-5 text-gray-400;
   }
 
-  /* Sub-header title block */
+  /* ---------------------------------------------------------------------------
+   * SUB-HEADER TITLE BLOCK
+   * ---------------------------------------------------------------------------
+   */
   .subheader-title {
     @apply text-lg font-medium text-white;
   }
@@ -220,7 +320,11 @@ select::-ms-expand {
     @apply text-xs text-gray-500;
   }
 
-  /* Sub-header toggle icons (like CSV/PDF/Manual selector) */
+  /* ---------------------------------------------------------------------------
+   * SUB-HEADER TOGGLES / STATS
+   * Small stat boxes with count + label. Can be clickable for filtering.
+   * ---------------------------------------------------------------------------
+   */
   .subheader-toggle {
     @apply flex flex-col items-center gap-0.5;
   }
@@ -238,7 +342,7 @@ select::-ms-expand {
     @apply text-[10px] font-medium text-gray-500;
   }
 
-  /* Active state - colored */
+  /* Active state - colored ring */
   .subheader-toggle.active .subheader-toggle-icon {
     @apply ring-2;
   }
@@ -297,7 +401,11 @@ select::-ms-expand {
     @apply text-purple-400;
   }
 
-  /* Sub-header stat pills - grey palette */
+  /* ---------------------------------------------------------------------------
+   * SUB-HEADER STAT PILLS (alternative to toggles)
+   * Use for read-only stats that don't filter
+   * ---------------------------------------------------------------------------
+   */
   .subheader-stat {
     @apply flex flex-col items-center gap-0.5 px-3 py-2 bg-gray-700/50 rounded-lg border border-gray-600/50;
   }
@@ -308,9 +416,27 @@ select::-ms-expand {
     @apply text-lg font-semibold text-white;
   }
 
-  /* Sub-header info section - expandable */
+  /* ---------------------------------------------------------------------------
+   * SUB-HEADER INFO SECTION
+   * Expandable area for contextual help and feature cards
+   * ---------------------------------------------------------------------------
+   */
   .subheader-info {
     @apply mt-4;
+  }
+
+  /* Feature cards inside expandable info */
+  .subheader-feature-card {
+    @apply flex items-start gap-3 p-3 rounded-lg border border-gray-700/30;
+  }
+  .subheader-feature-card svg {
+    @apply w-4 h-4 flex-shrink-0 mt-0.5;
+  }
+  .subheader-feature-title {
+    @apply text-sm font-medium;
+  }
+  .subheader-feature-desc {
+    @apply text-xs text-gray-500;
   }
 
   /* Button Base */
