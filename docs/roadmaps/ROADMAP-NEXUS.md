@@ -1,272 +1,199 @@
-# ROADMAP: NEXUS
+# NEXUS + Data Model Implementation Roadmap
 
-> **The Intelligence Layer** — Where data becomes decisions
-
----
-
-## Vision
-
-NEXUS is ChefLife's central nervous system. It connects the 4 blocks (Purchases, Prep, POS, Labor) and surfaces actionable insights. NEXUS doesn't just show you what happened — it helps you decide what to do next.
+> **Priority:** HIGH  
+> **Status:** ACTIVE  
+> **Created:** 2025-01-15
 
 ---
 
-## Core Principle
+## Overview
 
-**Informed guesses, not hail marys.**
-
-Every recommendation comes with the reasoning. Operators see the math, add their intuition, make better decisions.
-
----
-
-## Feature Roadmap
-
-### Phase 1: Foundation ✅
-*Status: In Progress*
-
-| Feature | Description | Status |
-|---------|-------------|--------|
-| Price History | Track vendor price changes over time | ✅ Live |
-| Price Alerts | Flag significant changes on watched items | ✅ Live |
-| Watch List | MIL items with `alert_price_change` enabled | ✅ Live |
-| Vendor Insights | "Most Active" vendor detection | ✅ Live |
+This roadmap covers the implementation of:
+1. **ARCHITECTURE-DATA-MODEL.md** - Enterprise → Region → Unit → User hierarchy
+2. **ARCHITECTURE-NEXUS.md** - Widget-based dashboard with security-aware rendering
 
 ---
 
-### Phase 2: Guest Intelligence
-*Status: Planned Q2 2026*
+## Immediate Actions (This Sprint)
 
-#### OpenTable Integration (Guest Count Tracking)
-
-| Feature | Description | Priority |
-|---------|-------------|----------|
-| **Reservation Sync** | Pull reservation counts by date/time | High |
-| **Cover Forecasting** | Historical patterns → expected covers | High |
-| **No-Show Rates** | Factor in typical no-show % by day | Medium |
-| **Party Size Trends** | Average covers per reservation | Medium |
-| **Walk-In Estimation** | Reservations + historical walk-in ratio | Medium |
-
-**Data Flow:**
-```
-OpenTable API → Reservation Data → Cover Forecast
-                                        ↓
-                            Guest Count Dashboard Widget
-```
-
-**Use Case:**
-> "Saturday has 42 reservations (avg 2.3 covers) + 15% walk-ins = ~113 expected covers"
-
----
-
-### Phase 3: Sales Intelligence
-*Status: Planned Q2-Q3 2026*
-
-#### POS Report Consolidation
-
-| Feature | Description | Priority |
-|---------|-------------|----------|
-| **Sales by Item** | Daily/weekly/monthly item sales | High |
-| **Attachment Rates** | % of guests ordering each item | High |
-| **Daypart Analysis** | Lunch vs dinner item mix | Medium |
-| **Modifier Tracking** | Size/add-on preferences | Medium |
-| **Comp/Void Analysis** | Waste from POS side | Low |
-
-**Supported POS Systems (Planned):**
-- Square (Priority — Memphis Fire uses this)
-- Toast
-- Clover
-- TouchBistro
-
-**Data Flow:**
-```
-POS Export/API → Sales Data → Item Demand Model
-                                    ↓
-                          Attachment Rate Database
-```
-
-**Use Case:**
-> "Pulled Pork attachment rate: 23% of covers (±3% seasonal variance)"
-
----
-
-### Phase 4: Prep Forecast ("What to Put On")
-*Status: Planned Q3 2026*
-
-The culmination of Phases 2 & 3. Demand-driven prep planning.
-
-#### Algorithm Inputs
-
-| Source | Data | Purpose |
-|--------|------|---------|
-| **OpenTable** | Expected covers | Demand baseline |
-| **POS History** | Attachment rates | Item-level demand |
-| **MIL** | Yield rates, portions | Unit conversion |
-| **Inventory** | Current prepped stock | What's already done |
-| **Calendar** | Events, holidays, weather | Demand modifiers |
-
-#### Output: Prep Recommendation
+### 1. Rebrand Admin Dashboard → NEXUS
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  SATURDAY JAN 18: PREP FORECAST                                         │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  PULLED PORK SHOULDER                                                   │
-│  ─────────────────────────────────────────────────────────────────────  │
-│  Expected covers:        185                                            │
-│  Attachment rate:        23%                                            │
-│  Expected portions:      43                                             │
-│  Current inventory:      12 portions                                    │
-│  ─────────────────────────────────────────────────────────────────────  │
-│  Need:                   31 portions                                    │
-│  Raw equivalent:         2.9 shoulders (@ 65% yield, 6oz portions)     │
-│  Buffer (+15%):          3.4 shoulders                                  │
-│  ─────────────────────────────────────────────────────────────────────  │
-│                                                                         │
-│  RECOMMENDATION:         PUT ON 4 SHOULDERS                             │
-│                                                                         │
-│  [Accept] [Adjust: ___] [Override with note: ________________]          │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+Current: /admin → AdminDashboard.tsx
+Target:  /admin → Nexus/index.tsx
 ```
 
-#### Operator Override
+**Tasks:**
+- [ ] Create `src/features/admin/components/Nexus/` directory
+- [ ] Create `NexusGrid.tsx` - responsive widget grid
+- [ ] Create `WidgetCard.tsx` - standard widget container
+- [ ] Move Temperature widget to Nexus widgets folder
+- [ ] Move PriceWatch ticker to Nexus widgets folder
+- [ ] Create `useNexusContext` hook for scope/surface awareness
+- [ ] Update AdminRoutes to use Nexus at index
+- [ ] Update sidebar: "Dashboard" → "NEXUS"
 
-The operator is ALWAYS in control:
-- **Accept** — Use recommendation as-is
-- **Adjust** — Change number with optional note
-- **Override** — Full manual with reason logged
+### 2. Widget Security Filtering
 
-Override reasons become training data:
-> "Wedding next door (+2)" → System learns: nearby events = +X%
+**Tasks:**
+- [ ] Create `config/nexus-widgets.ts` registry
+- [ ] Add `minSecurityLevel` to each widget definition
+- [ ] Filter visible widgets based on user's security level
+- [ ] Test with different security levels (create test users if needed)
+
+### 3. Vertical Widget Cards
+
+**Tasks:**
+- [ ] Update Temperature widget to vertical layout
+- [ ] Create consistent WidgetCard component pattern
+- [ ] Responsive: 4 → 3 → 2 → 1 column grid
 
 ---
 
-### Phase 5: Yield Variance Tracking
-*Status: Planned Q4 2026*
+## Phase 2: Data Model (Next Sprint)
 
-Track value through every state transition. Detect shrink spikes.
+### Database Schema
 
-#### The Ingredient Lifecycle
+**Tasks:**
+- [ ] Create migration: `20250116_add_regions_locations.sql`
+  - [ ] Create `regions` table  
+  - [ ] Create `locations` table
+  - [ ] Create `location_members` table
+- [ ] Create migration: `20250116_migrate_orgs_to_hierarchy.sql`
+  - [ ] Create default regions for existing orgs
+  - [ ] Create default locations for existing orgs
+  - [ ] Migrate team members → location_members
+- [ ] Create migration: `20250116_add_location_id_to_operational.sql`
+  - [ ] Add `location_id` to haccp_equipment
+  - [ ] Add `location_id` to inventory tables
+  - [ ] Add `location_id` to schedules
+  - [ ] Backfill from organization_id
 
-```
-STATE 1: PURCHASED     20 lb @ $4.50/lb = $90
-            ↓ (Prep Loss: trim, fat cap)
-STATE 2: PREPPED       18 lb @ $5.00/lb effective
-            ↓ (Cook Yield: 65%)
-STATE 3: COOKED        11.7 lb @ $7.69/lb effective
-            ↓ (Portioned: 6oz)
-STATE 4: PORTIONABLE   31 portions theoretical
-            ↓ (POS Reality)
-STATE 5: SOLD          28 portions actual
+### Application Updates
 
-THE GAP: 3 portions = $8.70 shrink
-```
-
-#### Variance Detection
-
-| Metric | Formula | Alert Threshold |
-|--------|---------|-----------------|
-| **Prep Yield** | Prepped ÷ Raw | < 85% of expected |
-| **Cook Yield** | Cooked ÷ Prepped | < 90% of expected |
-| **Portion Yield** | Sold ÷ Portionable | < 90% of expected |
-| **Total Yield** | Sold Value ÷ Purchase Cost | < 80% of expected |
-
-**Priority Level Integration:**
-- **Critical items**: Tracked at EVERY state transition
-- **High items**: Daily reconciliation
-- **Standard items**: Weekly spot-check
-- **Low items**: Monthly audit only
+**Tasks:**
+- [ ] Update `useAuth` hook to include location context
+- [ ] Update `supabase` queries to filter by location_id
+- [ ] Add location switcher component (for multi-location users)
+- [ ] Update RLS policies for location-scoped access
 
 ---
 
-## Integration Dependencies
+## Phase 3: NEXUS Event Bus (Sprint +2)
 
-| Integration | Required For | Status |
-|-------------|--------------|--------|
-| **OpenTable** | Guest Count Tracking, Cover Forecasting | 🔜 Planned |
-| **Square POS** | Sales Data, Attachment Rates | 🔜 Planned |
-| **7shifts** | Labor correlation (covers per labor hour) | ✅ Active |
-| **Vendor APIs** | Real-time price updates | 🔜 Planned |
+### Core Event System
+
+**Tasks:**
+- [ ] Create `lib/nexus-events.ts`
+- [ ] Implement `nexus.emit()` 
+- [ ] Implement `nexus.on()` / `nexus.off()`
+- [ ] Add Supabase realtime channel for cross-tab sync
+- [ ] Create event type definitions
+
+### Widget Communication
+
+**Tasks:**
+- [ ] Temperature widget publishes temp events
+- [ ] Alerts widget subscribes to all events
+- [ ] Prep widget subscribes to equipment events
+- [ ] Test cross-widget reactivity
 
 ---
 
-## Admin Dashboard Widgets
+## Phase 4: Additional Widgets (Sprint +3)
 
-NEXUS powers the Admin Dashboard with actionable widgets:
+### Core Widgets to Build
 
-| Widget | Data Source | Status |
-|--------|-------------|--------|
-| **Price Watch** | Price History + Alerts | 🔜 Q1 2026 |
-| **Today's Prep** | Prep Forecast | 🔜 Q3 2026 |
-| **Cover Forecast** | OpenTable + History | 🔜 Q2 2026 |
-| **Yield Alerts** | Variance Tracking | 🔜 Q4 2026 |
-| **Cost Trends** | MIL + Invoice History | 🔜 Q2 2026 |
+| Widget | Priority | Complexity | Dependencies |
+|--------|----------|------------|--------------|
+| Staff On Duty | High | Medium | 7shifts or schedule data |
+| Prep Status | High | Medium | Prep lists feature |
+| Tasks Pending | High | Low | Tasks feature |
+| Alerts Summary | High | Low | Activity logs |
+| Cover Forecast | Medium | High | OpenTable integration |
+| Cost Trends | Medium | High | Invoice + sales data |
+
+---
+
+## File Structure Target
+
+```
+src/features/admin/components/
+├── Nexus/
+│   ├── index.tsx              # Main NEXUS page
+│   ├── NexusGrid.tsx          # Responsive widget grid
+│   ├── NexusHeader.tsx        # Header with scope switcher
+│   ├── WidgetCard.tsx         # Standard widget container
+│   └── widgets/
+│       ├── TemperatureWidget.tsx
+│       ├── PriceWatchWidget.tsx
+│       ├── StaffOnDutyWidget.tsx
+│       ├── PrepStatusWidget.tsx
+│       ├── TasksWidget.tsx
+│       ├── AlertsWidget.tsx
+│       └── index.ts
+├── AdminLayout.tsx
+└── ... (other sections)
+
+src/config/
+├── nexus-widgets.ts           # Widget registry
+└── security.ts                # Existing security levels
+
+src/hooks/
+├── useNexusContext.ts         # Scope/surface context
+└── useNexusEvents.ts          # Event bus subscriptions
+
+src/lib/
+├── nexus-events.ts            # Event bus implementation
+└── nexus.ts                   # Existing nexus() logger (keep)
+```
 
 ---
 
 ## Success Metrics
 
-| Metric | Target | Measurement |
-|--------|--------|-------------|
-| **Forecast Accuracy** | ±10% of actual | Recommended vs used |
-| **Override Rate** | < 20% | How often operators adjust |
-| **Shrink Reduction** | -15% | Yield variance over time |
-| **Prep Waste** | -25% | Over-prep reduction |
-| **Time Saved** | 30 min/day | Prep planning time |
+### Phase 1 Complete When:
+- [ ] Admin landing shows NEXUS grid instead of old dashboard
+- [ ] Temperature widget displays in grid
+- [ ] Grid is responsive (4 → 3 → 2 → 1)
+- [ ] Widgets filter by security level
+
+### Phase 2 Complete When:
+- [ ] `locations` table exists and has Memphis Fire data
+- [ ] All operational queries filter by `location_id`
+- [ ] Multi-location user can switch between locations
+
+### Phase 3 Complete When:
+- [ ] Temperature critical event triggers Alerts widget update
+- [ ] Events persist to activity_logs via nexus
+- [ ] Real-time sync works across browser tabs
 
 ---
 
-## Technical Architecture
+## Dependencies
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           NEXUS ENGINE                                  │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│   ┌───────────┐    ┌───────────┐    ┌───────────┐    ┌───────────┐    │
-│   │  BLOCK 1  │    │  BLOCK 2  │    │  BLOCK 3  │    │  BLOCK 4  │    │
-│   │ Purchases │    │ Inventory │    │   Prep    │    │    POS    │    │
-│   │           │    │           │    │           │    │           │    │
-│   │ • Invoices│    │ • Counts  │    │ • Recipes │    │ • Sales   │    │
-│   │ • Prices  │    │ • Par     │    │ • Yields  │    │ • Covers  │    │
-│   │ • Vendors │    │ • Waste   │    │ • Portions│    │ • Modifiers│   │
-│   └─────┬─────┘    └─────┬─────┘    └─────┬─────┘    └─────┬─────┘    │
-│         │                │                │                │          │
-│         └────────────────┴────────────────┴────────────────┘          │
-│                                   │                                    │
-│                                   ▼                                    │
-│                    ┌─────────────────────────────┐                     │
-│                    │      INTELLIGENCE LAYER     │                     │
-│                    │                             │                     │
-│                    │  • Demand Forecasting       │                     │
-│                    │  • Variance Detection       │                     │
-│                    │  • Trend Analysis           │                     │
-│                    │  • Anomaly Alerts           │                     │
-│                    └──────────────┬──────────────┘                     │
-│                                   │                                    │
-│                                   ▼                                    │
-│                    ┌─────────────────────────────┐                     │
-│                    │     DECISION SUPPORT        │                     │
-│                    │                             │                     │
-│                    │  • Prep Recommendations     │                     │
-│                    │  • Order Suggestions        │                     │
-│                    │  • Price Alerts             │                     │
-│                    │  • Yield Warnings           │                     │
-│                    └─────────────────────────────┘                     │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+| Dependency | Status | Notes |
+|------------|--------|-------|
+| Security levels (0-5) | ✅ Done | `config/security.ts` |
+| SensorPush integration | ✅ Done | `useSensorPush` hook |
+| Activity logging | ✅ Done | `nexus()` function |
+| Price Watch ticker | ✅ Done | Dashboard component |
+| Temperature widget | ✅ Done | Just needs grid placement |
+
+---
+
+## Questions to Resolve
+
+1. **Widget Persistence:** Store user's widget arrangement in user preferences or separate table?
+2. **Mobile Surface:** Does mobile get NEXUS or a simplified view?
+3. **Kitchen Display:** Same widgets or purpose-built KDS?
+4. **Event Retention:** How long to keep nexus events? 7 days? 30 days?
 
 ---
 
 ## References
 
-- `DESIGN-SYSTEM.md` — L5/L6 patterns
-- `ROADMAP-Data.md` — MIL, Vendor Invoices
-- `ROADMAP-Kitchen.md` — Recipes, Prep
-- `ROADMAP-Organization.md` — Integrations
-
----
-
-*Created: January 15, 2026*
-*Vision: Informed guesses, not hail marys.*
+- `docs/ARCHITECTURE-DATA-MODEL.md` - Org → Region → Location hierarchy
+- `docs/ARCHITECTURE-NEXUS.md` - Event bus and NEXUS page structure  
+- `docs/ARCHITECTURE-WIDGETS.md` - Widget context, info density, surface adaptation
+- `docs/DESIGN-SYSTEM.md` - L5/L6 component patterns

@@ -11,7 +11,7 @@ import { StatsCard } from "./StatsCard";
 import { ActivityFeed } from "./ActivityFeed";
 import { AlertsList } from "./AlertsList";
 import { PriceWatchTicker } from "./AdminDashboard/PriceWatchTicker";
-import { TemperatureStatCard } from "./AdminDashboard/TemperatureStatCard";
+import { TemperatureWidgetWrapper } from "./AdminDashboard/TemperatureWidgetWrapper";
 
 /**
  * =============================================================================
@@ -126,8 +126,8 @@ export function AdminDashboard() {
         {/* Active Staff */}
         <StatsCard {...statsCards[0]} />
         
-        {/* Temperature Monitor - Live component cycling through fridges/freezers */}
-        <TemperatureStatCard />
+        {/* Temperature Monitor - A/B test: Legacy vs New Widget Architecture */}
+        <TemperatureWidgetWrapper />
         
         {/* Pending Tasks */}
         <StatsCard {...statsCards[1]} />

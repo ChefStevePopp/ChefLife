@@ -258,6 +258,58 @@ The `VariantToggle` component displays:
 | Component | Variants | Default | Status |
 |-----------|----------|---------|--------|
 | `VendorSelector` | original, compact | original | 🔄 Active |
+| `TemperatureWidget-Architecture` | legacy, widget | legacy | 🧪 Watershed Test |
+| `TemperatureWidget-Security` | omega, alpha, bravo, charlie, delta, echo | (user's actual level) | 🧪 Watershed Test |
+
+### TemperatureWidget-Architecture Test
+
+**Purpose:** Validate the new three-layer widget architecture vs legacy stat card.
+
+**Variants:**
+- `legacy`: Original TemperatureStatCard (current production)
+- `widget`: New TemperatureWidget with Launcher → Review Space → Full Feature
+
+**How to test:**
+1. Enable diagnostics (Dev Management → Show Diagnostics)
+2. Go to Admin Dashboard
+3. Toggle between "Legacy Card" and "New Widget"
+4. Compare behavior:
+   - Legacy: Click goes directly to HACCP Manager
+   - Widget: Click opens Review Space modal, then optionally to HACCP Manager
+
+**Success criteria:**
+- Widget provides same information as legacy
+- Review Space enables quick actions (Log, History, Trends)
+- Users can complete 80% of tasks without navigating away
+- Security level toggle works within the widget
+
+---
+
+### TemperatureWidget-Security Test
+
+**Purpose:** Validate the widget architecture's security-level-driven information density.
+
+This test allows developers to simulate different security levels to verify:
+- Launcher badge shows correct info density per level
+- Review Space actions are properly gated
+- Full Feature launch is only available to Delta+
+
+**How to test:**
+1. Enable diagnostics (Dev Management → Show Diagnostics)
+2. Navigate to any page with the Temperature Widget
+3. Use the security level toggle to switch between Omega → Echo
+4. Verify each level sees the correct information density
+
+**Expected behavior:**
+
+| Level | Role | Launcher Shows | Review Space Shows |
+|-------|------|----------------|--------------------|
+| Echo (0) | Team Member | Status indicator only (🟢) | Status indicators, no actions |
+| Delta (1) | Shift Lead | + Temperature value | + Temperature values |
+| Charlie (2) | Supervisor | + Equipment name, wifi | + Names, [Log] action |
+| Bravo (3) | Manager | + Trend indicator | + Trends, [History], [Trends] |
+| Alpha (4) | Owner | + Fleet status | + Thresholds, [Open HACCP Manager] |
+| Omega (5) | Developer | + Cost, compliance | + Full control |
 
 ---
 
