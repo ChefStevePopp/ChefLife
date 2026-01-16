@@ -5,13 +5,21 @@
  * - Gray section icons (structural, not competing)
  * - Consistent typography hierarchy throughout
  * - Focus on form content
+ * - Logo uploader for branding (appears in Nexus header)
  * 
  * Part of Company Settings → Organization Tab
  */
 
-import React from "react";
-import { Building2, Mail, MapPin, Briefcase } from "lucide-react";
+import React, { useState } from "react";
+import { Building2, Mail, MapPin, Briefcase, ImageIcon, Pencil } from "lucide-react";
+import { ImageUploadModal } from "@/shared/components";
+import { supabase } from "@/lib/supabase";
+import { useOrganizationId } from "@/hooks/useOrganizationId";
+import toast from "react-hot-toast";
 import type { Organization } from "@/types/organization";
+
+// ChefBot placeholder - shown when no logo uploaded
+const CHEFBOT_PLACEHOLDER = "https://www.restaurantconsultants.ca/wp-content/uploads/2023/03/cropped-AI-CHEF-BOT.png";
 
 interface OrganizationDetailsProps {
   organization: Organization;
@@ -22,6 +30,9 @@ export const OrganizationDetails: React.FC<OrganizationDetailsProps> = ({
   organization,
   onChange,
 }) => {
+  const { organizationId } = useOrganizationId();
+  const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
+
   const updateSettings = (key: string, value: any) => {
     onChange({
       settings: {
@@ -29,6 +40,54 @@ export const OrganizationDetails: React.FC<OrganizationDetailsProps> = ({
         [key]: value,
       },
     });
+  };
+
+  const updateBranding = (key: string, value: any) => {
+    onChange({
+      settings: {
+        ...organization.settings,
+        branding: {
+          ...organization.settings?.branding,
+          [key]: value,
+        },
+      },
+    });
+  };
+
+  // Logo upload handler
+  const handleLogoUpload = async (file: File): Promise<string> => {
+    if (!organizationId) throw new Error("No organization");
+
+    const fileExt = file.name.split(".").pop();
+    const baseFileName = `${organizationId}/logo`;
+    const newFileName = `${baseFileName}.${fileExt}`;
+
+    // Clean up existing logo files (catch orphaned files)
+    const extensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'];
+    const filesToDelete = extensions.map(ext => `${baseFileName}.${ext}`);
+    await supabase.storage.from("Logos").remove(filesToDelete).catch(() => {});
+
+    // Upload new file
+    const { error } = await supabase.storage
+      .from("Logos")
+      .upload(newFileName, file);
+
+    if (error) throw error;
+
+    const { data: urlData } = supabase.storage
+      .from("Logos")
+      .getPublicUrl(newFileName);
+
+    const logoUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+    updateBranding('logo_url', logoUrl);
+    toast.success("Logo uploaded - save to apply");
+    return logoUrl;
+  };
+
+  // Logo remove handler
+  const handleLogoRemove = async (): Promise<void> => {
+    updateBranding('logo_url', '');
+    toast.success("Logo removed - save to apply");
   };
 
   // Check if corporate address should mirror location address
@@ -42,8 +101,80 @@ export const OrganizationDetails: React.FC<OrganizationDetailsProps> = ({
     }
   };
 
+  const currentLogo = organization.settings?.branding?.logo_url;
+  const initials = organization.name?.substring(0, 2).toUpperCase() || 'CO';
+
   return (
     <div className="space-y-6">
+      {/* Business Logo */}
+      <div className="card p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-lg bg-gray-700/50 flex items-center justify-center">
+            <ImageIcon className="w-5 h-5 text-gray-400" />
+          </div>
+          <div>
+            <h2 className="text-lg font-medium text-white">Business Logo</h2>
+            <p className="text-sm text-gray-400">Your logo appears in the Nexus dashboard header and printed documents</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-6">
+          {/* Logo Preview */}
+          <div 
+            className="relative group cursor-pointer"
+            onClick={() => setIsLogoModalOpen(true)}
+          >
+            <div className="w-24 h-24 rounded-xl overflow-hidden ring-2 ring-gray-600/50 group-hover:ring-primary-500/50 flex items-center justify-center shadow-lg transition-all duration-200 bg-gray-800">
+              {currentLogo ? (
+                <img
+                  src={currentLogo}
+                  alt={`${organization.name} logo`}
+                  className="w-full h-full object-contain p-2"
+                />
+              ) : (
+                <img
+                  src={CHEFBOT_PLACEHOLDER}
+                  alt="ChefLife placeholder"
+                  className="w-full h-full object-contain p-2 opacity-50"
+                />
+              )}
+            </div>
+            
+            {/* Edit overlay */}
+            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl">
+              <Pencil className="w-6 h-6 text-white" />
+            </div>
+          </div>
+
+          {/* Instructions */}
+          <div className="flex-1">
+            <p className="text-sm text-gray-300 mb-2">
+              {currentLogo 
+                ? "Click the logo to change or remove it"
+                : "Click to upload your restaurant logo"
+              }
+            </p>
+            <p className="text-xs text-gray-500">
+              Square logos work best. PNG or SVG with transparent background recommended.
+              Your logo will appear in the Nexus dashboard header.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Image Upload Modal */}
+      <ImageUploadModal
+        isOpen={isLogoModalOpen}
+        onClose={() => setIsLogoModalOpen(false)}
+        onUpload={handleLogoUpload}
+        onRemove={currentLogo ? handleLogoRemove : undefined}
+        currentImageUrl={currentLogo}
+        title="Business Logo"
+        subtitle={organization.name}
+        aspectHint="Square logos work best (PNG or SVG recommended)"
+        placeholderText={initials}
+      />
+
       {/* Business Identity */}
       <div className="card p-6">
         <div className="flex items-center gap-3 mb-6">

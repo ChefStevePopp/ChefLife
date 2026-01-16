@@ -26,6 +26,10 @@ import { useDiagnostics } from "@/hooks/useDiagnostics";
  * [x] Phase 5: Core Feature - Scrolling animation, responsive breakpoints
  * [ ] Phase 6: Polish - Sparkline trends, priority badges, keyboard nav
  * 
+ * RESPONSIVE BEHAVIOR:
+ * - Desktop (lg+): Scrolling ticker with all items
+ * - Mobile/Tablet: Single card that cycles through items
+ * 
  * FUTURE ENHANCEMENTS:
  * - Sparkline charts showing trend over quarter/annum
  * - Priority level badges (Critical/High/Standard)
@@ -39,6 +43,7 @@ export function PriceWatchTicker() {
   const { showDiagnostics } = useDiagnostics();
   const [expanded, setExpanded] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [mobileIndex, setMobileIndex] = useState(0);
   const tickerRef = useRef<HTMLDivElement>(null);
 
   const { priceChanges, fetchPriceChanges } = useVendorPriceChangesStore();
@@ -65,6 +70,17 @@ export function PriceWatchTicker() {
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 20); // Cap at 20 for ticker
 
+  // Mobile: Cycle through items
+  useEffect(() => {
+    if (tickerItems.length <= 1) return;
+
+    const interval = setInterval(() => {
+      setMobileIndex((prev) => (prev + 1) % tickerItems.length);
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [tickerItems.length]);
+
   const handleViewItem = (ingredientId: string) => {
     navigate(`/admin/data/vendor-invoices?tab=history&ingredient=${ingredientId}`);
   };
@@ -73,9 +89,17 @@ export function PriceWatchTicker() {
     navigate("/admin/data/vendor-invoices?tab=history");
   };
 
+  // Truncate product name to ~25 characters
+  const truncateName = (name: string, maxLength: number = 25) => {
+    if (name.length <= maxLength) return name;
+    return name.substring(0, maxLength - 3) + "...";
+  };
+
   if (allChanges.length === 0) {
     return null; // Don't show if no price changes
   }
+
+  const currentMobileItem = tickerItems[mobileIndex];
 
   return (
     <>
@@ -85,178 +109,207 @@ export function PriceWatchTicker() {
           src/features/admin/components/AdminDashboard/PriceWatchTicker.tsx
         </div>
       )}
-      <div className="bg-slate-800/50 border border-slate-700/50 rounded-lg overflow-hidden">
-      {/* Ticker Row - Always Visible */}
-      <div
-        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-700/30 transition-colors"
-        onClick={() => setExpanded(!expanded)}
-      >
-        {/* Left: Label */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-            Price Watch
-          </span>
-          {criticalItems.length > 0 && (
-            <span className="px-1.5 py-0.5 text-xs font-bold bg-rose-500/20 text-rose-400 rounded">
-              {criticalItems.length}
-            </span>
-          )}
-        </div>
-
-        {/* Ticker Content - Hidden on mobile/tablet, visible on desktop */}
+      <div className="card overflow-hidden bg-[#1a1f2b]/90 border-gray-700/50">
+        {/* Ticker Row - Always Visible */}
         <div
-          className="hidden lg:block flex-1 overflow-hidden relative"
-          onMouseEnter={() => setIsPaused(true)}
-          onMouseLeave={() => setIsPaused(false)}
+          className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-700/30 transition-colors"
+          onClick={() => setExpanded(!expanded)}
         >
+          {/* Left: Label */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="text-xs font-bold text-gray-300 uppercase tracking-wider">
+              Price Watch
+            </span>
+            {criticalItems.length > 0 && (
+              <span className="px-1.5 py-0.5 text-xs font-bold bg-rose-500/20 text-rose-400 rounded">
+                {criticalItems.length}
+              </span>
+            )}
+          </div>
+
+          {/* Ticker Content - Hidden on mobile/tablet, visible on desktop */}
           <div
-            ref={tickerRef}
-            className={`flex items-center gap-4 whitespace-nowrap ${
-              isPaused ? "" : "animate-ticker"
-            }`}
+            className="hidden lg:block flex-1 overflow-hidden relative"
+            onMouseEnter={() => setIsPaused(true)}
+            onMouseLeave={() => setIsPaused(false)}
           >
-            {tickerItems.map((item, idx) => (
-              <span
-                key={`${item.id}-${idx}`}
-                className="inline-flex items-center gap-1.5 text-sm"
-              >
+            <div
+              ref={tickerRef}
+              className={`flex items-center gap-4 whitespace-nowrap ${
+                isPaused ? "" : "animate-ticker"
+              }`}
+            >
+              {tickerItems.map((item, idx) => (
+                <span
+                  key={`${item.id}-${idx}`}
+                  className="inline-flex items-center gap-1.5 text-sm"
+                >
+                  {/* Vendor Logo */}
+                  {item.vendor_logo_url ? (
+                    <img
+                      src={item.vendor_logo_url}
+                      alt={item.vendor_id}
+                      className="w-4 h-4 rounded object-contain bg-white/10"
+                    />
+                  ) : (
+                    <span className="w-4 h-4 rounded bg-gray-700 flex items-center justify-center text-[8px] text-gray-400 font-bold">
+                      {item.vendor_id?.charAt(0) || "?"}
+                    </span>
+                  )}
+                  <span className="text-gray-300">
+                    {truncateName(item.product_name)}
+                  </span>
+                  {item.change_percent > 0 ? (
+                    <span className="flex items-center text-rose-400">
+                      <TrendingUp className="w-3 h-3" />
+                      <span className="font-medium">+{item.change_percent.toFixed(0)}%</span>
+                    </span>
+                  ) : (
+                    <span className="flex items-center text-emerald-400">
+                      <TrendingDown className="w-3 h-3" />
+                      <span className="font-medium">{item.change_percent.toFixed(0)}%</span>
+                    </span>
+                  )}
+                  <span className="text-gray-600 mx-2">•</span>
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Mobile/Tablet: Cycling single item */}
+          <div className="lg:hidden flex-1 overflow-hidden">
+            {currentMobileItem && (
+              <div className="flex items-center gap-2 text-sm">
                 {/* Vendor Logo */}
-                {item.vendor_logo_url ? (
+                {currentMobileItem.vendor_logo_url ? (
                   <img
-                    src={item.vendor_logo_url}
-                    alt={item.vendor_id}
-                    className="w-4 h-4 rounded object-contain bg-white/10"
+                    src={currentMobileItem.vendor_logo_url}
+                    alt={currentMobileItem.vendor_id}
+                    className="w-4 h-4 rounded object-contain bg-white/10 flex-shrink-0"
                   />
                 ) : (
-                  <span className="w-4 h-4 rounded bg-gray-700 flex items-center justify-center text-[8px] text-gray-400 font-bold">
-                    {item.vendor_id?.charAt(0) || "?"}
+                  <span className="w-4 h-4 rounded bg-gray-700 flex items-center justify-center text-[8px] text-gray-400 font-bold flex-shrink-0">
+                    {currentMobileItem.vendor_id?.charAt(0) || "?"}
                   </span>
                 )}
-                <span className="text-gray-300 truncate max-w-[120px]">
-                  {item.product_name}
+                <span className="text-gray-300 truncate">
+                  {truncateName(currentMobileItem.product_name, 20)}
                 </span>
-                {item.change_percent > 0 ? (
-                  <span className="flex items-center text-rose-400">
+                {currentMobileItem.change_percent > 0 ? (
+                  <span className="flex items-center text-rose-400 flex-shrink-0">
                     <TrendingUp className="w-3 h-3" />
-                    <span className="font-medium">+{item.change_percent.toFixed(0)}%</span>
+                    <span className="font-medium">+{currentMobileItem.change_percent.toFixed(0)}%</span>
                   </span>
                 ) : (
-                  <span className="flex items-center text-emerald-400">
+                  <span className="flex items-center text-emerald-400 flex-shrink-0">
                     <TrendingDown className="w-3 h-3" />
-                    <span className="font-medium">{item.change_percent.toFixed(0)}%</span>
+                    <span className="font-medium">{currentMobileItem.change_percent.toFixed(0)}%</span>
                   </span>
                 )}
-                <span className="text-gray-600 mx-2">•</span>
-              </span>
-            ))}
+                {/* Item counter */}
+                <span className="text-xs text-gray-500 flex-shrink-0">
+                  {mobileIndex + 1}/{tickerItems.length}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Expand Toggle */}
+          <div className="flex-shrink-0">
+            {expanded ? (
+              <ChevronUp className="w-4 h-4 text-gray-400" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-gray-400" />
+            )}
           </div>
         </div>
 
-        {/* Mobile/Tablet: Show summary instead of ticker */}
-        <div className="lg:hidden flex-1 text-sm text-gray-400">
-          <span className="text-rose-400">{allChanges.filter(c => c.change_percent > 0).length} up</span>
-          <span className="mx-2">·</span>
-          <span className="text-emerald-400">{allChanges.filter(c => c.change_percent < 0).length} down</span>
-          <span className="mx-2">·</span>
-          <span>last 30 days</span>
-        </div>
-
-        {/* Expand Toggle */}
-        <div className="flex-shrink-0">
-          {expanded ? (
-            <ChevronUp className="w-4 h-4 text-gray-400" />
-          ) : (
-            <ChevronDown className="w-4 h-4 text-gray-400" />
-          )}
-        </div>
-      </div>
-
-      {/* Expanded Content - Critical Items */}
-      {expanded && (
-        <div className="border-t border-slate-700/50 bg-slate-900/30">
-          {sortedCritical.length > 0 ? (
-            <>
-              <div className="p-4 space-y-2">
-                {sortedCritical.slice(0, 5).map((item) => (
-                  <div
-                    key={item.id}
-                    className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
-                      item.change_percent > 0
-                        ? "bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20"
-                        : "bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20"
-                    }`}
-                    onClick={() => handleViewItem(item.ingredient_id || "")}
-                  >
-                    <div className="flex items-center gap-3">
-                      {/* Vendor Logo */}
-                      {item.vendor_logo_url ? (
-                        <img
-                          src={item.vendor_logo_url}
-                          alt={item.vendor_id}
-                          className="w-8 h-8 rounded-lg object-contain bg-white/10 p-1"
-                        />
-                      ) : (
-                        <div
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                            item.change_percent > 0 ? "bg-rose-500/20" : "bg-emerald-500/20"
+        {/* Expanded Content - Critical Items */}
+        {expanded && (
+          <div className="border-t border-gray-700/50 bg-gray-900/30">
+            {sortedCritical.length > 0 ? (
+              <>
+                <div className="p-4 space-y-2">
+                  {sortedCritical.slice(0, 5).map((item) => (
+                    <div
+                      key={item.id}
+                      className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
+                        item.change_percent > 0
+                          ? "bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20"
+                          : "bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20"
+                      }`}
+                      onClick={() => handleViewItem(item.ingredient_id || "")}
+                    >
+                      <div className="flex items-center gap-3">
+                        {/* Vendor Logo */}
+                        {item.vendor_logo_url ? (
+                          <img
+                            src={item.vendor_logo_url}
+                            alt={item.vendor_id}
+                            className="w-8 h-8 rounded-lg object-contain bg-white/10 p-1"
+                          />
+                        ) : (
+                          <div
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                              item.change_percent > 0 ? "bg-rose-500/20" : "bg-emerald-500/20"
+                            }`}
+                          >
+                            {item.change_percent > 0 ? (
+                              <TrendingUp className="w-4 h-4 text-rose-400" />
+                            ) : (
+                              <TrendingDown className="w-4 h-4 text-emerald-400" />
+                            )}
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-sm font-medium text-white">
+                            {item.product_name}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {item.vendor_id} • {new Date(item.invoice_date).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`text-lg font-bold ${
+                            item.change_percent > 0 ? "text-rose-400" : "text-emerald-400"
                           }`}
                         >
-                          {item.change_percent > 0 ? (
-                            <TrendingUp className="w-4 h-4 text-rose-400" />
-                          ) : (
-                            <TrendingDown className="w-4 h-4 text-emerald-400" />
-                          )}
-                        </div>
-                      )}
-                      <div>
-                        <p className="text-sm font-medium text-white">
-                          {item.product_name}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {item.vendor_id} • {new Date(item.invoice_date).toLocaleDateString()}
-                        </p>
+                          {item.change_percent > 0 ? "+" : ""}
+                          {item.change_percent.toFixed(1)}%
+                        </span>
+                        <ExternalLink className="w-4 h-4 text-gray-500" />
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span
-                        className={`text-lg font-bold ${
-                          item.change_percent > 0 ? "text-rose-400" : "text-emerald-400"
-                        }`}
-                      >
-                        {item.change_percent > 0 ? "+" : ""}
-                        {item.change_percent.toFixed(1)}%
-                      </span>
-                      <ExternalLink className="w-4 h-4 text-gray-500" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="px-4 pb-4">
+                  ))}
+                </div>
+                <div className="px-4 pb-4">
+                  <button
+                    onClick={handleViewAll}
+                    className="w-full py-2 text-sm text-primary-400 hover:text-primary-300 hover:bg-primary-500/10 rounded-lg transition-colors"
+                  >
+                    View All Price History →
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="p-6 text-center">
+                <AlertTriangle className="w-8 h-8 text-gray-600 mx-auto mb-2" />
+                <p className="text-sm text-gray-400">No tracked price changes</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Enable "Price Change Alerts" on MIL ingredients to track them here
+                </p>
                 <button
                   onClick={handleViewAll}
-                  className="w-full py-2 text-sm text-primary-400 hover:text-primary-300 hover:bg-primary-500/10 rounded-lg transition-colors"
+                  className="mt-3 text-sm text-primary-400 hover:text-primary-300"
                 >
                   View All Price History →
                 </button>
               </div>
-            </>
-          ) : (
-            <div className="p-6 text-center">
-              <AlertTriangle className="w-8 h-8 text-gray-600 mx-auto mb-2" />
-              <p className="text-sm text-gray-400">No tracked price changes</p>
-              <p className="text-xs text-gray-500 mt-1">
-                Enable "Price Change Alerts" on MIL ingredients to track them here
-              </p>
-              <button
-                onClick={handleViewAll}
-                className="mt-3 text-sm text-primary-400 hover:text-primary-300"
-              >
-                View All Price History →
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )}
       </div>
     </>
   );
