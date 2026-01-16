@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Users,
   AlertTriangle,
@@ -10,11 +10,14 @@ import {
 import { useAdminStore } from "@/stores/adminStore";
 import { useDiagnostics } from "@/hooks/useDiagnostics";
 import { useOrganizationSettings } from "@/features/admin/components/settings/OrganizationSettings/useOrganizationSettings";
+import { useScheduleStore } from "@/stores/scheduleStore";
+import { useAuth } from "@/hooks/useAuth";
 import { StatsCard } from "./StatsCard";
 import { ActivityFeed } from "./ActivityFeed";
 import { AlertsList } from "./AlertsList";
-import { PriceWatchTicker } from "./AdminDashboard/PriceWatchTicker";
+import { PriceWatchTickerInline } from "./AdminDashboard/PriceWatchTickerInline";
 import { TemperatureWidgetWrapper } from "./AdminDashboard/TemperatureWidgetWrapper";
+import { TodaysTeamCarousel } from "./AdminDashboard/TodaysTeamCarousel";
 
 /**
  * =============================================================================
@@ -26,16 +29,11 @@ import { TemperatureWidgetWrapper } from "./AdminDashboard/TemperatureWidgetWrap
  * The Nexus Dashboard is the "medical chart" of your restaurant - showing
  * vital signs across all organ systems at a glance.
  * 
- * Design Feature: Ghost Logo Watermark
- * - XXXL monochrome logo behind header zone only
- * - Bleeds off left edge of viewport - "peeking in" effect
- * - Uses grayscale filter + low opacity for ghost effect
- * 
  * Layout:
- * - Price Watch Ticker (top - the EKG pulse)
- * - Header Card with ghost watermark
- * - Stats Cards
- * - Activity & Alerts
+ * - Header Card with ghost watermark + Active Staff pill + Price Watch Ticker
+ * - Stats Cards (3 cards: Temp, Tasks, Prep)
+ * - Today's Team Carousel (swipeable team cards)
+ * - Activity & Alerts (2-column)
  * =============================================================================
  */
 
@@ -46,21 +44,64 @@ export function AdminDashboard() {
   const { stats, activities, alerts } = useAdminStore();
   const { showDiagnostics } = useDiagnostics();
   const { organization } = useOrganizationSettings();
+  const { organization: authOrg } = useAuth();
+  const { scheduleShifts, fetchCurrentSchedule, fetchShifts } = useScheduleStore();
   const [isInfoExpanded, setIsInfoExpanded] = useState(false);
+  const [activeStaffCount, setActiveStaffCount] = useState(0);
 
   // Get org logo or fallback to ChefBot
   const orgLogo = organization?.settings?.branding?.logo_url;
   const orgName = organization?.name || "ChefLife";
 
-  // Remaining static stat cards (Temperature Monitor is now a live component)
+  // Load schedule for active staff count
+  useEffect(() => {
+    const loadSchedule = async () => {
+      try {
+        const schedule = await fetchCurrentSchedule();
+        if (schedule?.id) {
+          await fetchShifts(schedule.id);
+        }
+      } catch (error) {
+        console.error("Error loading schedule:", error);
+      }
+    };
+    loadSchedule();
+  }, [fetchCurrentSchedule, fetchShifts]);
+
+  // Calculate active staff for today
+  useEffect(() => {
+    const orgTimezone =
+      authOrg?.settings?.default_timezone ||
+      Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    const today = new Date();
+    let todayStr;
+    try {
+      todayStr = today
+        .toLocaleDateString("en-CA", {
+          timeZone: orgTimezone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        })
+        .replace(/\//g, "-");
+    } catch (e) {
+      todayStr = today.toISOString().split("T")[0];
+    }
+
+    const shiftsForToday = scheduleShifts.filter(
+      (shift) => shift.shift_date === todayStr
+    );
+
+    // Deduplicate by employee
+    const uniqueEmployees = new Set(
+      shiftsForToday.map((s) => s.employee_id || s.employee_name)
+    );
+    setActiveStaffCount(uniqueEmployees.size);
+  }, [scheduleShifts, authOrg?.settings?.default_timezone]);
+
+  // Stat cards
   const statsCards = [
-    {
-      icon: Users,
-      label: "Active Staff",
-      value: stats.activeStaff,
-      change: "+2",
-      color: "blue",
-    },
     {
       icon: AlertTriangle,
       label: "Pending Tasks",
@@ -87,13 +128,7 @@ export function AdminDashboard() {
       )}
 
       {/* ========================================================================
-       * PRICE WATCH TICKER - The EKG pulse at the top
-       * ======================================================================== */}
-      <PriceWatchTicker />
-
-      {/* ========================================================================
-       * NEXUS HEADER with Ghost Logo Watermark
-       * Ghost bleeds off left edge - "peeking in" from outside viewport
+       * NEXUS HEADER with Ghost Logo Watermark + Embedded Price Watch Ticker
        * ======================================================================== */}
       <div className="relative">
         {/* Ghost Logo - positioned to bleed off left edge */}
@@ -114,10 +149,10 @@ export function AdminDashboard() {
         {/* L5 HEADER CARD */}
         <div className="relative bg-[#1a1f2b] rounded-lg shadow-lg p-4">
           <div className="flex flex-col gap-4">
-            {/* Top row: Logo/Title + Actions */}
+            {/* Top row: Logo/Title + Active Staff Pill + Refresh */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div className="flex items-center gap-3">
-                {/* Logo Box - org logo or ChefBot placeholder */}
+                {/* Logo Box */}
                 <div className="w-12 h-12 rounded-lg bg-gray-800 flex items-center justify-center overflow-hidden ring-2 ring-primary-500/30 shadow-lg flex-shrink-0">
                   <img
                     src={orgLogo || CHEFBOT_PLACEHOLDER}
@@ -135,7 +170,19 @@ export function AdminDashboard() {
                 </div>
               </div>
 
-              <div className="flex gap-2">
+              {/* Right side: Active Staff Pill + Refresh */}
+              <div className="flex items-center gap-3">
+                {/* Active Staff Pill */}
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/20 rounded-full border border-blue-500/30">
+                  <Users className="w-4 h-4 text-blue-400" />
+                  <span className="text-sm font-medium text-blue-400">
+                    {activeStaffCount}
+                  </span>
+                  <span className="text-xs text-blue-400/70 hidden sm:inline">
+                    Active
+                  </span>
+                </div>
+
                 <button
                   className="btn-ghost text-gray-400 hover:text-white"
                   title="Refresh dashboard"
@@ -187,26 +234,29 @@ export function AdminDashboard() {
                 </div>
               </div>
             </div>
+
+            {/* Price Watch Ticker - Embedded in header */}
+            <PriceWatchTickerInline />
           </div>
         </div>
       </div>
 
-      {/* Stats Cards - Mixed: Static cards + Live Temperature Monitor */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Active Staff */}
-        <StatsCard {...statsCards[0]} />
-        
+      {/* Stats Cards - 3 cards: Temperature + Tasks + Prep */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Temperature Monitor */}
         <TemperatureWidgetWrapper />
         
         {/* Pending Tasks */}
-        <StatsCard {...statsCards[1]} />
+        <StatsCard {...statsCards[0]} />
         
         {/* Prep Completion */}
-        <StatsCard {...statsCards[2]} />
+        <StatsCard {...statsCards[1]} />
       </div>
 
-      {/* Activity & Alerts */}
+      {/* Today's Team Carousel - Full width swipeable cards */}
+      <TodaysTeamCarousel />
+
+      {/* Activity & Alerts - 2 column */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <ActivityFeed activities={activities} />
         <AlertsList alerts={alerts} />

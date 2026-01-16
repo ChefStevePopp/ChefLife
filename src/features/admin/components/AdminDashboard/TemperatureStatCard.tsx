@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { ThermometerSnowflake, Wifi, WifiOff, AlertTriangle, CheckCircle } from "lucide-react";
 import { useSensorPush } from "@/hooks/useSensorPush";
 import { useAuth } from "@/hooks/useAuth";
@@ -9,20 +9,15 @@ import { supabase } from "@/lib/supabase";
  * TEMPERATURE STAT CARD - Dashboard Widget
  * =============================================================================
  * 
- * Displays real-time temperature monitoring on the admin dashboard.
- * Animates through all fridges and freezers being tracked via SensorPush.
+ * PREMIUM MORPH ANIMATION:
+ * - Temperature numbers smoothly interpolate between values (like a luxury car)
+ * - Equipment name does a subtle blur-slide morph
+ * - So smooth you're genuinely not sure if it changed
  * 
- * Design Notes:
- * - Temperature value: White (neutral) - not colored by status
- * - Status icons: Colored (emerald checkmark, amber/red triangle)
- * - Fridge icon: Primary blue
- * - Freezer icon: Darker blue (blue-700)
- * - Summary: AlertTriangle with count pill for warnings/critical
- * - Progress bar: Subtle, 1 shade darker than card
- * 
- * Data Sources:
- * - SensorPush integration (useSensorPush hook)
- * - HACCP Equipment table (haccp_equipment)
+ * Timing:
+ * - 8 second display per item
+ * - 2 second morph transition
+ * - Numbers animate at 60fps during morph
  * =============================================================================
  */
 
@@ -35,6 +30,104 @@ interface EquipmentWithReading {
   isConnected: boolean;
   location: string;
 }
+
+// Animated number component - smoothly morphs between values
+const AnimatedTemperature: React.FC<{ 
+  value: number | null; 
+  duration?: number;
+}> = ({ value, duration = 2000 }) => {
+  const [displayValue, setDisplayValue] = useState(value);
+  const animationRef = useRef<number | null>(null);
+  const startTimeRef = useRef<number | null>(null);
+  const startValueRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (value === null || displayValue === null) {
+      setDisplayValue(value);
+      return;
+    }
+
+    // Cancel any ongoing animation
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+    }
+
+    startValueRef.current = displayValue;
+    startTimeRef.current = null;
+
+    const animate = (timestamp: number) => {
+      if (!startTimeRef.current) {
+        startTimeRef.current = timestamp;
+      }
+
+      const elapsed = timestamp - startTimeRef.current;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      // Easing function - ease out cubic for smooth deceleration
+      const eased = 1 - Math.pow(1 - progress, 3);
+      
+      const currentValue = startValueRef.current! + (value - startValueRef.current!) * eased;
+      setDisplayValue(currentValue);
+
+      if (progress < 1) {
+        animationRef.current = requestAnimationFrame(animate);
+      }
+    };
+
+    animationRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [value, duration]);
+
+  if (displayValue === null) {
+    return <span className="text-lg font-medium text-gray-500">No Data</span>;
+  }
+
+  return (
+    <span className="text-2xl font-bold text-white tabular-nums">
+      {displayValue.toFixed(1)}°F
+    </span>
+  );
+};
+
+// Morphing text component - blur + slide transition
+const MorphingText: React.FC<{ 
+  text: string; 
+  className?: string;
+}> = ({ text, className = "" }) => {
+  const [displayText, setDisplayText] = useState(text);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
+  useEffect(() => {
+    if (text !== displayText) {
+      setIsTransitioning(true);
+      
+      // Halfway through transition, swap the text
+      const timeout = setTimeout(() => {
+        setDisplayText(text);
+        setIsTransitioning(false);
+      }, 1000); // Half of the 2s transition
+
+      return () => clearTimeout(timeout);
+    }
+  }, [text, displayText]);
+
+  return (
+    <span 
+      className={`inline-block transition-all duration-1000 ease-in-out ${className} ${
+        isTransitioning 
+          ? 'opacity-0 blur-[2px] translate-y-1' 
+          : 'opacity-100 blur-0 translate-y-0'
+      }`}
+    >
+      {displayText}
+    </span>
+  );
+};
 
 export const TemperatureStatCard: React.FC = () => {
   const { organization } = useAuth();
@@ -73,7 +166,6 @@ export const TemperatureStatCard: React.FC = () => {
   const equipmentWithReadings: EquipmentWithReading[] = useMemo(() => {
     const items: EquipmentWithReading[] = [];
 
-    // Add equipment with assigned sensors
     equipment.forEach((eq) => {
       const assignedSensor = eq.sensor_id
         ? sensors.find((s) => s.id === eq.sensor_id)
@@ -99,7 +191,6 @@ export const TemperatureStatCard: React.FC = () => {
       });
     });
 
-    // If no equipment configured, show unassigned sensors as fallback
     if (items.length === 0 && sensors.length > 0) {
       sensors.forEach((sensor) => {
         const latestReading = getLatestReading(sensor.id);
@@ -123,13 +214,13 @@ export const TemperatureStatCard: React.FC = () => {
     return items;
   }, [equipment, sensors, readings, getLatestReading, getTemperatureStatus]);
 
-  // Cycle through equipment every 4 seconds (pause on hover)
+  // Cycle through equipment - slower for premium feel
   useEffect(() => {
     if (equipmentWithReadings.length <= 1 || isHovered) return;
 
     const interval = setInterval(() => {
       setCurrentIndex((prev) => (prev + 1) % equipmentWithReadings.length);
-    }, 4000);
+    }, 8000); // 8 seconds per item
 
     return () => clearInterval(interval);
   }, [equipmentWithReadings.length, isHovered]);
@@ -142,9 +233,8 @@ export const TemperatureStatCard: React.FC = () => {
     const total = equipmentWithReadings.length;
     const critical = equipmentWithReadings.filter((e) => e.status === "critical").length;
     const warning = equipmentWithReadings.filter((e) => e.status === "warning").length;
-    const normal = equipmentWithReadings.filter((e) => e.status === "normal").length;
 
-    return { total, critical, warning, normal };
+    return { total, critical, warning };
   }, [equipmentWithReadings]);
 
   // Icon colors by equipment type
@@ -156,7 +246,6 @@ export const TemperatureStatCard: React.FC = () => {
     ? "text-blue-400"
     : "text-primary-400";
 
-  // Status icon color only (not text)
   const getStatusIconColor = (status: string) => {
     switch (status) {
       case "critical": return "text-red-400";
@@ -212,23 +301,12 @@ export const TemperatureStatCard: React.FC = () => {
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Progress indicator - subtle, 1 shade darker than card */}
-      {equipmentWithReadings.length > 1 && (
-        <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800/50">
-          <div
-            className="h-full bg-gray-600/50 transition-all duration-300"
-            style={{
-              width: `${((currentIndex + 1) / equipmentWithReadings.length) * 100}%`,
-            }}
-          />
-        </div>
-      )}
-
       <div className="flex items-center gap-4">
-        {/* Icon */}
-        <div className={`w-12 h-12 rounded-xl ${iconBgClass} flex items-center justify-center relative`}>
-          <ThermometerSnowflake className={`w-6 h-6 ${iconTextClass}`} />
-          {/* Connection indicator */}
+        {/* Icon - morphs color based on type */}
+        <div 
+          className={`w-12 h-12 rounded-xl flex items-center justify-center relative transition-colors duration-1000 ${iconBgClass}`}
+        >
+          <ThermometerSnowflake className={`w-6 h-6 transition-colors duration-1000 ${iconTextClass}`} />
           <div className="absolute -bottom-1 -right-1">
             {currentItem?.isConnected ? (
               <Wifi className="w-3 h-3 text-emerald-500" />
@@ -240,40 +318,38 @@ export const TemperatureStatCard: React.FC = () => {
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-          {/* Equipment name */}
-          <p className="text-sm text-gray-400 truncate" title={currentItem?.name}>
-            {currentItem?.name || "Temperature Monitor"}
-          </p>
+          {/* Equipment name - morphing text */}
+          <MorphingText 
+            text={currentItem?.name || "Temperature Monitor"} 
+            className="text-sm text-gray-400 truncate block"
+          />
           
-          {/* Temperature (white/neutral) + Status Icon (colored) */}
+          {/* Temperature - animated number + status */}
           <div className="flex items-baseline gap-2">
-            {currentItem?.temperature !== null ? (
-              <>
-                <p className="text-2xl font-bold text-white">
-                  {currentItem.temperature.toFixed(1)}°F
-                </p>
-                <span className={getStatusIconColor(currentItem.status)}>
-                  {currentItem.status === "critical" || currentItem.status === "warning" ? (
-                    <AlertTriangle className="w-4 h-4" />
-                  ) : (
-                    <CheckCircle className="w-4 h-4" />
-                  )}
-                </span>
-              </>
-            ) : (
-              <p className="text-lg font-medium text-gray-500">No Data</p>
+            <AnimatedTemperature 
+              value={currentItem?.temperature ?? null} 
+              duration={2000}
+            />
+            {currentItem?.temperature !== null && (
+              <span className={`transition-colors duration-500 ${getStatusIconColor(currentItem.status)}`}>
+                {currentItem.status === "critical" || currentItem.status === "warning" ? (
+                  <AlertTriangle className="w-4 h-4" />
+                ) : (
+                  <CheckCircle className="w-4 h-4" />
+                )}
+              </span>
             )}
           </div>
         </div>
 
-        {/* Summary - Alert icon with count pill OR checkmark */}
+        {/* Summary */}
         <div className="flex flex-col items-end gap-1">
-          {/* Cycling indicator */}
-          <div className="text-xs text-gray-500">
-            {currentIndex + 1}/{equipmentWithReadings.length}
-          </div>
+          {equipmentWithReadings.length > 1 && (
+            <div className="text-[10px] text-gray-600 tabular-nums">
+              {currentIndex + 1}/{equipmentWithReadings.length}
+            </div>
+          )}
           
-          {/* Status summary as icon + pill */}
           {statusSummary.critical > 0 ? (
             <div className="flex items-center gap-1">
               <AlertTriangle className="w-4 h-4 text-red-400" />
