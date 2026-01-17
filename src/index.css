@@ -1077,6 +1077,65 @@ select::-ms-expand {
 }
 
 /* ============================================================================
+ * PREMIUM MORPH ANIMATIONS
+ * ChefLife's signature smooth transitions for numbers and text.
+ * 
+ * Philosophy: "So smooth you're not sure if it moved."
+ * 
+ * For numeric transitions, use the <AnimatedNumber> React component
+ * (requires JavaScript for 60fps requestAnimationFrame interpolation).
+ * 
+ * Import: import { AnimatedNumber, MorphingText } from "@/shared/components/AnimatedNumber";
+ * 
+ * Usage:
+ *   <AnimatedNumber value={36.7} suffix="°F" decimals={1} />
+ *   <AnimatedNumber value={12.99} prefix="$" decimals={2} />
+ *   <MorphingText text={equipmentName} className="text-gray-400" />
+ * 
+ * CSS classes below are for the text morph effect (blur + slide).
+ * ============================================================================ */
+
+/* Morphing text - subtle blur + slide transition */
+.morph-text {
+  display: inline-block;
+  transition-property: opacity, filter, transform;
+  transition-timing-function: ease-in-out;
+  transition-duration: 1000ms;
+}
+
+.morph-text.transitioning {
+  opacity: 0;
+  filter: blur(2px);
+  transform: translateY(4px);
+}
+
+.morph-text.visible {
+  opacity: 1;
+  filter: blur(0);
+  transform: translateY(0);
+}
+
+/* Numeric animation helper - ensures stable digit widths */
+.animated-number {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Premium fade - ultra-slow crossfade for cycling widgets */
+.premium-fade {
+  transition-property: opacity;
+  transition-timing-function: ease-in-out;
+  transition-duration: 1500ms;
+}
+
+.premium-fade.fade-out {
+  opacity: 0;
+}
+
+.premium-fade.fade-in {
+  opacity: 1;
+}
+
+/* ============================================================================
    PRICE WATCH TICKER ANIMATION
    ============================================================================ */
 

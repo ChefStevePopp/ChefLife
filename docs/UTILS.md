@@ -996,3 +996,111 @@ This is the canonical example of the sub-header pattern with toggles, dropdown, 
 ❌ Use blue-tinted backgrounds for sub-headers (use slate/neutral)  
 ❌ Make toggles colored by default (grey until active)  
 ❌ Skip the sub-header when tab content needs context
+
+---
+
+## Premium Animation Components
+
+ChefLife's signature smooth transitions for numbers and text. Used for temperatures, prices, percentages — anywhere numbers update.
+
+**Location:** `src/shared/components/AnimatedNumber/`
+
+**Philosophy:** "So smooth you're not sure if it moved."
+
+### AnimatedNumber
+
+Numbers smoothly interpolate between values at 60fps using `requestAnimationFrame`.
+
+```tsx
+import { AnimatedNumber } from "@/shared/components/AnimatedNumber";
+
+// Temperature
+<AnimatedNumber value={36.7} suffix="°F" decimals={1} />
+
+// Price
+<AnimatedNumber value={12.99} prefix="$" decimals={2} />
+
+// Percentage
+<AnimatedNumber value={85} suffix="%" decimals={0} />
+
+// With custom styling
+<AnimatedNumber 
+  value={1234.56} 
+  prefix="$" 
+  decimals={2}
+  className="text-3xl font-bold text-emerald-400"
+  duration={1500}
+/>
+```
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `value` | `number \| null` | required | Target value to animate to |
+| `duration` | `number` | `2000` | Animation duration in ms |
+| `decimals` | `number` | `1` | Decimal places |
+| `prefix` | `string` | `""` | Prefix (e.g., "$") |
+| `suffix` | `string` | `""` | Suffix (e.g., "°F", "%") |
+| `className` | `string` | `""` | Additional CSS classes |
+| `nullText` | `string` | `"—"` | Text when value is null |
+| `nullClassName` | `string` | `"text-gray-500"` | Class for null state |
+
+**Key Details:**
+- Uses `tabular-nums` to prevent digit width jumping
+- Ease-out cubic easing (decelerates like a luxury gauge)
+- 60fps via requestAnimationFrame
+
+### MorphingText
+
+Text transitions with a subtle blur + slide effect.
+
+```tsx
+import { MorphingText } from "@/shared/components/AnimatedNumber";
+
+<MorphingText text={equipmentName} className="text-sm text-gray-400" />
+```
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `text` | `string` | required | Text to display |
+| `className` | `string` | `""` | Additional CSS classes |
+| `transitionDuration` | `number` | `1000` | Duration per direction (ms) |
+
+**The Effect:**
+- Text fades out with slight blur and downward drift
+- New text fades in, blur clears, drifts back to position
+- 1 second each direction = 2 second total transition
+
+### CSS Classes (index.css)
+
+For CSS-only approaches (when not using React components):
+
+```css
+.morph-text              /* Base: inline-block with transitions */
+.morph-text.transitioning /* Blur + fade + slide out */
+.morph-text.visible      /* Clear state */
+.animated-number         /* tabular-nums for stable digit widths */
+.premium-fade            /* Ultra-slow 1.5s opacity transition */
+.premium-fade.fade-out   /* opacity: 0 */
+.premium-fade.fade-in    /* opacity: 1 */
+```
+
+### Reference Implementation
+
+**TemperatureStatCard:** `src/features/admin/components/AdminDashboard/TemperatureStatCard.tsx`
+
+This widget cycles through 9 sensors with premium morph animation — the canonical example of the pattern.
+
+### When to Use
+
+✅ Dashboard widgets cycling through multiple data points  
+✅ Temperature displays  
+✅ Price updates  
+✅ Percentage indicators  
+✅ Any rotating display where jarring transitions would distract
+
+### When NOT to Use
+
+❌ Real-time data that changes rapidly (use instant updates)  
+❌ User-initiated changes (use immediate feedback)  
+❌ Critical alerts (use attention-grabbing transitions)  
+❌ Static values that never change

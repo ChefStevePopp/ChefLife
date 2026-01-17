@@ -292,6 +292,76 @@ export const RECIPES_EVENTS: ModuleEventCategory = {
 // INVENTORY MODULE EVENTS
 // =============================================================================
 
+// =============================================================================
+// ANALYTICS MODULE EVENTS
+// =============================================================================
+
+export const ANALYTICS_EVENTS: ModuleEventCategory = {
+  moduleId: 'inventory', // Analytics is part of inventory/purchasing module
+  label: 'Vendor Analytics',
+  description: 'Automated insights and alerts from price trend analysis',
+  icon: 'TrendingUp',
+  color: 'emerald',
+  events: [
+    {
+      id: 'vendor_creep_detected',
+      label: 'Vendor Price Creep',
+      description: 'When a vendor\'s overall pricing trends upward over time',
+      defaultChannels: ['in_app'],
+      defaultAudience: 2, // Bravo+ (managers)
+      severity: 'warning',
+    },
+    {
+      id: 'vendor_creep_critical',
+      label: 'Critical Vendor Price Creep',
+      description: 'When vendor pricing increases exceed critical threshold (10%+)',
+      defaultChannels: ['in_app', 'email'],
+      defaultAudience: 1, // Alpha+ (owner/admin)
+      severity: 'critical',
+    },
+    {
+      id: 'price_spike_alert',
+      label: 'Price Spike Detected',
+      description: 'When a single item price jumps significantly on one invoice',
+      defaultChannels: ['in_app'],
+      defaultAudience: 2, // Bravo+
+      severity: 'warning',
+    },
+    {
+      id: 'single_source_risk',
+      label: 'Single-Source Dependency',
+      description: 'When an ingredient is only available from one vendor',
+      defaultChannels: ['in_app'],
+      defaultAudience: 2, // Bravo+
+      severity: 'info',
+    },
+    {
+      id: 'market_divergence',
+      label: 'Market Divergence',
+      description: 'When one vendor\'s pricing diverges significantly from others (requires Umbrella Items)',
+      defaultChannels: ['in_app', 'email'],
+      defaultAudience: 2, // Bravo+
+      severity: 'warning',
+    },
+    {
+      id: 'margin_erosion_warning',
+      label: 'Margin Erosion Warning',
+      description: 'When ingredient costs are trending toward unsustainable food cost percentage',
+      defaultChannels: ['in_app', 'email'],
+      defaultAudience: 1, // Alpha+ (owner/admin)
+      severity: 'critical',
+    },
+    {
+      id: 'category_volatility_alert',
+      label: 'Category Volatility Alert',
+      description: 'When a food category shows high price volatility',
+      defaultChannels: ['in_app'],
+      defaultAudience: 2, // Bravo+
+      severity: 'info',
+    },
+  ],
+};
+
 export const INVENTORY_EVENTS: ModuleEventCategory = {
   moduleId: 'inventory',
   label: 'Inventory',
@@ -494,6 +564,7 @@ export const MODULE_EVENT_CATEGORIES: ModuleEventCategory[] = [
   ATTENDANCE_EVENTS,
   RECIPES_EVENTS,
   INVENTORY_EVENTS,
+  ANALYTICS_EVENTS,
   HACCP_EVENTS,
   TASKS_EVENTS,
 ];

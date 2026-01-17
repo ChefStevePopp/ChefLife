@@ -1434,7 +1434,219 @@ src/features/mobile/
 
 ---
 
-*Last updated: January 13, 2026 - VendorSettings L6 tablet-first pattern added*
+## Premium Interaction Patterns
+
+ChefLife's signature interactions communicate quality through subtle, considered motion. These aren't flashy animations — they're quiet signals that someone cared about your experience.
+
+> "So smooth you're not sure if it moved."
+
+### Philosophy
+
+Premium motion should:
+- **Never demand attention** — it serves, doesn't distract
+- **Feel inevitable** — like physics, not decoration
+- **Reward observation** — notice it once, appreciate it forever
+- **Degrade gracefully** — works without animation too
+
+### Two-Stage Button
+
+**Reference:** `src/shared/components/TwoStageButton.tsx`
+
+A confirmation pattern that prevents accidental destructive actions without modal interruption.
+
+**Behavior:**
+1. First click: Button expands to reveal confirmation state
+2. Second click: Action executes
+3. Click away or timeout: Reverts to initial state
+
+**The Premium Detail:** The expansion is a smooth 200ms scale + opacity transition. The icon can change between states (e.g., Lock → Pencil for "unlock to edit").
+
+```tsx
+<TwoStageButton
+  icon={Lock}
+  confirmIcon={Pencil}      // Optional: different icon for confirm state
+  variant="warning"          // danger | warning | neutral
+  size="sm"                  // xs | sm | md
+  confirmLabel="Edit"
+  onConfirm={handleUnlock}
+/>
+```
+
+**When to use:**
+- Delete/archive actions (danger variant)
+- Override protected data (warning variant)
+- Any destructive action that doesn't warrant a full modal
+
+**When NOT to use:**
+- Actions with complex consequences (use ConfirmDialog)
+- Bulk operations (use floating action bar with explicit confirmation)
+
+---
+
+### Premium Morph Animation
+
+**Reference:** `src/features/admin/components/AdminDashboard/TemperatureStatCard.tsx`
+
+Used when cycling through multiple data points in a single widget. The transition is so smooth users aren't sure if the data changed.
+
+**Components:**
+
+#### AnimatedTemperature
+Numbers smoothly interpolate between values at 60fps using `requestAnimationFrame`.
+
+```tsx
+const AnimatedTemperature: React.FC<{ value: number | null; duration?: number }> = ({ 
+  value, 
+  duration = 2000 
+}) => {
+  const [displayValue, setDisplayValue] = useState(value);
+  const animationRef = useRef<number | null>(null);
+  const startTimeRef = useRef<number | null>(null);
+  const startValueRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (value === null || displayValue === null) {
+      setDisplayValue(value);
+      return;
+    }
+
+    if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    
+    startValueRef.current = displayValue;
+    startTimeRef.current = null;
+
+    const animate = (timestamp: number) => {
+      if (!startTimeRef.current) startTimeRef.current = timestamp;
+
+      const elapsed = timestamp - startTimeRef.current;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      // Ease-out cubic - decelerates like a luxury gauge
+      const eased = 1 - Math.pow(1 - progress, 3);
+      
+      const currentValue = startValueRef.current! + (value - startValueRef.current!) * eased;
+      setDisplayValue(currentValue);
+
+      if (progress < 1) {
+        animationRef.current = requestAnimationFrame(animate);
+      }
+    };
+
+    animationRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    };
+  }, [value, duration]);
+
+  if (displayValue === null) return <span>No Data</span>;
+
+  return (
+    <span className="text-2xl font-bold text-white tabular-nums">
+      {displayValue.toFixed(1)}°F
+    </span>
+  );
+};
+```
+
+**Key details:**
+- `tabular-nums` — prevents digit width jumping during animation
+- Ease-out cubic — decelerates naturally like real physics
+- 2-second duration — slow enough to feel premium, fast enough to not frustrate
+- 60fps via requestAnimationFrame — buttery smooth
+
+#### MorphingText
+Text transitions with a subtle blur + slide effect.
+
+```tsx
+const MorphingText: React.FC<{ text: string; className?: string }> = ({ 
+  text, 
+  className = "" 
+}) => {
+  const [displayText, setDisplayText] = useState(text);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
+  useEffect(() => {
+    if (text !== displayText) {
+      setIsTransitioning(true);
+      
+      // Halfway through, swap the text
+      const timeout = setTimeout(() => {
+        setDisplayText(text);
+        setIsTransitioning(false);
+      }, 1000);
+
+      return () => clearTimeout(timeout);
+    }
+  }, [text, displayText]);
+
+  return (
+    <span 
+      className={`inline-block transition-all duration-1000 ease-in-out ${className} ${
+        isTransitioning 
+          ? 'opacity-0 blur-[2px] translate-y-1' 
+          : 'opacity-100 blur-0 translate-y-0'
+      }`}
+    >
+      {displayText}
+    </span>
+  );
+};
+```
+
+**The effect:**
+- Text fades out with slight blur and downward drift
+- New text fades in, blur clears, drifts back to position
+- 1 second each direction = 2 second total transition
+
+#### Timing Pattern
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                                                             │
+│   8 seconds display    │    2 second morph    │   repeat    │
+│   ═══════════════════  │  ────────────────    │             │
+│   "Walk-In Cooler"     │  blur → swap → clear │             │
+│   38.2°F               │  38.2 → → → → 35.8   │             │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**When to use:**
+- Dashboard widgets cycling through multiple data points
+- Any rotating display where jarring transitions would distract
+- Status indicators that update periodically
+
+**When NOT to use:**
+- Real-time data that changes rapidly (use instant updates)
+- User-initiated changes (use immediate feedback)
+- Critical alerts (use attention-grabbing transitions)
+
+---
+
+### Design Principles for Premium Motion
+
+| Principle | Implementation |
+|-----------|----------------|
+| **Slow is premium** | 1.5-2s transitions feel luxurious, 200ms feels cheap |
+| **Ease-out always** | Deceleration feels natural, linear feels robotic |
+| **tabular-nums** | Numbers shouldn't dance around during animation |
+| **Blur adds depth** | Subtle blur (2px) creates perceived z-depth |
+| **Pause on hover** | Respect user attention, stop cycling when focused |
+| **No progress bars** | If you need to show progress, it's not smooth enough |
+
+### The Luxury Test
+
+> "Does this feel like a Tesla dashboard or a rental car?"
+
+- **Tesla:** Numbers glide to new values, displays morph imperceptibly
+- **Rental:** Numbers snap, displays flicker, everything demands attention
+
+ChefLife aims for Tesla.
+
+---
+
+*Last updated: January 16, 2026 - Premium Interaction Patterns (Two-Stage Button, Morph Animation) added*
 
 ---
 

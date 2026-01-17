@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { ThermometerSnowflake, Wifi, WifiOff, AlertTriangle, CheckCircle } from "lucide-react";
 import { useSensorPush } from "@/hooks/useSensorPush";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
+import { AnimatedNumber, MorphingText } from "@/shared/components/AnimatedNumber";
 
 /**
  * =============================================================================
@@ -10,6 +11,7 @@ import { supabase } from "@/lib/supabase";
  * =============================================================================
  * 
  * PREMIUM MORPH ANIMATION:
+ * Uses shared AnimatedNumber and MorphingText components for smooth transitions.
  * - Temperature numbers smoothly interpolate between values (like a luxury car)
  * - Equipment name does a subtle blur-slide morph
  * - So smooth you're genuinely not sure if it changed
@@ -18,6 +20,8 @@ import { supabase } from "@/lib/supabase";
  * - 8 second display per item
  * - 2 second morph transition
  * - Numbers animate at 60fps during morph
+ * 
+ * Reference: L5-BUILD-STRATEGY.md → Premium Interaction Patterns
  * =============================================================================
  */
 
@@ -30,104 +34,6 @@ interface EquipmentWithReading {
   isConnected: boolean;
   location: string;
 }
-
-// Animated number component - smoothly morphs between values
-const AnimatedTemperature: React.FC<{ 
-  value: number | null; 
-  duration?: number;
-}> = ({ value, duration = 2000 }) => {
-  const [displayValue, setDisplayValue] = useState(value);
-  const animationRef = useRef<number | null>(null);
-  const startTimeRef = useRef<number | null>(null);
-  const startValueRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (value === null || displayValue === null) {
-      setDisplayValue(value);
-      return;
-    }
-
-    // Cancel any ongoing animation
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
-    }
-
-    startValueRef.current = displayValue;
-    startTimeRef.current = null;
-
-    const animate = (timestamp: number) => {
-      if (!startTimeRef.current) {
-        startTimeRef.current = timestamp;
-      }
-
-      const elapsed = timestamp - startTimeRef.current;
-      const progress = Math.min(elapsed / duration, 1);
-      
-      // Easing function - ease out cubic for smooth deceleration
-      const eased = 1 - Math.pow(1 - progress, 3);
-      
-      const currentValue = startValueRef.current! + (value - startValueRef.current!) * eased;
-      setDisplayValue(currentValue);
-
-      if (progress < 1) {
-        animationRef.current = requestAnimationFrame(animate);
-      }
-    };
-
-    animationRef.current = requestAnimationFrame(animate);
-
-    return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
-    };
-  }, [value, duration]);
-
-  if (displayValue === null) {
-    return <span className="text-lg font-medium text-gray-500">No Data</span>;
-  }
-
-  return (
-    <span className="text-2xl font-bold text-white tabular-nums">
-      {displayValue.toFixed(1)}°F
-    </span>
-  );
-};
-
-// Morphing text component - blur + slide transition
-const MorphingText: React.FC<{ 
-  text: string; 
-  className?: string;
-}> = ({ text, className = "" }) => {
-  const [displayText, setDisplayText] = useState(text);
-  const [isTransitioning, setIsTransitioning] = useState(false);
-
-  useEffect(() => {
-    if (text !== displayText) {
-      setIsTransitioning(true);
-      
-      // Halfway through transition, swap the text
-      const timeout = setTimeout(() => {
-        setDisplayText(text);
-        setIsTransitioning(false);
-      }, 1000); // Half of the 2s transition
-
-      return () => clearTimeout(timeout);
-    }
-  }, [text, displayText]);
-
-  return (
-    <span 
-      className={`inline-block transition-all duration-1000 ease-in-out ${className} ${
-        isTransitioning 
-          ? 'opacity-0 blur-[2px] translate-y-1' 
-          : 'opacity-100 blur-0 translate-y-0'
-      }`}
-    >
-      {displayText}
-    </span>
-  );
-};
 
 export const TemperatureStatCard: React.FC = () => {
   const { organization } = useAuth();
@@ -326,9 +232,14 @@ export const TemperatureStatCard: React.FC = () => {
           
           {/* Temperature - animated number + status */}
           <div className="flex items-baseline gap-2">
-            <AnimatedTemperature 
+            <AnimatedNumber 
               value={currentItem?.temperature ?? null} 
+              suffix="°F"
+              decimals={1}
               duration={2000}
+              className="text-2xl font-bold text-white"
+              nullText="No Data"
+              nullClassName="text-lg font-medium text-gray-500"
             />
             {currentItem?.temperature !== null && (
               <span className={`transition-colors duration-500 ${getStatusIconColor(currentItem.status)}`}>
