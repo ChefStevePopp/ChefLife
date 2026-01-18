@@ -5,6 +5,7 @@ export * from "./QuickStatCard";
 export * from "./VendorSelector";
 export * from "./ItemCodeGroupManager";
 export * from "./UmbrellaIngredientManager";
+export * from "./UmbrellaItemCard";
 export * from "./LinkMasterIngredientModal";
 export * from "./LinkExistingIngredientModal";
 export * from "./MultiCodeManager";

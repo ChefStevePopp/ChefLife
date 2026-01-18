@@ -2,22 +2,18 @@ import React, { useState, useEffect, useMemo } from "react";
 import {
   Search,
   Plus,
-  Trash2,
-  Edit,
-  Save,
   X,
+  RefreshCw,
   AlertTriangle,
-  Link,
-  FileText,
-  DollarSign,
   Umbrella,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   ChevronUp,
   Info,
-  Sparkles,
-  Zap,
-  ShoppingCart,
+  Lightbulb,
+  Package,
+  Calculator,
 } from "lucide-react";
 import { useMasterIngredientsStore } from "@/stores/masterIngredientsStore";
 import { useFoodRelationshipsStore } from "@/stores/foodRelationshipsStore";
@@ -27,15 +23,12 @@ import {
   UmbrellaIngredient,
   UmbrellaIngredientWithDetails,
 } from "@/types/umbrella-ingredient";
-import { MasterIngredient } from "@/types/master-ingredient";
 import { useAuth } from "@/hooks/useAuth";
 import toast from "react-hot-toast";
 import { LinkMasterIngredientModal } from "./LinkMasterIngredientModal";
-import { supabase } from "@/lib/supabase";
-import { useDiagnostics } from "@/hooks/useDiagnostics";
+import { UmbrellaItemCard } from "./UmbrellaItemCard";
 
 export const UmbrellaIngredientManager: React.FC = () => {
-  const { showDiagnostics } = useDiagnostics();
   const {
     umbrellaIngredients,
     fetchUmbrellaIngredients,
@@ -43,74 +36,28 @@ export const UmbrellaIngredientManager: React.FC = () => {
     updateUmbrellaIngredient,
     deleteUmbrellaIngredient,
     addMasterIngredientToUmbrella,
-    removeMasterIngredientFromUmbrella,
     isLoading,
     error,
   } = useUmbrellaIngredientsStore();
 
-  const { setUmbrellaIngredientFromPrimary } = useMasterIngredientsStore();
   const { ingredients, fetchIngredients } = useMasterIngredientsStore();
   const { user } = useAuth();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [isCreating, setIsCreating] = useState(false);
-  const [isEditing, setIsEditing] = useState<string | null>(null);
+  const [editingUmbrella, setEditingUmbrella] = useState<UmbrellaIngredientWithDetails | null>(null);
   const [newUmbrellaName, setNewUmbrellaName] = useState("");
   const [newUmbrellaMajorGroup, setNewUmbrellaMajorGroup] = useState("");
   const [newUmbrellaCategory, setNewUmbrellaCategory] = useState("");
   const [newUmbrellaSubCategory, setNewUmbrellaSubCategory] = useState("");
   const [filteredUmbrellaIngredients, setFilteredUmbrellaIngredients] =
     useState<UmbrellaIngredientWithDetails[]>([]);
-  const [expandedUmbrellas, setExpandedUmbrellas] = useState<string[]>([]);
-  const [isLinkingIngredient, setIsLinkingIngredient] = useState<string | null>(
-    null,
-  );
-  const [isInfoExpanded, setIsInfoExpanded] = useState(false);
-
-  // Common Name Suggestions - group ingredients that share a common_name
-  const commonNameSuggestions = useMemo(() => {
-    // Get all ingredients with a common_name
-    const withCommonName = ingredients.filter(
-      (ing) => ing.common_name && ing.common_name.trim() !== "" && !ing.archived
-    );
-
-    // Group by common_name (case-insensitive)
-    const groups: Record<string, typeof withCommonName> = {};
-    withCommonName.forEach((ing) => {
-      const key = ing.common_name!.toLowerCase().trim();
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(ing);
-    });
-
-    // Only suggest groups with 2+ ingredients that aren't already in an umbrella
-    const existingUmbrellaNames = new Set(
-      umbrellaIngredients.map((u) => u.name.toLowerCase().trim())
-    );
-    const linkedIngredientIds = new Set(
-      umbrellaIngredients.flatMap((u) => u.master_ingredients || [])
-    );
-
-    return Object.entries(groups)
-      .filter(([name, ings]) => {
-        // At least 2 ingredients
-        if (ings.length < 2) return false;
-        // Not already an umbrella with this name
-        if (existingUmbrellaNames.has(name)) return false;
-        // At least one ingredient not already linked
-        if (ings.every((ing) => linkedIngredientIds.has(ing.id))) return false;
-        return true;
-      })
-      .map(([name, ings]) => ({
-        commonName: ings[0].common_name!, // Use original casing from first match
-        ingredients: ings,
-        unlinkedCount: ings.filter((ing) => !linkedIngredientIds.has(ing.id)).length,
-      }))
-      .sort((a, b) => b.ingredients.length - a.ingredients.length); // Most ingredients first
-  }, [ingredients, umbrellaIngredients]);
+  const [isLinkingIngredient, setIsLinkingIngredient] = useState<string | null>(null);
+  const [infoExpanded, setInfoExpanded] = useState(false);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(5);
+  const [itemsPerPage] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
 
   // Get food relationships for cascading dropdowns
@@ -119,24 +66,18 @@ export const UmbrellaIngredientManager: React.FC = () => {
     categories,
     subCategories,
     fetchFoodRelationships,
-    isLoading: isLoadingRelationships,
   } = useFoodRelationshipsStore();
 
   // Get operations settings
-  const { settings, fetchSettings } = useOperationsStore();
+  const { fetchSettings } = useOperationsStore();
 
-  // Load umbrella ingredients, master ingredients, and food relationships on mount
+  // Load data on mount
   useEffect(() => {
     fetchUmbrellaIngredients();
     fetchIngredients();
     fetchFoodRelationships();
     fetchSettings();
-  }, [
-    fetchUmbrellaIngredients,
-    fetchIngredients,
-    fetchFoodRelationships,
-    fetchSettings,
-  ]);
+  }, [fetchUmbrellaIngredients, fetchIngredients, fetchFoodRelationships, fetchSettings]);
 
   // Get filtered categories based on major group
   const filteredCategories = useMemo(() => {
@@ -160,15 +101,14 @@ export const UmbrellaIngredientManager: React.FC = () => {
     const filtered = umbrellaIngredients.filter(
       (umbrella) =>
         umbrella.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (umbrella.category &&
-          umbrella.category.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (umbrella.sub_category &&
-          umbrella.sub_category
-            .toLowerCase()
-            .includes(searchTerm.toLowerCase())),
+        (umbrella.category_name &&
+          umbrella.category_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (umbrella.sub_category_name &&
+          umbrella.sub_category_name.toLowerCase().includes(searchTerm.toLowerCase()))
     );
 
     setFilteredUmbrellaIngredients(filtered);
+    setCurrentPage(1);
   }, [searchTerm, umbrellaIngredients]);
 
   // Calculate total pages
@@ -182,53 +122,6 @@ export const UmbrellaIngredientManager: React.FC = () => {
     const endIndex = startIndex + itemsPerPage;
     return filteredUmbrellaIngredients.slice(startIndex, endIndex);
   }, [filteredUmbrellaIngredients, currentPage, itemsPerPage]);
-
-  // Handle creating umbrella from Common Name suggestion (one-click)
-  const handleCreateFromSuggestion = async (suggestion: {
-    commonName: string;
-    ingredients: MasterIngredient[];
-  }) => {
-    if (!user?.user_metadata?.organizationId) {
-      toast.error("Organization not available");
-      return;
-    }
-
-    try {
-      // 1. Create the umbrella with the common name
-      const newUmbrella = await createUmbrellaIngredient({
-        name: suggestion.commonName,
-        organization_id: user.user_metadata.organizationId,
-        // Copy category info from first ingredient if available
-        major_group: suggestion.ingredients[0]?.major_group || undefined,
-        category: suggestion.ingredients[0]?.category || undefined,
-        sub_category: suggestion.ingredients[0]?.sub_category || undefined,
-      });
-
-      if (!newUmbrella) {
-        throw new Error("Failed to create umbrella");
-      }
-
-      // 2. Link all ingredients to the new umbrella
-      const linkedIngredientIds = new Set(
-        umbrellaIngredients.flatMap((u) => u.master_ingredients || [])
-      );
-      
-      for (const ing of suggestion.ingredients) {
-        // Skip if already linked to another umbrella
-        if (!linkedIngredientIds.has(ing.id)) {
-          await addMasterIngredientToUmbrella(newUmbrella.id, ing.id);
-        }
-      }
-
-      toast.success(
-        `Created "${suggestion.commonName}" with ${suggestion.ingredients.length} linked ingredients`
-      );
-      setIsCreating(false);
-    } catch (err) {
-      console.error("Error creating umbrella from suggestion:", err);
-      toast.error("Failed to create umbrella from suggestion");
-    }
-  };
 
   // Handle creating a new umbrella ingredient
   const handleCreateUmbrella = async () => {
@@ -246,58 +139,70 @@ export const UmbrellaIngredientManager: React.FC = () => {
         sub_category: newUmbrellaSubCategory || undefined,
       });
 
-      // Reset form
-      setNewUmbrellaName("");
-      setNewUmbrellaMajorGroup("");
-      setNewUmbrellaCategory("");
-      setNewUmbrellaSubCategory("");
+      resetForm();
       setIsCreating(false);
+      toast.success("Umbrella ingredient created");
     } catch (err) {
       console.error("Error creating umbrella ingredient:", err);
     }
   };
 
   // Handle updating an umbrella ingredient
-  const handleUpdateUmbrella = async (id: string) => {
-    if (!newUmbrellaName) {
+  const handleUpdateUmbrella = async () => {
+    if (!editingUmbrella || !newUmbrellaName) {
       toast.error("Please enter a name for the umbrella ingredient");
       return;
     }
 
     try {
-      await updateUmbrellaIngredient(id, {
+      await updateUmbrellaIngredient(editingUmbrella.id, {
         name: newUmbrellaName,
         major_group: newUmbrellaMajorGroup || undefined,
         category: newUmbrellaCategory || undefined,
         sub_category: newUmbrellaSubCategory || undefined,
       });
 
-      // Reset form
-      setNewUmbrellaName("");
-      setNewUmbrellaMajorGroup("");
-      setNewUmbrellaCategory("");
-      setNewUmbrellaSubCategory("");
-      setIsEditing(null);
+      resetForm();
+      setEditingUmbrella(null);
+      toast.success("Umbrella ingredient updated");
     } catch (err) {
       console.error("Error updating umbrella ingredient:", err);
     }
   };
 
-  // Toggle expanded state for an umbrella ingredient
-  const toggleExpanded = (id: string) => {
-    setExpandedUmbrellas((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id],
-    );
-  };
-
-  // Start editing an umbrella ingredient
-  const startEditing = (umbrella: UmbrellaIngredient) => {
-    setIsEditing(umbrella.id);
+  // Start editing an umbrella
+  const startEditing = (umbrella: UmbrellaIngredientWithDetails) => {
+    setEditingUmbrella(umbrella);
     setNewUmbrellaName(umbrella.name);
     setNewUmbrellaMajorGroup(umbrella.major_group || "");
     setNewUmbrellaCategory(umbrella.category || "");
     setNewUmbrellaSubCategory(umbrella.sub_category || "");
+    setIsCreating(false);
   };
+
+  // Reset form
+  const resetForm = () => {
+    setNewUmbrellaName("");
+    setNewUmbrellaMajorGroup("");
+    setNewUmbrellaCategory("");
+    setNewUmbrellaSubCategory("");
+  };
+
+  // Handle delete with confirmation
+  const handleDelete = async (id: string) => {
+    const umbrella = umbrellaIngredients.find((u) => u.id === id);
+    if (!umbrella) return;
+
+    if (window.confirm(`Are you sure you want to delete "${umbrella.name}"? This cannot be undone.`)) {
+      await deleteUmbrellaIngredient(id);
+      toast.success("Umbrella ingredient deleted");
+    }
+  };
+
+  // Stats
+  const totalUmbrellas = umbrellaIngredients.length;
+  const withPrimary = umbrellaIngredients.filter(u => u.primary_master_ingredient_id).length;
+  const totalLinked = umbrellaIngredients.reduce((sum, u) => sum + (u.master_ingredient_details?.length || 0), 0);
 
   if (error) {
     return (
@@ -313,1025 +218,328 @@ export const UmbrellaIngredientManager: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* L5 Diagnostic Path */}
-      {showDiagnostics && (
-        <div className="text-xs text-gray-500 font-mono">
-          src/features/admin/components/sections/VendorInvoice/components/UmbrellaIngredientManager.tsx
-        </div>
-      )}
-
-      {/* L5 Sub-header - Rose to match Umbrella tab */}
+      {/* L5 Sub-header - Gold Standard Pattern */}
       <div className="subheader">
         <div className="subheader-row">
           {/* Left: Icon + Title */}
           <div className="subheader-left">
-            <div className="w-10 h-10 rounded-lg bg-rose-500/20 flex items-center justify-center">
-              <Umbrella className="w-7 h-7 text-rose-400/80" />
+            <div className="subheader-icon-box rose">
+              <Umbrella className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="subheader-title">Umbrella Items</h3>
-              <p className="subheader-subtitle">Group equivalent vendor items under one kitchen name</p>
+              <h3 className="subheader-title">Umbrella Ingredients</h3>
+              <p className="subheader-subtitle">Group similar products for flexible recipe costing</p>
             </div>
           </div>
-
-          {/* Right: Stats only */}
+          
+          {/* Right: Stats + Actions */}
           <div className="subheader-right">
             <div className="subheader-toggle">
               <div className="subheader-toggle-icon">
-                <span className="text-sm font-semibold text-gray-400">{umbrellaIngredients.length}</span>
+                <span className="text-sm font-semibold text-gray-400">{totalUmbrellas}</span>
               </div>
-              <span className="subheader-toggle-label">Groups</span>
+              <span className="subheader-toggle-label">Umbrellas</span>
             </div>
+            {withPrimary > 0 && (
+              <div className="subheader-toggle">
+                <div className="subheader-toggle-icon">
+                  <span className="text-sm font-semibold text-gray-400">{withPrimary}</span>
+                </div>
+                <span className="subheader-toggle-label">With Primary</span>
+              </div>
+            )}
             <div className="subheader-toggle">
               <div className="subheader-toggle-icon">
-                <span className="text-sm font-semibold text-gray-400">
-                  {umbrellaIngredients.reduce((acc, u) => acc + (u.master_ingredients?.length || 0), 0)}
-                </span>
+                <span className="text-sm font-semibold text-gray-400">{totalLinked}</span>
               </div>
               <span className="subheader-toggle-label">Linked</span>
             </div>
-            {/* Suggestions badge - shows when there are common names to group */}
-            {commonNameSuggestions.length > 0 && (
-              <div className="subheader-toggle">
-                <div className="subheader-toggle-icon bg-primary-500/20">
-                  <Sparkles className="w-4 h-4 text-primary-400" />
-                </div>
-                <span className="subheader-toggle-label text-primary-400">
-                  {commonNameSuggestions.length} Suggested
-                </span>
-              </div>
-            )}
+            
+            <button onClick={() => fetchUmbrellaIngredients()} className="btn-ghost ml-2">
+              <RefreshCw className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => {
+                resetForm();
+                setEditingUmbrella(null);
+                setIsCreating(true);
+              }}
+              className="btn-primary"
+            >
+              <Plus className="w-4 h-4 mr-1" />
+              New
+            </button>
           </div>
         </div>
 
-        {/* Expandable Info Section */}
-        <div className={`subheader-info expandable-info-section ${isInfoExpanded ? 'expanded' : ''}`}>
+        {/* Expandable Info Section - Inside subheader */}
+        <div className={`subheader-info expandable-info-section ${infoExpanded ? "expanded" : ""}`}>
           <button
-            onClick={() => setIsInfoExpanded(!isInfoExpanded)}
+            onClick={() => setInfoExpanded(!infoExpanded)}
             className="expandable-info-header w-full justify-between"
           >
             <div className="flex items-center gap-2">
-              <Info className="w-4 h-4 text-gray-400 flex-shrink-0" />
-              <span className="text-sm font-medium text-gray-300">About Umbrella Items</span>
+              <Info className="w-4 h-4 text-gray-500 flex-shrink-0" />
+              <span className="text-sm text-gray-400">About Umbrella Ingredients</span>
             </div>
-            <ChevronUp className={`w-4 h-4 text-gray-400 transition-transform ${isInfoExpanded ? '' : 'rotate-180'}`} />
+            <ChevronUp className={`w-4 h-4 text-gray-500 transition-transform ${infoExpanded ? "" : "rotate-180"}`} />
           </button>
           <div className="expandable-info-content">
             <div className="p-4 pt-2 space-y-4">
               <p className="text-sm text-gray-400">
-                Umbrella Items let you group equivalent products from different vendors under one kitchen name. 
-                For example, "BRISKET" might include items from GFS, Flanagan, and Sysco — all tracked together 
-                for price comparison, usage reporting, and easy substitution.
+                Umbrella Ingredients let you group similar products that serve the same purpose
+                in your kitchen. Instead of updating every recipe when you switch vendors or
+                find a better price, you update the umbrella once.
               </p>
-
+              
               {/* Feature cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <div className="flex items-start gap-3 p-3 rounded-lg border border-gray-700/30">
-                  <DollarSign className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="subheader-feature-card">
+                  <Package className="text-rose-400/80" />
                   <div>
-                    <span className="text-sm font-medium text-emerald-400">Price Comparison</span>
-                    <p className="text-xs text-gray-500">See best price across vendors</p>
+                    <span className="subheader-feature-title text-rose-400/80">Group Products</span>
+                    <p className="subheader-feature-desc">Link brands, sizes, vendors under one umbrella</p>
                   </div>
                 </div>
-                <div className="flex items-start gap-3 p-3 rounded-lg border border-gray-700/30">
-                  <FileText className="w-4 h-4 text-primary-400 flex-shrink-0 mt-0.5" />
+                
+                <div className="subheader-feature-card">
+                  <Calculator className="text-emerald-400/80" />
                   <div>
-                    <span className="text-sm font-medium text-primary-400">Usage Tracking</span>
-                    <p className="text-xs text-gray-500">Combined usage reports</p>
+                    <span className="subheader-feature-title text-emerald-400/80">Smart Costing</span>
+                    <p className="subheader-feature-desc">Set primary, all recipes inherit that cost</p>
                   </div>
                 </div>
-                <div className="flex items-start gap-3 p-3 rounded-lg border border-gray-700/30">
-                  <Link className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                
+                <div className="subheader-feature-card">
+                  <Lightbulb className="text-amber-400/80" />
                   <div>
-                    <span className="text-sm font-medium text-amber-400">Easy Substitution</span>
-                    <p className="text-xs text-gray-500">Know your alternatives</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3 p-3 rounded-lg border border-gray-700/30">
-                  <Umbrella className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <span className="text-sm font-medium text-rose-400">Recipe Costing</span>
-                    <p className="text-xs text-gray-500">Use best or average price</p>
+                    <span className="subheader-feature-title text-amber-400/80">Price Intelligence</span>
+                    <p className="subheader-feature-desc">Compare prices to spot savings</p>
                   </div>
                 </div>
               </div>
-
+              
               <p className="text-xs text-gray-500 text-center">
-                Click any umbrella group to expand and see linked items with price comparison
+                Example: "Olive Oil" umbrella with Sysco EVOO, GFS bulk, specialty bottles - switch suppliers, all recipes update
               </p>
             </div>
           </div>
         </div>
       </div>
-      {/* Search Bar and Action Button */}
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-          <input
-            type="text"
-            placeholder="Search umbrella items..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="input pl-11 w-full min-h-[48px]"
-          />
-        </div>
-        <button
-          onClick={() => setIsCreating(true)}
-          className="btn-ghost text-primary-400 hover:text-primary-300 border border-primary-500/30 min-h-[48px] px-5"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Create Umbrella
-        </button>
+
+      {/* Search Bar */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-4 h-4" />
+        <input
+          type="text"
+          placeholder="Search umbrella ingredients..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="input pl-10 w-full"
+        />
       </div>
-      {/* Create New Umbrella Ingredient Form */}
-      {isCreating && (
-        <div className="card p-4 bg-gray-900 border border-gray-700">
-          <div className="flex flex-col space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-md font-medium text-white">
-                <Plus className="w-4 h-4 inline-block mr-1 text-rose-400" />
-                Create New Umbrella Ingredient
-              </h3>
-              <button
-                onClick={() => setIsCreating(false)}
-                className="text-gray-400 hover:text-gray-300"
-              >
-                <X className="w-4 h-4" />
-              </button>
+
+      {/* Create/Edit Form */}
+      {(isCreating || editingUmbrella) && (
+        <div className="card p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="text-sm font-medium text-white flex items-center gap-2">
+              {editingUmbrella ? (
+                <>Edit "{editingUmbrella.name}"</>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4 text-rose-400" />
+                  Create New Umbrella
+                </>
+              )}
+            </h4>
+            <button
+              onClick={() => {
+                resetForm();
+                setIsCreating(false);
+                setEditingUmbrella(null);
+              }}
+              className="text-gray-500 hover:text-gray-300"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                Name <span className="text-rose-400">*</span>
+              </label>
+              <input
+                type="text"
+                value={newUmbrellaName}
+                onChange={(e) => setNewUmbrellaName(e.target.value)}
+                placeholder="e.g., Olive Oil"
+                className="input w-full"
+                autoFocus
+              />
             </div>
 
-            {/* Common Name Suggestions Panel */}
-            {commonNameSuggestions.length > 0 && (
-              <div className="bg-primary-500/10 border border-primary-500/30 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Sparkles className="w-4 h-4 text-primary-400" />
-                  <span className="text-sm font-medium text-primary-300">Quick Create from Common Names</span>
-                  <span className="text-xs text-gray-500">({commonNameSuggestions.length} suggestions)</span>
-                </div>
-                <p className="text-xs text-gray-400 mb-3">
-                  These ingredients share a Common Name in your Master List — one click creates an umbrella and links them all:
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {commonNameSuggestions.slice(0, 8).map((suggestion) => (
-                    <button
-                      key={suggestion.commonName}
-                      onClick={() => handleCreateFromSuggestion(suggestion)}
-                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-800/50 border border-gray-700 hover:border-primary-500/50 hover:bg-primary-500/10 transition-all group"
-                    >
-                      <Zap className="w-3.5 h-3.5 text-amber-400 group-hover:text-amber-300" />
-                      <span className="text-sm text-white font-medium">{suggestion.commonName}</span>
-                      <span className="text-xs text-gray-500">
-                        {suggestion.ingredients.length} items
-                      </span>
-                      <div className="flex -space-x-1">
-                        {suggestion.ingredients.slice(0, 3).map((ing) => (
-                          <div
-                            key={ing.id}
-                            className="w-5 h-5 rounded-full bg-gray-700 border border-gray-600 flex items-center justify-center"
-                            title={`${ing.product} (${ing.vendor})`}
-                          >
-                            <ShoppingCart className="w-2.5 h-2.5 text-gray-400" />
-                          </div>
-                        ))}
-                        {suggestion.ingredients.length > 3 && (
-                          <div className="w-5 h-5 rounded-full bg-gray-600 border border-gray-500 flex items-center justify-center text-[10px] text-gray-300">
-                            +{suggestion.ingredients.length - 3}
-                          </div>
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                  {commonNameSuggestions.length > 8 && (
-                    <span className="text-xs text-gray-500 self-center">+{commonNameSuggestions.length - 8} more</span>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Divider if suggestions exist */}
-            {commonNameSuggestions.length > 0 && (
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-px bg-gray-700" />
-                <span className="text-xs text-gray-500 uppercase tracking-wider">or create manually</span>
-                <div className="flex-1 h-px bg-gray-700" />
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">
-                  Name <span className="text-rose-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={newUmbrellaName}
-                  onChange={(e) => setNewUmbrellaName(e.target.value)}
-                  placeholder="Enter umbrella ingredient name"
-                  className="input w-full"
-                  required
-                />
-                <div className="text-xs text-gray-500 mt-1">
-                  The name for this umbrella group (e.g. "Olive Oil")
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">
-                  Major Group
-                </label>
-                <select
-                  value={newUmbrellaMajorGroup}
-                  onChange={(e) => {
-                    setNewUmbrellaMajorGroup(e.target.value);
-                    setNewUmbrellaCategory(""); // Reset category when major group changes
-                    setNewUmbrellaSubCategory(""); // Reset sub-category when major group changes
-                  }}
-                  className="input w-full"
-                >
-                  <option value="">Select a major group</option>
-                  {majorGroups?.map((group) => (
-                    <option key={group.id} value={group.id}>
-                      {group.name}
-                    </option>
-                  ))}
-                </select>
-                <div className="text-xs text-gray-500 mt-1">
-                  The major group this umbrella belongs to
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">
-                  Category
-                </label>
-                <select
-                  value={newUmbrellaCategory}
-                  onChange={(e) => {
-                    setNewUmbrellaCategory(e.target.value);
-                    setNewUmbrellaSubCategory(""); // Reset sub-category when category changes
-                  }}
-                  className="input w-full"
-                  disabled={!newUmbrellaMajorGroup} // Disable if no major group selected
-                >
-                  <option value="">Select a category</option>
-                  {filteredCategories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-                <div className="text-xs text-gray-500 mt-1">
-                  The category within the major group
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">
-                  Sub-Category
-                </label>
-                <select
-                  value={newUmbrellaSubCategory}
-                  onChange={(e) => setNewUmbrellaSubCategory(e.target.value)}
-                  className="input w-full"
-                  disabled={!newUmbrellaCategory} // Disable if no category selected
-                >
-                  <option value="">Select a sub-category</option>
-                  {filteredSubCategories.map((subCategory) => (
-                    <option key={subCategory.id} value={subCategory.id}>
-                      {subCategory.name}
-                    </option>
-                  ))}
-                </select>
-                <div className="text-xs text-gray-500 mt-1">
-                  Optional: A more specific classification
-                </div>
-              </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                Major Group
+              </label>
+              <select
+                value={newUmbrellaMajorGroup}
+                onChange={(e) => {
+                  setNewUmbrellaMajorGroup(e.target.value);
+                  setNewUmbrellaCategory("");
+                  setNewUmbrellaSubCategory("");
+                }}
+                className="input w-full"
+              >
+                <option value="">Select...</option>
+                {majorGroups?.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <div className="flex justify-end gap-2 mt-4">
-              <button
-                onClick={() => setIsCreating(false)}
-                className="btn-ghost"
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                Category
+              </label>
+              <select
+                value={newUmbrellaCategory}
+                onChange={(e) => {
+                  setNewUmbrellaCategory(e.target.value);
+                  setNewUmbrellaSubCategory("");
+                }}
+                className="input w-full"
+                disabled={!newUmbrellaMajorGroup}
               >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateUmbrella}
-                className="btn-primary"
-                disabled={!newUmbrellaName}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Create Umbrella Ingredient
-              </button>
+                <option value="">Select...</option>
+                {filteredCategories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
             </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                Sub-Category
+              </label>
+              <select
+                value={newUmbrellaSubCategory}
+                onChange={(e) => setNewUmbrellaSubCategory(e.target.value)}
+                className="input w-full"
+                disabled={!newUmbrellaCategory}
+              >
+                <option value="">Select...</option>
+                {filteredSubCategories.map((subCategory) => (
+                  <option key={subCategory.id} value={subCategory.id}>
+                    {subCategory.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 mt-4">
+            <button
+              onClick={() => {
+                resetForm();
+                setIsCreating(false);
+                setEditingUmbrella(null);
+              }}
+              className="btn-ghost"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={editingUmbrella ? handleUpdateUmbrella : handleCreateUmbrella}
+              className="btn-primary"
+              disabled={!newUmbrellaName}
+            >
+              {editingUmbrella ? "Save Changes" : "Create"}
+            </button>
           </div>
         </div>
       )}
-      {/* Umbrella Ingredients List */}
-      <div className="space-y-4">
+
+      {/* Umbrella List */}
+      <div className="space-y-2">
         {isLoading ? (
           <div className="flex items-center justify-center h-64">
             <div className="animate-spin h-8 w-8 border-4 border-primary-500 border-t-transparent rounded-full"></div>
           </div>
         ) : filteredUmbrellaIngredients.length === 0 ? (
-          <div className="text-center py-12 bg-gray-800/50 rounded-lg">
-            <div className="w-16 h-16 mx-auto bg-gray-700/50 rounded-full flex items-center justify-center mb-4">
-              <AlertTriangle className="w-8 h-8 text-gray-500" />
+          <div className="text-center py-12 bg-gray-800/30 rounded-xl">
+            <div className="w-12 h-12 mx-auto bg-gray-700/50 rounded-full flex items-center justify-center mb-3">
+              <Umbrella className="w-6 h-6 text-gray-600" />
             </div>
-            <h3 className="text-lg font-medium text-white mb-2">
-              No Umbrella Ingredients Found
+            <h3 className="text-base font-medium text-gray-300 mb-1">
+              {searchTerm ? "No Matches" : "No Umbrella Ingredients"}
             </h3>
-            <p className="text-gray-400 max-w-md mx-auto">
+            <p className="text-sm text-gray-500 max-w-sm mx-auto mb-4">
               {searchTerm
-                ? `No umbrella ingredients match your search for "${searchTerm}".`
-                : "You haven't created any umbrella ingredients yet. Create your first one to get started."}
+                ? `No results for "${searchTerm}"`
+                : "Create your first umbrella to start grouping similar ingredients."}
             </p>
             {!searchTerm && (
               <button
-                onClick={() => setIsCreating(true)}
-                className="btn-primary mt-4"
+                onClick={() => {
+                  resetForm();
+                  setIsCreating(true);
+                }}
+                className="btn-ghost text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
               >
-                <Plus className="w-4 h-4 mr-2" />
-                Create First Umbrella Ingredient
+                <Plus className="w-4 h-4 mr-1" />
+                Create First Umbrella
               </button>
             )}
           </div>
         ) : (
           paginatedUmbrellaIngredients.map((umbrella) => (
-            <div key={umbrella.id} className="card p-4 bg-gray-800/50">
-              {/* Umbrella Header */}
-              <div className="mb-3">
-                {isEditing === umbrella.id ? (
-                  <div className="flex-1 flex items-center gap-4">
-                    <input
-                      type="text"
-                      value={newUmbrellaName}
-                      onChange={(e) => setNewUmbrellaName(e.target.value)}
-                      className="input flex-1"
-                      placeholder="Umbrella ingredient name"
-                    />
-                    <select
-                      value={newUmbrellaMajorGroup}
-                      onChange={(e) => {
-                        setNewUmbrellaMajorGroup(e.target.value);
-                        setNewUmbrellaCategory("");
-                        setNewUmbrellaSubCategory("");
-                      }}
-                      className="input w-40"
-                    >
-                      <option value="">Select major group</option>
-                      {majorGroups?.map((group) => (
-                        <option key={group.id} value={group.id}>
-                          {group.name}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={newUmbrellaCategory}
-                      onChange={(e) => {
-                        setNewUmbrellaCategory(e.target.value);
-                        setNewUmbrellaSubCategory("");
-                      }}
-                      className="input w-40"
-                      disabled={!newUmbrellaMajorGroup}
-                    >
-                      <option value="">Select category</option>
-                      {filteredCategories.map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {category.name}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={newUmbrellaSubCategory}
-                      onChange={(e) =>
-                        setNewUmbrellaSubCategory(e.target.value)
-                      }
-                      className="input w-40"
-                      disabled={!newUmbrellaCategory}
-                    >
-                      <option value="">Select sub-category</option>
-                      {filteredSubCategories.map((subCategory) => (
-                        <option key={subCategory.id} value={subCategory.id}>
-                          {subCategory.name}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleUpdateUmbrella(umbrella.id)}
-                        className="btn-primary"
-                      >
-                        <Save className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => setIsEditing(null)}
-                        className="btn-ghost"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    {/* Line 1: Name and badge on left, action buttons on right */}
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <Umbrella className="w-5 h-5 text-rose-400 flex-shrink-0" />
-                        <h3 className="text-lg font-medium text-white">
-                          {umbrella.name}
-                        </h3>
-                        <span className="text-xs bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded-full">
-                          Umbrella ID: {umbrella.id.substring(0, 8)}...
-                        </span>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => {
-                            // Save the current umbrella ingredient data and sync with master ingredients
-                            updateUmbrellaIngredient(umbrella.id, {
-                              name: umbrella.name,
-                              description: umbrella.description,
-                              major_group: umbrella.major_group,
-                              category: umbrella.category,
-                              sub_category: umbrella.sub_category,
-                              primary_master_ingredient_id:
-                                umbrella.primary_master_ingredient_id,
-                              // Include all allergen data
-                              allergen_peanut: umbrella.allergen_peanut,
-                              allergen_crustacean: umbrella.allergen_crustacean,
-                              allergen_treenut: umbrella.allergen_treenut,
-                              allergen_shellfish: umbrella.allergen_shellfish,
-                              allergen_sesame: umbrella.allergen_sesame,
-                              allergen_soy: umbrella.allergen_soy,
-                              allergen_fish: umbrella.allergen_fish,
-                              allergen_wheat: umbrella.allergen_wheat,
-                              allergen_milk: umbrella.allergen_milk,
-                              allergen_sulphite: umbrella.allergen_sulphite,
-                              allergen_egg: umbrella.allergen_egg,
-                              allergen_gluten: umbrella.allergen_gluten,
-                              allergen_mustard: umbrella.allergen_mustard,
-                              allergen_celery: umbrella.allergen_celery,
-                              allergen_garlic: umbrella.allergen_garlic,
-                              allergen_onion: umbrella.allergen_onion,
-                              allergen_nitrite: umbrella.allergen_nitrite,
-                              allergen_mushroom: umbrella.allergen_mushroom,
-                              allergen_hot_pepper: umbrella.allergen_hot_pepper,
-                              allergen_citrus: umbrella.allergen_citrus,
-                              allergen_pork: umbrella.allergen_pork,
-                              allergen_custom1_name:
-                                umbrella.allergen_custom1_name,
-                              allergen_custom1_active:
-                                umbrella.allergen_custom1_active,
-                              allergen_custom2_name:
-                                umbrella.allergen_custom2_name,
-                              allergen_custom2_active:
-                                umbrella.allergen_custom2_active,
-                              allergen_custom3_name:
-                                umbrella.allergen_custom3_name,
-                              allergen_custom3_active:
-                                umbrella.allergen_custom3_active,
-                              allergen_notes: umbrella.allergen_notes,
-                              storage_area: umbrella.storage_area,
-                              recipe_unit_type: umbrella.recipe_unit_type,
-                              cost_per_recipe_unit:
-                                umbrella.cost_per_recipe_unit,
-                            }).then(() => {
-                              toast.success(
-                                "Umbrella ingredient details saved and synced with master ingredients",
-                              );
-                            });
-                          }}
-                          className="p-1.5 text-gray-400 hover:text-green-400 transition-colors rounded-md hover:bg-gray-700/30"
-                          title="Save umbrella ingredient details and sync with master ingredients"
-                        >
-                          <Save className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => toggleExpanded(umbrella.id)}
-                          className="p-1.5 text-gray-400 hover:text-blue-400 transition-colors rounded-md hover:bg-gray-700/30"
-                          title={
-                            expandedUmbrellas.includes(umbrella.id)
-                              ? "Hide linked items"
-                              : "Show linked items"
-                          }
-                        >
-                          <Link className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => startEditing(umbrella)}
-                          className="p-1.5 text-gray-400 hover:text-amber-400 transition-colors rounded-md hover:bg-gray-700/30"
-                          title="Edit umbrella ingredient"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => deleteUmbrellaIngredient(umbrella.id)}
-                          className="p-1.5 text-gray-400 hover:text-rose-400 transition-colors rounded-md hover:bg-gray-700/30"
-                          title="Delete umbrella ingredient"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Line 2: Categories on left, linked ingredients preview on right */}
-                    <div className="flex justify-between items-center mb-2">
-                      <div className="flex items-center gap-2 text-sm text-gray-400">
-                        {umbrella.major_group_name && (
-                          <span className="bg-gray-700/50 px-2 py-0.5 rounded">
-                            {umbrella.major_group_name}
-                          </span>
-                        )}
-                        {umbrella.category_name && (
-                          <span className="bg-gray-700/50 px-2 py-0.5 rounded">
-                            {umbrella.category_name}
-                          </span>
-                        )}
-                        {umbrella.sub_category_name && (
-                          <span className="bg-gray-700/50 px-2 py-0.5 rounded">
-                            {umbrella.sub_category_name}
-                          </span>
-                        )}
-                        {!umbrella.category_name &&
-                          !umbrella.sub_category_name &&
-                          !umbrella.major_group_name && (
-                            <span className="text-gray-500 italic text-xs">
-                              No categories assigned
-                            </span>
-                          )}
-                      </div>
-                      {umbrella.master_ingredient_details.length > 0 && (
-                        <div className="flex flex-wrap gap-1 justify-end">
-                          {umbrella.master_ingredient_details
-                            .slice(0, 2)
-                            .map((ingredient) => (
-                              <span
-                                key={ingredient.id}
-                                className="text-xs bg-gray-700/50 px-2 py-0.5 rounded-full text-gray-300"
-                              >
-                                {ingredient.product}
-                              </span>
-                            ))}
-                          {umbrella.master_ingredient_details.length > 2 && (
-                            <span className="text-xs bg-gray-700/50 px-2 py-0.5 rounded-full text-gray-300">
-                              +{umbrella.master_ingredient_details.length - 2}{" "}
-                              more
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Line 3: Show linked items details button on right */}
-                    <div className="flex justify-end">
-                      <button
-                        onClick={() => toggleExpanded(umbrella.id)}
-                        className="text-xs text-gray-400 hover:text-blue-400 transition-colors"
-                      >
-                        {expandedUmbrellas.includes(umbrella.id)
-                          ? "Hide details"
-                          : "Show details"}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* We've moved the linked ingredients preview to line 2 */}
-
-              {/* Linked Master Ingredients (expanded view) */}
-              {expandedUmbrellas.includes(umbrella.id) && (
-                <div className="mt-4 pt-4 border-t border-gray-700">
-                  {/* Simple section header per L5 Phase 1.2 */}
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h4 className="text-sm font-medium text-white">Linked Items</h4>
-                      <p className="text-xs text-gray-500">
-                        {umbrella.master_ingredient_details.filter(i => !i.item_code?.startsWith("UMB-")).length} vendor items
-                        {umbrella.master_ingredient_details.filter(i => !i.item_code?.startsWith("UMB-") && i.cost_per_recipe_unit > 0).length > 0 && (
-                          <span className="text-emerald-400 ml-2">
-                            • Best: ${Math.min(
-                              ...umbrella.master_ingredient_details
-                                .filter(i => !i.item_code?.startsWith("UMB-") && i.cost_per_recipe_unit > 0)
-                                .map(i => i.cost_per_recipe_unit)
-                            ).toFixed(2)}/unit
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => setIsLinkingIngredient(umbrella.id)}
-                      className="btn-ghost text-xs"
-                    >
-                      <Plus className="w-3 h-3 mr-1" />
-                      Link Item
-                    </button>
-                  </div>
-
-                  {umbrella.master_ingredient_details.length === 0 ? (
-                    <div className="text-center py-8 bg-gray-800/30 rounded-lg">
-                      <p className="text-gray-400 text-sm">
-                        No items linked yet. Click "Link Item" to add vendor products to this umbrella.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead className="bg-gray-900/50">
-                          <tr>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-400">
-                              Product Name
-                            </th>
-                            <th className="px-4 py-2 text-xs font-medium text-gray-400 text-center">
-                              Item Code
-                            </th>
-                            <th className="px-4 py-2 text-center text-xs font-medium text-gray-400">
-                              Vendor
-                            </th>
-                            <th className="px-4 py-2 text-center text-xs font-medium text-gray-400">
-                              Current Price
-                            </th>
-                            <th className="px-4 py-2 text-center text-xs font-medium text-gray-400">
-                              Recipe Unit
-                            </th>
-                            <th className="px-4 py-2 text-center text-xs font-medium text-gray-400">
-                              Cost per Recipe Unit
-                            </th>
-                            <th className="px-4 py-2 text-center text-xs font-medium text-gray-400">
-                              Primary
-                            </th>
-                            <th className="px-4 py-2 text-center text-xs font-medium text-gray-400">
-                              Actions
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-700">
-                          {umbrella.master_ingredient_details.map(
-                            (ingredient) => {
-                              // Check if this is a UMB- master ingredient (the umbrella item itself)
-                              const isUmbrellaItem = ingredient.item_code?.startsWith("UMB-");
-                              
-                              return (
-                              <tr
-                                key={ingredient.id}
-                                className={isUmbrellaItem 
-                                  ? "table-row-highlight rose" 
-                                  : "hover:bg-gray-700/30"
-                                }
-                              >
-                                <td className="px-4 py-2 text-left text-xs">
-                                  <div className="flex items-center gap-2">
-                                    {isUmbrellaItem && (
-                                      <Umbrella className="w-3 h-3 text-rose-400 flex-shrink-0" />
-                                    )}
-                                    <span className={isUmbrellaItem ? "row-label" : "text-white"}>
-                                      {ingredient.product}
-                                    </span>
-                                    {isUmbrellaItem && (
-                                      <span className="row-badge">UMBRELLA</span>
-                                    )}
-                                  </div>
-                                </td>
-                                <td className={`px-4 py-2 text-center text-xs ${!isUmbrellaItem && "text-gray-300"}`}>
-                                  {ingredient.item_code}
-                                </td>
-                                <td className={`px-4 py-2 text-center text-xs ${!isUmbrellaItem && "text-gray-300"}`}>
-                                  {ingredient.vendor}
-                                </td>
-                                <td className={`px-4 py-2 text-center text-xs ${!isUmbrellaItem && "text-gray-300"}`}>
-                                  ${ingredient.current_price.toFixed(2)}
-                                </td>
-                                <td className={`text-xs text-center px-0.5 py-2 ${!isUmbrellaItem && "text-gray-300"}`}>
-                                  {ingredient.recipe_unit_type || "EA"}
-                                </td>
-                                <td className={`px-4 py-2 text-center text-bold text-xs ${!isUmbrellaItem && "text-green-400"}`}>
-                                  ${ingredient.cost_per_recipe_unit.toFixed(2)}
-                                </td>
-                                <td className="px-4 py-2 text-xs text-center">
-                                  {isUmbrellaItem ? (
-                                    <input
-                                      type="radio"
-                                      disabled
-                                      className="form-radio h-3 w-3 text-gray-600 cursor-not-allowed opacity-30"
-                                      title="This is the umbrella item - select a vendor item as primary"
-                                    />
-                                  ) : (
-                                  <input
-                                    type="radio"
-                                    checked={
-                                      umbrella.primary_master_ingredient_id ===
-                                      ingredient.id
-                                    }
-                                    onChange={() => {
-                                      // Allow changing the primary ingredient selection (UI only)
-                                      // Update the filtered list to show the selection
-                                      setFilteredUmbrellaIngredients((prev) =>
-                                        prev.map((u) => {
-                                          if (u.id === umbrella.id) {
-                                            return {
-                                              ...u,
-                                              primary_master_ingredient_id:
-                                                ingredient.id,
-                                            };
-                                          }
-                                          return u;
-                                        }),
-                                      );
-                                    }}
-                                    className="form-radio h-3 w-3 text-rose-500"
-                                  />
-                                  )}
-                                </td>
-                                <td className="px-4 py-2 text-xs text-right">
-                                  <div className="flex justify-end gap-2">
-                                    <button
-                                      onClick={() => {
-                                        // View price history
-                                        console.log(
-                                          `View price history for ${ingredient.product}`,
-                                        );
-                                      }}
-                                      className={`p-1 transition-colors ${isUmbrellaItem ? "opacity-30 cursor-not-allowed" : "text-gray-400 hover:text-blue-400"}`}
-                                      title="View price history"
-                                      disabled={isUmbrellaItem}
-                                    >
-                                      <DollarSign className="w-3 h-3" />
-                                    </button>
-                                    <button
-                                      onClick={() =>
-                                        removeMasterIngredientFromUmbrella(
-                                          umbrella.id,
-                                          ingredient.id,
-                                        )
-                                      }
-                                      className={`p-1 transition-colors ${isUmbrellaItem ? "opacity-30 cursor-not-allowed" : "text-gray-400 hover:text-rose-400"}`}
-                                      title={isUmbrellaItem ? "Cannot unlink umbrella item" : "Unlink from umbrella"}
-                                      disabled={isUmbrellaItem}
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-
-                      {/* Add Save Primary Ingredient Button */}
-                      <div className="flex justify-end mt-4">
-                        <button
-                          onClick={async () => {
-                            if (!umbrella.primary_master_ingredient_id) {
-                              toast.error(
-                                "Please select a primary ingredient first",
-                              );
-                              return;
-                            }
-
-                            // Find the selected master ingredient to get its data
-                            const primaryIngredient =
-                              umbrella.master_ingredient_details.find(
-                                (ing) =>
-                                  ing.id ===
-                                  umbrella.primary_master_ingredient_id,
-                              );
-
-                            if (!primaryIngredient) {
-                              toast.error(
-                                "Could not find the selected primary ingredient",
-                              );
-                              return;
-                            }
-
-                            console.log("Selected primary ingredient:", {
-                              id: primaryIngredient.id,
-                              product: primaryIngredient.product,
-                              item_code: primaryIngredient.item_code,
-                            });
-
-                            try {
-                              // Step 1: Fetch the primary ingredient data from master_ingredients table
-                              const { data: masterIngredientData, error } =
-                                await supabase
-                                  .from("master_ingredients_with_categories")
-                                  .select("*")
-                                  .eq(
-                                    "id",
-                                    umbrella.primary_master_ingredient_id,
-                                  )
-                                  .single();
-
-                              if (error) {
-                                console.error(
-                                  "Error fetching primary ingredient:",
-                                  error,
-                                );
-                                toast.error(
-                                  "Failed to fetch primary ingredient data",
-                                );
-                                return;
-                              }
-
-                              if (!masterIngredientData) {
-                                toast.error(
-                                  "Failed to fetch primary ingredient data",
-                                );
-                                return;
-                              }
-
-                              // Step 2: Update the umbrella ingredient with the fetched data
-                              updateUmbrellaIngredient(umbrella.id, {
-                                // Keep the existing name, description, and primary_master_ingredient_id
-                                name: umbrella.name,
-                                description: umbrella.description,
-                                primary_master_ingredient_id:
-                                  umbrella.primary_master_ingredient_id,
-
-                                // Copy data from the primary ingredient
-                                major_group:
-                                  masterIngredientData.major_group || "",
-                                category: masterIngredientData.category || "",
-                                sub_category:
-                                  masterIngredientData.sub_category || "",
-                                storage_area:
-                                  masterIngredientData.storage_area || "",
-                                recipe_unit_type:
-                                  masterIngredientData.recipe_unit_type || "",
-                                cost_per_recipe_unit:
-                                  masterIngredientData.cost_per_recipe_unit ||
-                                  0,
-
-                                // Copy all allergen data from the primary ingredient
-                                allergen_peanut: Boolean(
-                                  masterIngredientData.allergen_peanut,
-                                ),
-                                allergen_crustacean: Boolean(
-                                  masterIngredientData.allergen_crustacean,
-                                ),
-                                allergen_treenut: Boolean(
-                                  masterIngredientData.allergen_treenut,
-                                ),
-                                allergen_shellfish: Boolean(
-                                  masterIngredientData.allergen_shellfish,
-                                ),
-                                allergen_sesame: Boolean(
-                                  masterIngredientData.allergen_sesame,
-                                ),
-                                allergen_soy: Boolean(
-                                  masterIngredientData.allergen_soy,
-                                ),
-                                allergen_fish: Boolean(
-                                  masterIngredientData.allergen_fish,
-                                ),
-                                allergen_wheat: Boolean(
-                                  masterIngredientData.allergen_wheat,
-                                ),
-                                allergen_milk: Boolean(
-                                  masterIngredientData.allergen_milk,
-                                ),
-                                allergen_sulphite: Boolean(
-                                  masterIngredientData.allergen_sulphite,
-                                ),
-                                allergen_egg: Boolean(
-                                  masterIngredientData.allergen_egg,
-                                ),
-                                allergen_gluten: Boolean(
-                                  masterIngredientData.allergen_gluten,
-                                ),
-                                allergen_mustard: Boolean(
-                                  masterIngredientData.allergen_mustard,
-                                ),
-                                allergen_celery: Boolean(
-                                  masterIngredientData.allergen_celery,
-                                ),
-                                allergen_garlic: Boolean(
-                                  masterIngredientData.allergen_garlic,
-                                ),
-                                allergen_onion: Boolean(
-                                  masterIngredientData.allergen_onion,
-                                ),
-                                allergen_nitrite: Boolean(
-                                  masterIngredientData.allergen_nitrite,
-                                ),
-                                allergen_mushroom: Boolean(
-                                  masterIngredientData.allergen_mushroom,
-                                ),
-                                allergen_hot_pepper: Boolean(
-                                  masterIngredientData.allergen_hot_pepper,
-                                ),
-                                allergen_citrus: Boolean(
-                                  masterIngredientData.allergen_citrus,
-                                ),
-                                allergen_pork: Boolean(
-                                  masterIngredientData.allergen_pork,
-                                ),
-                                allergen_custom1_name:
-                                  masterIngredientData.allergen_custom1_name ||
-                                  null,
-                                allergen_custom1_active: Boolean(
-                                  masterIngredientData.allergen_custom1_active,
-                                ),
-                                allergen_custom2_name:
-                                  masterIngredientData.allergen_custom2_name ||
-                                  null,
-                                allergen_custom2_active: Boolean(
-                                  masterIngredientData.allergen_custom2_active,
-                                ),
-                                allergen_custom3_name:
-                                  masterIngredientData.allergen_custom3_name ||
-                                  null,
-                                allergen_custom3_active: Boolean(
-                                  masterIngredientData.allergen_custom3_active,
-                                ),
-                                allergen_notes:
-                                  masterIngredientData.allergen_notes || null,
-                              })
-                                .then(() => {
-                                  // Step 3: Show success message that primary data was fetched
-                                  toast.success("Primary Data Fetched");
-
-                                  // Step 4: Sync the data to the master ingredient using the primary_master_ingredient_id
-                                  return useMasterIngredientsStore
-                                    .getState()
-                                    .updatePrimaryMasterIngredientFromUmbrella(
-                                      umbrella.id,
-                                    );
-                                })
-                                .then(() => {
-                                  // Show success message for the sync
-                                  toast.success(
-                                    "Primary ingredient updated and synced with master ingredients",
-                                  );
-
-                                  // Force refresh after setting primary ingredient
-                                  setTimeout(
-                                    () => fetchUmbrellaIngredients(),
-                                    500,
-                                  );
-                                })
-                                .catch((error) => {
-                                  console.error("Error syncing data:", error);
-                                  toast.error(
-                                    "Failed to sync data with primary ingredient",
-                                  );
-                                });
-                            } catch (error) {
-                              console.error(
-                                "Error in primary ingredient update:",
-                                error,
-                              );
-                              toast.error(
-                                "Failed to update primary ingredient",
-                              );
-                            }
-                          }}
-                          className="btn bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-md text-sm flex items-center gap-2"
-                        >
-                          <Save className="w-4 h-4" />
-                          Save Primary Ingredient
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            <UmbrellaItemCard
+              key={umbrella.id}
+              umbrella={umbrella}
+              onEdit={startEditing}
+              onDelete={handleDelete}
+              onLinkIngredient={setIsLinkingIngredient}
+              onRefresh={fetchUmbrellaIngredients}
+            />
           ))
         )}
 
-        {/* Pagination Controls */}
-        {filteredUmbrellaIngredients.length > 0 && (
-          <div className="flex items-center justify-between mt-6">
-            <div className="text-sm text-gray-400">
-              Showing {paginatedUmbrellaIngredients.length} of{" "}
-              {filteredUmbrellaIngredients.length} umbrella ingredients
-            </div>
-            <div className="flex items-center gap-2">
+        {/* Pagination */}
+        {filteredUmbrellaIngredients.length > itemsPerPage && (
+          <div className="flex items-center justify-between pt-4">
+            <p className="text-xs text-gray-500">
+              {(currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, filteredUmbrellaIngredients.length)} of {filteredUmbrellaIngredients.length}
+            </p>
+            <div className="flex items-center gap-1">
               <button
-                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
-                className="p-2 rounded-lg bg-gray-800 text-gray-400 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-1.5 rounded-lg bg-gray-800/50 text-gray-500 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
               >
-                <ChevronLeft className="w-5 h-5" />
+                <ChevronLeft className="w-4 h-4" />
               </button>
-              <span className="text-sm text-gray-300">
-                Page {currentPage} of {totalPages}
+              <span className="text-xs text-gray-500 px-2">
+                {currentPage}/{totalPages}
               </span>
               <button
-                onClick={() =>
-                  setCurrentPage(Math.min(totalPages, currentPage + 1))
-                }
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
-                className="p-2 rounded-lg bg-gray-800 text-gray-400 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-1.5 rounded-lg bg-gray-800/50 text-gray-500 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
               >
-                <ChevronRight className="w-5 h-5" />
+                <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           </div>
         )}
       </div>
+
       {/* Link Master Ingredient Modal */}
       {isLinkingIngredient && (
         <LinkMasterIngredientModal
@@ -1339,23 +547,18 @@ export const UmbrellaIngredientManager: React.FC = () => {
           onClose={() => setIsLinkingIngredient(null)}
           onLink={(masterIngredientId) => {
             if (isLinkingIngredient) {
-              addMasterIngredientToUmbrella(
-                isLinkingIngredient,
-                masterIngredientId,
-              );
+              addMasterIngredientToUmbrella(isLinkingIngredient, masterIngredientId);
             }
           }}
           currentLinkedIds={
             isLinkingIngredient
-              ? umbrellaIngredients.find((u) => u.id === isLinkingIngredient)
-                  ?.master_ingredients || []
+              ? umbrellaIngredients.find((u) => u.id === isLinkingIngredient)?.master_ingredients || []
               : []
           }
           umbrellaName={
             isLinkingIngredient
-              ? umbrellaIngredients.find((u) => u.id === isLinkingIngredient)
-                  ?.name || "Umbrella Ingredient"
-              : "Umbrella Ingredient"
+              ? umbrellaIngredients.find((u) => u.id === isLinkingIngredient)?.name || "Umbrella"
+              : "Umbrella"
           }
         />
       )}
