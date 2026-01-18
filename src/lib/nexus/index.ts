@@ -445,36 +445,36 @@ const ACTIVITY_TOAST_CONFIG: Partial<Record<ActivityType, ToastConfig | null>> =
     severity: 'warning',
   },
   system_override_price: {
-    message: (d) => `⚠️ SYSTEM OVERRIDE: ${d.ingredient_name || 'Ingredient'} price manually changed (${(d.old_price || 0).toFixed(2)} → ${(d.new_price || 0).toFixed(2)})`,
+    message: (d) => `SYSTEM OVERRIDE: ${d.ingredient_name || 'Ingredient'} price manually changed (${(d.old_price || 0).toFixed(2)} to ${(d.new_price || 0).toFixed(2)})`,
     severity: 'critical',
   },
   // Analytics insight events
   vendor_creep_detected: {
-    message: (d) => `📈 ${d.vendor_name || 'Vendor'} prices trending up ${d.overall_change?.toFixed(1) || 0}% over ${d.period_days || 90} days`,
+    message: (d) => `${d.vendor_name || 'Vendor'} prices trending up ${d.overall_change?.toFixed(1) || 0}% over ${d.period_days || 90} days`,
     severity: 'warning',
   },
   vendor_creep_critical: {
-    message: (d) => `🚨 ${d.vendor_name || 'Vendor'} prices up ${d.overall_change?.toFixed(1) || 0}% — review needed`,
+    message: (d) => `${d.vendor_name || 'Vendor'} prices up ${d.overall_change?.toFixed(1) || 0}% — review needed`,
     severity: 'critical',
   },
   price_spike_alert: {
-    message: (d) => `⚡ ${d.ingredient_name || 'Item'} jumped ${d.change_percent?.toFixed(1) || 0}% from ${d.vendor_name || 'vendor'}`,
+    message: (d) => `${d.ingredient_name || 'Item'} jumped ${d.change_percent?.toFixed(1) || 0}% from ${d.vendor_name || 'vendor'}`,
     severity: 'warning',
   },
   single_source_risk: {
-    message: (d) => `⚠️ Single-source: ${d.ingredient_name || 'Item'} only available from ${d.vendor_name || 'one vendor'}`,
+    message: (d) => `Single-source risk: ${d.ingredient_name || 'Item'} only available from ${d.vendor_name || 'one vendor'}`,
     severity: 'info',
   },
   market_divergence: {
-    message: (d) => `📊 ${d.vendor_name || 'Vendor'} pricing ${d.direction === 'above' ? 'above' : 'below'} market by ${d.divergence_percent?.toFixed(1) || 0}% on ${d.category || 'category'}`,
+    message: (d) => `${d.vendor_name || 'Vendor'} pricing ${d.divergence_percent?.toFixed(1) || 0}% ${d.direction === 'above' ? 'above' : 'below'} market on ${d.category || 'category'}`,
     severity: 'warning',
   },
   margin_erosion_warning: {
-    message: (d) => `💰 ${d.recipe_name || 'Recipe'} food cost trending to ${d.projected_food_cost?.toFixed(1) || 0}% in ${d.days_until || 0} days`,
+    message: (d) => `${d.recipe_name || 'Recipe'} food cost trending to ${d.projected_food_cost?.toFixed(1) || 0}% in ${d.days_until || 0} days`,
     severity: 'critical',
   },
   category_volatility_alert: {
-    message: (d) => `📉 ${d.category || 'Category'} showing ${d.volatility_percent?.toFixed(1) || 0}% monthly volatility`,
+    message: (d) => `${d.category || 'Category'} showing ${d.volatility_percent?.toFixed(1) || 0}% monthly volatility`,
     severity: 'info',
   },
 };

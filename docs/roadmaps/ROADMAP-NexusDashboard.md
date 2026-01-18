@@ -1,9 +1,9 @@
 # Nexus Dashboard (Admin) Roadmap
 
 > **Priority:** HIGH  
-> **Status:** ACTIVE - Phase 1 Complete  
+> **Status:** ACTIVE - Phase 2 In Progress  
 > **Created:** 2026-01-16  
-> **Updated:** 2026-01-16
+> **Updated:** 2026-01-17
 
 ---
 
@@ -67,7 +67,45 @@ The Nexus Dashboard is the "MRI screen" - the visual display showing your restau
 
 ---
 
-## 🔲 Phase 2: Live Data Connections
+## 🔄 Phase 2: Tab Structure & ActivityFeed (Jan 17, 2026) - IN PROGRESS
+
+### Tab Architecture
+- [x] Keep existing NEXUS header with Price Watch Ticker - no changes
+- [x] Add domain-specific tabs below header
+- [x] Tab structure matches sidebar navigation sections:
+  - Kitchen (primary) - KITCHEN section vitals
+  - Team (green) - TEAM section vitals
+  - Data (amber) - DATA MANAGEMENT section vitals
+  - Organization (rose) - ORGANIZATION section vitals
+  - Craft Perfected (purple) - Future culinary education platform
+- [x] File naming: `AdminDash_` prefix (e.g., `AdminDash_KitchenTab.tsx`)
+- [x] Folder: `src/features/admin/components/AdminDashboard/tabs/`
+- [x] Barrel export (index.ts) created
+- [x] AdminDashboard.tsx updated with tab orchestration
+
+### Widget Migration
+- [x] Temperature Widget → Kitchen tab
+- [x] Stats Cards (Tasks, Prep) → Kitchen tab
+- [x] Today's Team Carousel → Team tab
+- [x] Price Watch Ticker → Stays in header
+- [x] ActivityFeed V2 → Organization tab (full content)
+- [ ] AlertsList → Distributed by type or Organization tab
+
+### ActivityFeedV2 Integration
+- [x] Integrated into Organization tab
+- [x] Props: `defaultDaysLimit={14}` and `maxItems={50}`
+- [ ] Implement expandable severity sections (Option A - recommended):
+  - 🔴 Critical (expanded by default)
+  - 🟡 Warning (expanded by default)
+  - 🔵 Info (collapsed by default)
+
+### Build Status
+- [x] Build confirmed working
+- [ ] Visual testing pending
+
+---
+
+## 🔲 Phase 3: Live Data Connections
 
 ### Wire Up Static Cards
 - [ ] Pending Tasks → Connect to tasks system (when built)
@@ -80,8 +118,8 @@ The Nexus Dashboard is the "MRI screen" - the visual display showing your restau
 - [ ] Break indicator for team members on break
 
 ### Activity Feed
-- [ ] Connect to NEXUS event stream
-- [ ] Filter by severity/category
+- [x] Connect to NEXUS event stream (ActivityFeedV2)
+- [ ] Filter by severity/category (expandable sections)
 - [ ] Click to navigate to source
 
 ### Alerts List
@@ -91,13 +129,14 @@ The Nexus Dashboard is the "MRI screen" - the visual display showing your restau
 
 ---
 
-## 🔲 Phase 3: Additional Widgets
+## 🔲 Phase 4: Additional Widgets
 
 | Widget | Priority | Data Source | Status |
 |--------|----------|-------------|--------|
 | Staff On Duty | ✅ Done | 7shifts schedule | Complete |
 | Temperature | ✅ Done | SensorPush | Complete |
 | Price Watch | ✅ Done | VIM price changes | Complete |
+| Activity Feed | ✅ Done | NEXUS events | Complete (V2) |
 | Prep Status | High | Prep lists | Not started |
 | Tasks Pending | High | Tasks system | Not started |
 | Cover Forecast | Medium | OpenTable/Resy | Not started |
@@ -106,7 +145,7 @@ The Nexus Dashboard is the "MRI screen" - the visual display showing your restau
 
 ---
 
-## 🔲 Phase 4: Role-Based Widgets
+## 🔲 Phase 5: Role-Based Widgets
 
 ### Security Level Filtering
 - [ ] Define `minSecurityLevel` per widget
@@ -125,8 +164,15 @@ The Nexus Dashboard is the "MRI screen" - the visual display showing your restau
 
 ```
 src/features/admin/components/
-├── AdminDashboard.tsx              # Main Nexus Dashboard
+├── AdminDashboard.tsx              # Main Nexus Dashboard (orchestrator)
 ├── AdminDashboard/
+│   ├── tabs/                       # NEW - Domain-specific tabs
+│   │   ├── index.ts                # Barrel export
+│   │   ├── AdminDash_KitchenTab.tsx
+│   │   ├── AdminDash_TeamTab.tsx
+│   │   ├── AdminDash_DataTab.tsx
+│   │   ├── AdminDash_OrganizationTab.tsx
+│   │   └── AdminDash_CraftPerfectedTab.tsx
 │   ├── PriceWatchTicker.tsx        # Standalone ticker (legacy)
 │   ├── PriceWatchTickerInline.tsx  # Header-embedded ticker
 │   ├── TemperatureStatCard.tsx     # Premium morph animation
@@ -134,7 +180,8 @@ src/features/admin/components/
 │   ├── TodaysTeamCarousel.tsx      # 2-up swipeable cards
 │   └── TodaysTeam.tsx              # Original compact version
 ├── StatsCard.tsx                   # Generic stat card
-├── ActivityFeed.tsx
+├── ActivityFeed.tsx                # Legacy
+├── ActivityFeedV2.tsx              # Current - NEXUS-powered
 └── AlertsList.tsx
 
 src/shared/components/
@@ -147,6 +194,9 @@ src/shared/components/
 ---
 
 ## Design Decisions
+
+### Tab Philosophy
+- **Craft Perfected**: Professional culinary education from "Standards and Practices of the Professional Kitchen" e-book. NOT app tutorials - professional standards, techniques, kitchen best practices. Premium positioning. Placeholder for future-proofing.
 
 ### Ghost Logo Watermark
 - Position: Bleeds off left edge of viewport
@@ -168,6 +218,15 @@ src/shared/components/
 - 8 people visible at once on desktop
 - Horizontal swipe matches mobile UX patterns
 
+### ActivityFeed Severity Grouping (Proposed)
+Option A (3 sections) - RECOMMENDED:
+```
+🔴 Critical (3) ▼ - expanded by default
+🟡 Warning (5) ▼ - expanded by default  
+🔵 Info (12) ▸ - collapsed by default
+```
+Advantages: Visual hierarchy immediate, counts tell story, collapsing intuitive
+
 ---
 
 ## References
@@ -175,4 +234,5 @@ src/shared/components/
 - `ROADMAP-NEXUS.md` - Event bus architecture (circulatory system)
 - `CHEFLIFE-ANATOMY.md` - Medical chart metaphor
 - `L5-BUILD-STRATEGY.md` - Premium Interaction Patterns section
+- `L5-SUBHEADER-PATTERN.md` - Copy-paste subheader template
 - `UTILS.md` - AnimatedNumber component docs

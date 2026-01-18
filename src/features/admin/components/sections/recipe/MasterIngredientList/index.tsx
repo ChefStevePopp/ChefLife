@@ -247,7 +247,8 @@ export const MasterIngredientList = () => {
   };
 
   const handleCreateIngredient = () => {
-    navigate("/admin/data/ingredients/new");
+    // Pass org ID in URL so detail page doesn't race against auth
+    navigate(`/admin/data/ingredients/new${organization?.id ? `?org_id=${organization.id}` : ''}`);
   };
 
   const handleEditIngredient = (ingredient: MasterIngredient, sourceList?: MasterIngredient[]) => {

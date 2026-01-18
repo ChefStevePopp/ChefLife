@@ -8,6 +8,7 @@
 
 | Date | Handoff File | Focus Area |
 |------|--------------|------------|
+| 2026-01-18 | `HANDOFF-2025-01-18-Session68-Triage-Blank-Screen.md` | Fix Triage → Create Ingredient blank screen |
 | 2026-01-12 | `handoffs/HANDOFF-2026-01-12-Session46-PriceSourceTracking.md` | Price source visibility, TwoStageButton, override protection |
 | 2026-01-11 | `handoffs/HANDOFF-2026-01-11-Session44-TriagePolish.md` | L5 Icon Badge Pattern, filterType, visual hierarchy |
 | 2026-01-10 | `HANDOFF-2026-01-10-Import-Flow-Stage1-Complete.md` | Common Name, ML infrastructure, Stage 1 complete |
@@ -29,6 +30,8 @@ Transcripts are stored in `/mnt/transcripts/` and contain full conversation hist
 
 | Date | Transcript | Description |
 |------|------------|-------------|
+| 2026-01-17 | `2026-01-17-23-05-08-session-67-catchweight-toggle-pdf-vim.txt` | Session 67: Catch Weight Toggle for PDF import |
+| 2026-01-17 | `2026-01-17-00-24-46-vendor-analytics-guided-mode-sections.txt` | VendorAnalytics 4-section story, NEXUS analytics events, ActivityFeed audit |
 | 2026-01-12 | `2026-01-12-13-23-45-price-source-tracking-implementation.txt` | Price source tracking, TwoStageButton enhancement, override protection |
 | 2026-01-12 | `2026-01-12-00-06-37-triage-filter-fixes-visual-hierarchy.txt` | Triage badge, filterType, L5 Icon Badge Pattern, visual hierarchy |
 | 2026-01-11 | `2026-01-11-23-54-14-triage-badge-count-filter-fixes.txt` | Triage badge count, filter fixes |
@@ -65,14 +68,19 @@ Transcripts are stored in `/mnt/transcripts/` and contain full conversation hist
 ## Quick Reference: Current Focus Areas
 
 ### Recently Completed
+- ✅ Catch Weight Toggle for PDF Import (Session 67)
 - ✅ Company Settings (5-tab L5 interface)
 - ✅ Health Inspections (L5 with real DB)
 - ✅ Communications (templates, batch send)
 - ✅ Team Performance (7-tab gold standard)
 - ✅ VIM Audit Trail (accounting-grade chain)
 - ✅ MIL Common Name field (Stage 1 of Import Flow)
+- ✅ VendorAnalytics 4-section story architecture (Session 60)
+- ✅ NEXUS analytics events (7 new event types)
 
 ### In Progress
+- 🔄 **Triage → Create Ingredient blank screen** (Session 68 priority)
+- 🔄 ActivityFeed redesign (6-phase audit complete, needs rebuild)
 - 🔄 VIM Import Flow Enhancement (Stage 2-5 pending)
   - Stage 2: Inline Quick-Add
   - Stage 3: Skip for Now + Pending Queue
@@ -81,6 +89,8 @@ Transcripts are stored in `/mnt/transcripts/` and contain full conversation hist
 - 🔄 5-year backfill preparation
 
 ### Upcoming
+- 📋 Category Trends section (needs Umbrella Items)
+- 📋 Risk Exposure section (needs recipe connection)
 - 📋 Code Groups UI
 - 📋 Kitchen section L5 audit
 - 📋 Mobile responsive pass
@@ -100,7 +110,7 @@ Transcripts are stored in `/mnt/transcripts/` and contain full conversation hist
 | 7 | Friendly ID for Prep Items | ✅ Utility Ready |
 | 8 | Recipe → Ingredient Creation | ⏳ Next |
 | 9 | ML Suggestions | ⏳ Planned |
-| 10 | NEXUS Integration (Activity Logs) | ⏳ Planned |
+| 10 | NEXUS Integration (Activity Logs) | ✅ Complete (Analytics) |
 
 ---
 
@@ -118,4 +128,4 @@ YYYY-MM-DD-HH-MM-SS-[description].txt
 
 ---
 
-*Last updated: January 12, 2026 (Session 46)*
+*Last updated: January 17, 2026 (Session 67)*

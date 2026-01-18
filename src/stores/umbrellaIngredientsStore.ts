@@ -181,6 +181,9 @@ export const useUmbrellaIngredientsStore = create<UmbrellaIngredientsStore>(
 
         console.log("Created umbrella ingredient:", newUmbrella);
 
+        // NOTE: UMB- master ingredient is created when user saves the primary ingredient
+        // This allows user to first link ingredients and choose which is primary
+
         // Create a new umbrella ingredient with empty master ingredients
         const umbrellaIngredient: UmbrellaIngredientWithDetails = {
           ...newUmbrella,

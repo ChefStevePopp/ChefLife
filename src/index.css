@@ -220,7 +220,7 @@ select::-ms-expand {
    * ==========================================================================
    */
   .subheader {
-    @apply bg-slate-800/60 backdrop-blur-sm border border-gray-700/40 rounded-xl p-4;
+    @apply bg-slate-800/60 backdrop-blur-sm border border-gray-700/40 rounded-xl p-4 shadow-lg;
   }
 
   .subheader-row {
@@ -1133,6 +1133,62 @@ select::-ms-expand {
 
 .premium-fade.fade-in {
   opacity: 1;
+}
+
+/* ============================================================================
+   L5 TABLE ROW HIGHLIGHTS
+   For special rows like umbrella items, totals, or category headers
+   ============================================================================ */
+
+/* Base highlighted row - darker background with left accent */
+.table-row-highlight {
+  @apply bg-gray-900/70 relative;
+}
+
+.table-row-highlight::before {
+  content: '';
+  @apply absolute left-0 top-0 bottom-0 w-0.5;
+}
+
+/* Highlighted row - disabled/muted state */
+.table-row-highlight td {
+  @apply text-gray-500;
+}
+
+/* Rose variant (for umbrella items) */
+.table-row-highlight.rose::before {
+  @apply bg-rose-500/60;
+}
+
+.table-row-highlight.rose .row-label {
+  @apply text-rose-300 font-medium;
+}
+
+.table-row-highlight.rose .row-badge {
+  @apply bg-rose-500/20 text-rose-400 text-[10px] px-1.5 py-0.5 rounded;
+}
+
+/* Amber variant (for totals, summaries) */
+.table-row-highlight.amber::before {
+  @apply bg-amber-500/60;
+}
+
+.table-row-highlight.amber .row-label {
+  @apply text-amber-300 font-medium;
+}
+
+/* Primary variant (for selected/active) */
+.table-row-highlight.primary::before {
+  @apply bg-primary-500/60;
+}
+
+.table-row-highlight.primary .row-label {
+  @apply text-primary-300 font-medium;
+}
+
+/* Gray variant (for disabled/archived) */
+.table-row-highlight.gray::before {
+  @apply bg-gray-600/60;
 }
 
 /* ============================================================================

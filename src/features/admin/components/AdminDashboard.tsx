@@ -1,53 +1,78 @@
 import React, { useState, useEffect } from "react";
 import {
   Users,
-  AlertTriangle,
-  TrendingUp,
   Info,
   ChevronUp,
   RefreshCw,
+  ChefHat,
+  Database,
+  Building2,
+  BookOpen,
 } from "lucide-react";
-import { useAdminStore } from "@/stores/adminStore";
 import { useDiagnostics } from "@/hooks/useDiagnostics";
 import { useOrganizationSettings } from "@/features/admin/components/settings/OrganizationSettings/useOrganizationSettings";
 import { useScheduleStore } from "@/stores/scheduleStore";
 import { useAuth } from "@/hooks/useAuth";
-import { StatsCard } from "./StatsCard";
-import { ActivityFeed } from "./ActivityFeed";
-import { AlertsList } from "./AlertsList";
 import { PriceWatchTickerInline } from "./AdminDashboard/PriceWatchTickerInline";
-import { TemperatureWidgetWrapper } from "./AdminDashboard/TemperatureWidgetWrapper";
-import { TodaysTeamCarousel } from "./AdminDashboard/TodaysTeamCarousel";
+
+// Tab Components
+import {
+  AdminDash_KitchenTab,
+  AdminDash_TeamTab,
+  AdminDash_DataTab,
+  AdminDash_OrganizationTab,
+  AdminDash_CraftPerfectedTab,
+} from "./AdminDashboard/tabs";
 
 /**
  * =============================================================================
- * NEXUS DASHBOARD - L5 Design
+ * NEXUS DASHBOARD - L5 Tabbed Design
  * =============================================================================
- * Reference: L5-BUILD-STRATEGY.md - Simple Header (Variant A)
- * Reference: CHEFLIFE-ANATOMY.md - "Vital Signs" concept
+ * Reference: L5-BUILD-STRATEGY.md
  * 
  * The Nexus Dashboard is the "medical chart" of your restaurant - showing
  * vital signs across all organ systems at a glance.
  * 
- * Layout:
+ * Structure:
  * - Header Card with ghost watermark + Active Staff pill + Price Watch Ticker
- * - Stats Cards (3 cards: Temp, Tasks, Prep)
- * - Today's Team Carousel (swipeable team cards)
- * - Activity & Alerts (2-column)
+ * - L5 Tabs matching sidebar navigation sections
+ *   - Kitchen (primary) - temps, tasks, prep
+ *   - Team (green) - schedule, attendance, coaching
+ *   - Data (amber) - prices, vendors, inventory
+ *   - Organization (rose) - activity feed, system events
+ *   - Craft Perfected (purple) - future education platform
  * =============================================================================
  */
 
 // ChefBot placeholder - shown when no org logo uploaded
 const CHEFBOT_PLACEHOLDER = "https://www.restaurantconsultants.ca/wp-content/uploads/2023/03/cropped-AI-CHEF-BOT.png";
 
+type TabId = "kitchen" | "team" | "data" | "organization" | "craft";
+
+interface TabConfig {
+  id: TabId;
+  label: string;
+  icon: React.ElementType;
+  color: string;
+}
+
+const TABS: TabConfig[] = [
+  { id: "kitchen", label: "Kitchen", icon: ChefHat, color: "primary" },
+  { id: "team", label: "Team", icon: Users, color: "green" },
+  { id: "data", label: "Data", icon: Database, color: "amber" },
+  { id: "organization", label: "Organization", icon: Building2, color: "rose" },
+  { id: "craft", label: "Craft Perfected", icon: BookOpen, color: "purple" },
+];
+
 export function AdminDashboard() {
-  const { stats, activities, alerts } = useAdminStore();
   const { showDiagnostics } = useDiagnostics();
   const { organization } = useOrganizationSettings();
   const { organization: authOrg } = useAuth();
   const { scheduleShifts, fetchCurrentSchedule, fetchShifts } = useScheduleStore();
+  
   const [isInfoExpanded, setIsInfoExpanded] = useState(false);
   const [activeStaffCount, setActiveStaffCount] = useState(0);
+  const [activeTab, setActiveTab] = useState<TabId>("kitchen");
 
   // Get org logo or fallback to ChefBot
   const orgLogo = organization?.settings?.branding?.logo_url;
@@ -100,23 +125,23 @@ export function AdminDashboard() {
     setActiveStaffCount(uniqueEmployees.size);
   }, [scheduleShifts, authOrg?.settings?.default_timezone]);
 
-  // Stat cards
-  const statsCards = [
-    {
-      icon: AlertTriangle,
-      label: "Pending Tasks",
-      value: stats.pendingTasks,
-      change: "+5",
-      color: "orange",
-    },
-    {
-      icon: TrendingUp,
-      label: "Prep Completion",
-      value: `${stats.prepCompletion}%`,
-      change: "+12%",
-      color: "green",
-    },
-  ];
+  // Render active tab content
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case "kitchen":
+        return <AdminDash_KitchenTab />;
+      case "team":
+        return <AdminDash_TeamTab />;
+      case "data":
+        return <AdminDash_DataTab />;
+      case "organization":
+        return <AdminDash_OrganizationTab />;
+      case "craft":
+        return <AdminDash_CraftPerfectedTab />;
+      default:
+        return <AdminDash_KitchenTab />;
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -162,7 +187,7 @@ export function AdminDashboard() {
                 </div>
                 <div>
                   <h1 className="text-xl sm:text-2xl font-bold text-white">
-                    Nexus
+                    NEXUS
                   </h1>
                   <p className="text-gray-400 text-sm">
                     {orgName} • Command Center
@@ -201,7 +226,7 @@ export function AdminDashboard() {
                 <div className="flex items-center gap-2">
                   <Info className="w-4 h-4 text-primary-400 flex-shrink-0" />
                   <span className="text-sm font-medium text-gray-300">
-                    About Nexus Dashboard
+                    About NEXUS Dashboard
                   </span>
                 </div>
                 <ChevronUp className={`w-4 h-4 text-gray-400 transition-transform ${isInfoExpanded ? '' : 'rotate-180'}`} />
@@ -209,26 +234,30 @@ export function AdminDashboard() {
               <div className="expandable-info-content">
                 <div className="p-4 pt-2 space-y-3">
                   <p className="text-sm text-gray-400">
-                    Nexus is your restaurant's vital signs monitor — a real-time view of 
+                    NEXUS is your restaurant's vital signs monitor — a real-time view of 
                     every system's health. Like a medical chart, it shows what's working, 
                     what needs attention, and what's critical.
                   </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
                     <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
-                      <span className="text-sm font-medium text-primary-400">Price Watch</span>
-                      <p className="text-xs text-gray-500 mt-1">Live cost alerts from VIM</p>
+                      <span className="text-sm font-medium text-primary-400">Kitchen</span>
+                      <p className="text-xs text-gray-500 mt-1">Temps, tasks & prep</p>
                     </div>
                     <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
-                      <span className="text-sm font-medium text-cyan-400">Temperature</span>
-                      <p className="text-xs text-gray-500 mt-1">SensorPush HACCP monitoring</p>
+                      <span className="text-sm font-medium text-green-400">Team</span>
+                      <p className="text-xs text-gray-500 mt-1">Schedule & attendance</p>
                     </div>
                     <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
-                      <span className="text-sm font-medium text-green-400">Activity</span>
-                      <p className="text-xs text-gray-500 mt-1">Recent system events</p>
+                      <span className="text-sm font-medium text-amber-400">Data</span>
+                      <p className="text-xs text-gray-500 mt-1">Prices & inventory</p>
                     </div>
                     <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
-                      <span className="text-sm font-medium text-amber-400">Alerts</span>
-                      <p className="text-xs text-gray-500 mt-1">Items needing attention</p>
+                      <span className="text-sm font-medium text-rose-400">Organization</span>
+                      <p className="text-xs text-gray-500 mt-1">Activity & events</p>
+                    </div>
+                    <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
+                      <span className="text-sm font-medium text-purple-400">Craft Perfected</span>
+                      <p className="text-xs text-gray-500 mt-1">Coming soon</p>
                     </div>
                   </div>
                 </div>
@@ -241,25 +270,32 @@ export function AdminDashboard() {
         </div>
       </div>
 
-      {/* Stats Cards - 3 cards: Temperature + Tasks + Prep */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Temperature Monitor */}
-        <TemperatureWidgetWrapper />
-        
-        {/* Pending Tasks */}
-        <StatsCard {...statsCards[0]} />
-        
-        {/* Prep Completion */}
-        <StatsCard {...statsCards[1]} />
-      </div>
+      {/* ========================================================================
+       * L5 TABS - Matching sidebar navigation sections
+       * Color progression: primary → green → amber → rose → purple
+       * ======================================================================== */}
+      <div className="card p-4">
+        {/* Tab Buttons */}
+        <div className="flex flex-wrap items-center gap-2 mb-6">
+          {TABS.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`tab ${tab.color} ${activeTab === tab.id ? "active" : ""}`}
+              >
+                <Icon className="w-4 h-4" />
+                <span className="hidden sm:inline">{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
 
-      {/* Today's Team Carousel - Full width swipeable cards */}
-      <TodaysTeamCarousel />
-
-      {/* Activity & Alerts - 2 column */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ActivityFeed activities={activities} />
-        <AlertsList alerts={alerts} />
+        {/* Tab Content */}
+        <div className="min-h-[400px]">
+          {renderTabContent()}
+        </div>
       </div>
     </div>
   );

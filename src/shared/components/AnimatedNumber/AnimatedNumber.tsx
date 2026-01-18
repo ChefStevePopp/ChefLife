@@ -82,16 +82,46 @@ export const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
   const startTimeRef = useRef<number | null>(null);
   const startValueRef = useRef<number | null>(null);
 
+  // Track if this is initial mount
+  const isInitialMount = useRef(true);
+
   useEffect(() => {
     // Handle null values - no animation needed
     if (value === null) {
       setDisplayValue(null);
+      isInitialMount.current = false;
       return;
     }
 
-    // First render - set immediately, no animation
-    if (displayValue === null) {
-      setDisplayValue(value);
+    // First render - animate from 0
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      setDisplayValue(0);
+      // Small delay to ensure we start from 0
+      requestAnimationFrame(() => {
+        startValueRef.current = 0;
+        startTimeRef.current = null;
+        
+        const animate = (timestamp: number) => {
+          if (!startTimeRef.current) {
+            startTimeRef.current = timestamp;
+          }
+
+          const elapsed = timestamp - startTimeRef.current;
+          const progress = Math.min(elapsed / duration, 1);
+          const eased = 1 - Math.pow(1 - progress, 3);
+          const currentValue = 0 + (value - 0) * eased;
+          setDisplayValue(currentValue);
+
+          if (progress < 1) {
+            animationRef.current = requestAnimationFrame(animate);
+          } else {
+            setDisplayValue(value);
+          }
+        };
+
+        animationRef.current = requestAnimationFrame(animate);
+      });
       return;
     }
 

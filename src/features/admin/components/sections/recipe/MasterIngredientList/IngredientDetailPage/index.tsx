@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Save,
   Trash2,
@@ -26,6 +26,7 @@ import {
   FileText,
   Pencil,
   Lock,
+  Ghost,
 } from "lucide-react";
 import { MasterIngredient } from "@/types/master-ingredient";
 import { supabase } from "@/lib/supabase";
@@ -658,6 +659,7 @@ const GuidedModeToggle: React.FC = () => {
 export const IngredientDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { organization, user, isDev } = useAuth();
   const { showDiagnostics } = useDiagnostics();
   const { settings, fetchSettings } = useOperationsStore();
@@ -672,10 +674,32 @@ export const IngredientDetailPage: React.FC = () => {
     returnTo,
   } = useIngredientNavigationStore();
   
-  const isNew = id === "new";
+  const isNew = !id || id === "new";
   const position = getPosition();
   const prevId = getPrevId();
   const nextId = getNextId();
+  
+  // ---------------------------------------------------------------------------
+  // ORGANIZATION ID - Use URL param (passed from list) or fall back to auth
+  // This avoids race condition where auth hasn't resolved org yet
+  // ---------------------------------------------------------------------------
+  const urlOrgId = searchParams.get('org_id');
+  const organizationId = urlOrgId || organization?.id;
+  
+  // ---------------------------------------------------------------------------
+  // TRIAGE FLOW - Extract pending import data from URL params
+  // When coming from Triage, URL looks like:
+  // /admin/data/ingredients/new?pending_id=xxx&item_code=xxx&product=xxx&price=xxx&vendor=xxx&uom=xxx
+  // ---------------------------------------------------------------------------
+  const triageData = isNew ? {
+    pendingId: searchParams.get('pending_id'),
+    itemCode: searchParams.get('item_code'),
+    product: searchParams.get('product'),
+    price: searchParams.get('price'),
+    vendor: searchParams.get('vendor'),
+    uom: searchParams.get('uom'),
+  } : null;
+  const isFromTriage = !!(triageData?.pendingId);
   
   // Derive back button label from returnTo path
   const backLabel = returnTo.includes("triage") 
@@ -811,12 +835,19 @@ export const IngredientDetailPage: React.FC = () => {
   // Permission check
   useEffect(() => {
     const checkPermissions = async () => {
+      // For new ingredients, skip permission check - if user can access MIL, they can create
+      if (isNew) {
+        setHasPermission(true);
+        return;
+      }
+      
+      // Dev users always have permission
       if (isDev) { setHasPermission(true); return; }
-      if (!organization?.id || !user?.id) return;
+      if (!organizationId || !user?.id) return;
       const { data: roles } = await supabase
         .from("organization_roles")
         .select("role")
-        .eq("organization_id", organization.id)
+        .eq("organization_id", organizationId)
         .eq("user_id", user.id)
         .single();
       if (!roles || !["owner", "admin"].includes(roles.role)) {
@@ -828,20 +859,30 @@ export const IngredientDetailPage: React.FC = () => {
       }
     };
     checkPermissions();
-  }, [organization?.id, user?.id, isDev, navigate]);
+  }, [organizationId, user?.id, isDev, navigate, isNew]);
 
   // Load ingredient
   useEffect(() => {
     const loadIngredient = async () => {
       if (isNew) {
-        if (organization?.id) {
-          const newIngredient = createEmptyIngredient(organization.id);
+        if (organizationId) {
+          const newIngredient = createEmptyIngredient(organizationId);
+          
+          // Pre-fill from Triage data if coming from Triage
+          if (isFromTriage && triageData) {
+            newIngredient.product = triageData.product || "";
+            newIngredient.item_code = triageData.itemCode || null;
+            newIngredient.current_price = triageData.price ? parseFloat(triageData.price) : 0;
+            newIngredient.vendor = triageData.vendor || "";
+            newIngredient.unit_of_measure = triageData.uom || "";
+          }
+          
           setFormData(newIngredient);
           setOriginalData(newIngredient);
         }
         return;
       }
-      if (!id || !organization?.id) return;
+      if (!id || !organizationId) return;
       
       // Update navigation index
       const index = ingredientIds.indexOf(id);
@@ -854,7 +895,7 @@ export const IngredientDetailPage: React.FC = () => {
           .from("master_ingredients")
           .select("*")
           .eq("id", id)
-          .eq("organization_id", organization.id)
+          .eq("organization_id", organizationId)
           .single();
         if (fetchError) throw fetchError;
         if (!data) { setError("Ingredient not found"); return; }
@@ -873,7 +914,7 @@ export const IngredientDetailPage: React.FC = () => {
       }
     };
     loadIngredient();
-  }, [id, isNew, organization?.id, ingredientIds, setCurrentIndex]);
+  }, [id, isNew, organizationId, ingredientIds, setCurrentIndex]);
 
   // Fetch price source from vendor_price_history
   // Falls back to ingredient's updated_at for legacy/manual entries
@@ -955,10 +996,10 @@ export const IngredientDetailPage: React.FC = () => {
   };
 
   const handleSave = async () => {
-    if (!formData || !organization?.id) return;
+    if (!formData || !organizationId) return;
     setIsSaving(true);
     try {
-      const dataToSave = { ...formData, organization_id: organization.id, updated_at: new Date().toISOString() };
+      const dataToSave = { ...formData, organization_id: organizationId, updated_at: new Date().toISOString() };
       
       // Check if price was changed via system override
       const priceWasOverridden = isPriceOverrideEnabled && 
@@ -968,16 +1009,51 @@ export const IngredientDetailPage: React.FC = () => {
       if (isNew) {
         const { error: insertError } = await supabase.from("master_ingredients").insert(dataToSave);
         if (insertError) throw insertError;
+        
+        // If created from Triage, mark the pending import as resolved and fire NEXUS event
+        if (isFromTriage && triageData?.pendingId) {
+          const { error: deleteError } = await supabase
+            .from("pending_import_items")
+            .delete()
+            .eq("id", triageData.pendingId);
+          
+          if (deleteError) {
+            console.error("Error removing pending import item:", deleteError);
+            // Don't throw - ingredient was created successfully, just log the cleanup error
+          }
+          
+          // Fire NEXUS event for Triage conversion tracking
+          if (user?.id) {
+            nexus({
+              organization_id: organizationId,
+              user_id: user.id,
+              activity_type: 'triage_item_converted',
+              details: {
+                ingredient_id: dataToSave.id,
+                ingredient_name: dataToSave.product,
+                item_code: triageData.itemCode,
+                vendor: triageData.vendor,
+                price: dataToSave.current_price,
+                pending_import_id: triageData.pendingId,
+              },
+              metadata: {
+                source: 'triage_to_ingredient',
+                original_triage_data: triageData,
+              },
+            });
+          }
+        }
+        
         toast.success("Ingredient created successfully");
       } else {
-        const { error: updateError } = await supabase.from("master_ingredients").update(dataToSave).eq("id", formData.id).eq("organization_id", organization.id);
+        const { error: updateError } = await supabase.from("master_ingredients").update(dataToSave).eq("id", formData.id).eq("organization_id", organizationId);
         if (updateError) throw updateError;
         toast.success("Ingredient saved successfully");
         
         // Fire CRITICAL NEXUS event if price was changed via system override
         if (priceWasOverridden && user?.id) {
           nexus({
-            organization_id: organization.id,
+            organization_id: organizationId,
             user_id: user.id,
             activity_type: 'system_override_price',
             details: {
@@ -1018,7 +1094,7 @@ export const IngredientDetailPage: React.FC = () => {
     if (!formData || isNew) return;
     setIsDeleting(true);
     try {
-      const { error: deleteError } = await supabase.from("master_ingredients").delete().eq("id", formData.id).eq("organization_id", organization?.id);
+      const { error: deleteError } = await supabase.from("master_ingredients").delete().eq("id", formData.id).eq("organization_id", organizationId);
       if (deleteError) throw deleteError;
       toast.success("Ingredient deleted");
       navigate(returnTo);
@@ -1053,7 +1129,9 @@ export const IngredientDetailPage: React.FC = () => {
   };
 
   // Loading/Error states
-  if (isLoading || hasPermission === null) {
+  // For new ingredients: only need organizationId (from URL param)
+  // For existing ingredients: need permission check to complete
+  if (isLoading || (!isNew && hasPermission === null) || (isNew && !organizationId)) {
     return (
       <div className="max-w-3xl mx-auto pb-24">
         {/* Skeleton Loading */}
@@ -1207,6 +1285,23 @@ export const IngredientDetailPage: React.FC = () => {
           backLabel={backLabel}
         />
 
+        {/* Triage Ghost Banner - Shows when creating from skipped import */}
+        {isFromTriage && triageData && (
+          <div className="mt-4 flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+            <div className="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+              <Ghost className="w-4 h-4 text-amber-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-amber-300">Creating from Triage</div>
+              <p className="text-xs text-gray-400">
+                This ingredient was skipped during invoice import. Complete the setup below and save to add it to your Master Ingredients List.
+                {triageData.vendor && <span className="text-amber-400/70"> • From {triageData.vendor}</span>}
+                {triageData.itemCode && <span className="text-gray-500"> • Code: {triageData.itemCode}</span>}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* =======================================================================
          * MAIN CONTENT - Sections with descending z-index for dropdown stacking
          * ======================================================================= */}
@@ -1284,9 +1379,9 @@ export const IngredientDetailPage: React.FC = () => {
                                 toast('System override enabled - changes bypass invoice audit trail', { icon: '⚠️' });
                                 
                                 // Fire NEXUS event
-                                if (organization?.id && user?.id) {
+                                if (organizationId && user?.id) {
                                   nexus({
-                                    organization_id: organization.id,
+                                    organization_id: organizationId,
                                     user_id: user.id,
                                     activity_type: 'system_override_initiated',
                                     details: {

@@ -404,7 +404,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-xl font-bold text-white truncate">
-                  {isNew ? "New Ingredient" : ingredient.product || "Untitled"}
+                  {ingredient.product || (isNew ? "New Ingredient" : "Untitled")}
                 </h1>
                 
                 {/* Status Badges - Compact row */}
@@ -490,7 +490,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
               </div>
 
               {/* Subtitle: Vendor + Item Code */}
-              {!isNew && (
+              {(ingredient.vendor || ingredient.item_code) && (
                 <div className="mt-1 text-sm text-gray-500">
                   <span>{ingredient.vendor || "No vendor"}</span>
                   {ingredient.item_code && (

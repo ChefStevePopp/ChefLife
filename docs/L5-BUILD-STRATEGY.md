@@ -305,6 +305,10 @@ There are two variants of L5 headers, both wrapped in a `bg-[#1a1f2b] rounded-lg
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+**See also:** [L5-SUBHEADER-PATTERN.md](L5-SUBHEADER-PATTERN.md) — For section headers within pages (e.g., VendorSettings, tab content headers). Same visual language, lighter weight.
+
+**See also:** [L5-VITALS-PAGE-PATTERN.md](L5-VITALS-PAGE-PATTERN.md) — For dashboard tabs and data review pages with accordion sections, stat pills, and hero widgets.
+
 ---
 
 ### Phase 1.2: Card Design

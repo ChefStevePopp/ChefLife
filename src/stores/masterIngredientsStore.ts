@@ -24,7 +24,7 @@ interface MasterIngredientsStore {
   setUmbrellaIngredientFromPrimary: (
     umbrellaId: string,
     primaryIngredientId: string,
-  ) => Promise<void>;
+  ) => Promise<string | null>; // Returns UMB- ingredient ID or null
   updateMasterIngredientsFromUmbrella: (
     umbrellaId: string,
     umbrellaData: Record<string, any>,
@@ -458,9 +458,9 @@ export const useMasterIngredientsStore = create<MasterIngredientsStore>(
           `Updating ${masterIngredientIds.length} master ingredients with umbrella data`,
         );
 
-        // Find the UMB- master ingredient (if any) to update
-        let umbMasterIngredientId = null;
-        let umbMasterIngredient = null;
+        // Track the UMB- master ingredient ID (will be returned for navigation)
+        let umbMasterIngredientId: string | null = null;
+        let umbMasterIngredient: any = null;
 
         for (const masterIngredientId of masterIngredientIds) {
           // Get the master ingredient to check if it's a UMB- ingredient
@@ -585,7 +585,95 @@ export const useMasterIngredientsStore = create<MasterIngredientsStore>(
             );
           }
         } else {
-          console.log("No UMB- master ingredient found to update");
+          // No UMB- ingredient exists - CREATE one
+          console.log("No UMB- master ingredient found - creating one");
+
+          const umbItemCode = `UMB-${Date.now()}`;
+          const umbrellaName = umbrellaData.name || primaryIngredient.product || "Umbrella Item";
+
+          const newUmbIngredient = {
+            organization_id: primaryIngredient.organization_id,
+            item_code: umbItemCode,
+            product: umbrellaName,
+            vendor: "UMBRELLA",
+            major_group: primaryIngredient.major_group || "",
+            category: primaryIngredient.category || "",
+            sub_category: primaryIngredient.sub_category || "",
+            case_size: primaryIngredient.case_size || "1",
+            units_per_case: primaryIngredient.units_per_case || 1,
+            current_price: primaryIngredient.current_price || 0,
+            unit_of_measure: primaryIngredient.unit_of_measure || "EA",
+            recipe_unit_per_purchase_unit: primaryIngredient.recipe_unit_per_purchase_unit || 1,
+            recipe_unit_type: primaryIngredient.recipe_unit_type || "EA",
+            yield_percent: primaryIngredient.yield_percent || 100,
+            cost_per_recipe_unit: primaryIngredient.cost_per_recipe_unit || 0,
+            storage_area: primaryIngredient.storage_area || "",
+            ingredient_type: "purchased",
+            // Copy allergens from primary
+            allergen_peanut: Boolean(primaryIngredient.allergen_peanut),
+            allergen_crustacean: Boolean(primaryIngredient.allergen_crustacean),
+            allergen_treenut: Boolean(primaryIngredient.allergen_treenut),
+            allergen_shellfish: Boolean(primaryIngredient.allergen_shellfish),
+            allergen_sesame: Boolean(primaryIngredient.allergen_sesame),
+            allergen_soy: Boolean(primaryIngredient.allergen_soy),
+            allergen_fish: Boolean(primaryIngredient.allergen_fish),
+            allergen_wheat: Boolean(primaryIngredient.allergen_wheat),
+            allergen_milk: Boolean(primaryIngredient.allergen_milk),
+            allergen_sulphite: Boolean(primaryIngredient.allergen_sulphite),
+            allergen_egg: Boolean(primaryIngredient.allergen_egg),
+            allergen_gluten: Boolean(primaryIngredient.allergen_gluten),
+            allergen_mustard: Boolean(primaryIngredient.allergen_mustard),
+            allergen_celery: Boolean(primaryIngredient.allergen_celery),
+            allergen_garlic: Boolean(primaryIngredient.allergen_garlic),
+            allergen_onion: Boolean(primaryIngredient.allergen_onion),
+            allergen_nitrite: Boolean(primaryIngredient.allergen_nitrite),
+            allergen_mushroom: Boolean(primaryIngredient.allergen_mushroom),
+            allergen_hot_pepper: Boolean(primaryIngredient.allergen_hot_pepper),
+            allergen_citrus: Boolean(primaryIngredient.allergen_citrus),
+            allergen_pork: Boolean(primaryIngredient.allergen_pork),
+            allergen_custom1_name: primaryIngredient.allergen_custom1_name || null,
+            allergen_custom1_active: Boolean(primaryIngredient.allergen_custom1_active),
+            allergen_custom2_name: primaryIngredient.allergen_custom2_name || null,
+            allergen_custom2_active: Boolean(primaryIngredient.allergen_custom2_active),
+            allergen_custom3_name: primaryIngredient.allergen_custom3_name || null,
+            allergen_custom3_active: Boolean(primaryIngredient.allergen_custom3_active),
+            allergen_notes: primaryIngredient.allergen_notes || null,
+          };
+
+          console.log("Creating UMB- master ingredient:", {
+            item_code: umbItemCode,
+            product: umbrellaName,
+            cost_per_recipe_unit: newUmbIngredient.cost_per_recipe_unit,
+            current_price: newUmbIngredient.current_price,
+          });
+
+          const { data: createdUmb, error: createError } = await supabase
+            .from("master_ingredients")
+            .insert([newUmbIngredient])
+            .select()
+            .single();
+
+          if (createError) {
+            console.error("Error creating UMB- master ingredient:", createError);
+          } else if (createdUmb) {
+            console.log("Created UMB- master ingredient:", createdUmb.id);
+            // Set the ID for return
+            umbMasterIngredientId = createdUmb.id;
+
+            // Link the UMB- ingredient to the umbrella
+            const { error: linkError } = await supabase
+              .from("umbrella_ingredient_master_ingredients")
+              .insert([{
+                umbrella_ingredient_id: umbrellaId,
+                master_ingredient_id: createdUmb.id,
+              }]);
+
+            if (linkError) {
+              console.error("Error linking UMB- ingredient to umbrella:", linkError);
+            } else {
+              console.log("Linked UMB- master ingredient to umbrella");
+            }
+          }
         }
 
         // 5. Refresh the ingredients list
@@ -594,8 +682,8 @@ export const useMasterIngredientsStore = create<MasterIngredientsStore>(
           `Successfully updated all master ingredients for umbrella ${umbrellaId}`,
         );
 
-        // Return success for better error handling
-        return true;
+        // Return the UMB- ingredient ID for navigation
+        return umbMasterIngredientId;
       } catch (error) {
         console.error("Error setting umbrella ingredient from primary:", error);
         throw error;

@@ -6,7 +6,6 @@ import {
   Edit,
   Save,
   X,
-  RefreshCw,
   AlertTriangle,
   Link,
   FileText,
@@ -14,9 +13,11 @@ import {
   Umbrella,
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
   ChevronUp,
   Info,
+  Sparkles,
+  Zap,
+  ShoppingCart,
 } from "lucide-react";
 import { useMasterIngredientsStore } from "@/stores/masterIngredientsStore";
 import { useFoodRelationshipsStore } from "@/stores/foodRelationshipsStore";
@@ -31,8 +32,10 @@ import { useAuth } from "@/hooks/useAuth";
 import toast from "react-hot-toast";
 import { LinkMasterIngredientModal } from "./LinkMasterIngredientModal";
 import { supabase } from "@/lib/supabase";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 
 export const UmbrellaIngredientManager: React.FC = () => {
+  const { showDiagnostics } = useDiagnostics();
   const {
     umbrellaIngredients,
     fetchUmbrellaIngredients,
@@ -62,7 +65,48 @@ export const UmbrellaIngredientManager: React.FC = () => {
   const [isLinkingIngredient, setIsLinkingIngredient] = useState<string | null>(
     null,
   );
-  const [infoExpanded, setInfoExpanded] = useState(false);
+  const [isInfoExpanded, setIsInfoExpanded] = useState(false);
+
+  // Common Name Suggestions - group ingredients that share a common_name
+  const commonNameSuggestions = useMemo(() => {
+    // Get all ingredients with a common_name
+    const withCommonName = ingredients.filter(
+      (ing) => ing.common_name && ing.common_name.trim() !== "" && !ing.archived
+    );
+
+    // Group by common_name (case-insensitive)
+    const groups: Record<string, typeof withCommonName> = {};
+    withCommonName.forEach((ing) => {
+      const key = ing.common_name!.toLowerCase().trim();
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(ing);
+    });
+
+    // Only suggest groups with 2+ ingredients that aren't already in an umbrella
+    const existingUmbrellaNames = new Set(
+      umbrellaIngredients.map((u) => u.name.toLowerCase().trim())
+    );
+    const linkedIngredientIds = new Set(
+      umbrellaIngredients.flatMap((u) => u.master_ingredients || [])
+    );
+
+    return Object.entries(groups)
+      .filter(([name, ings]) => {
+        // At least 2 ingredients
+        if (ings.length < 2) return false;
+        // Not already an umbrella with this name
+        if (existingUmbrellaNames.has(name)) return false;
+        // At least one ingredient not already linked
+        if (ings.every((ing) => linkedIngredientIds.has(ing.id))) return false;
+        return true;
+      })
+      .map(([name, ings]) => ({
+        commonName: ings[0].common_name!, // Use original casing from first match
+        ingredients: ings,
+        unlinkedCount: ings.filter((ing) => !linkedIngredientIds.has(ing.id)).length,
+      }))
+      .sort((a, b) => b.ingredients.length - a.ingredients.length); // Most ingredients first
+  }, [ingredients, umbrellaIngredients]);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -138,6 +182,53 @@ export const UmbrellaIngredientManager: React.FC = () => {
     const endIndex = startIndex + itemsPerPage;
     return filteredUmbrellaIngredients.slice(startIndex, endIndex);
   }, [filteredUmbrellaIngredients, currentPage, itemsPerPage]);
+
+  // Handle creating umbrella from Common Name suggestion (one-click)
+  const handleCreateFromSuggestion = async (suggestion: {
+    commonName: string;
+    ingredients: MasterIngredient[];
+  }) => {
+    if (!user?.user_metadata?.organizationId) {
+      toast.error("Organization not available");
+      return;
+    }
+
+    try {
+      // 1. Create the umbrella with the common name
+      const newUmbrella = await createUmbrellaIngredient({
+        name: suggestion.commonName,
+        organization_id: user.user_metadata.organizationId,
+        // Copy category info from first ingredient if available
+        major_group: suggestion.ingredients[0]?.major_group || undefined,
+        category: suggestion.ingredients[0]?.category || undefined,
+        sub_category: suggestion.ingredients[0]?.sub_category || undefined,
+      });
+
+      if (!newUmbrella) {
+        throw new Error("Failed to create umbrella");
+      }
+
+      // 2. Link all ingredients to the new umbrella
+      const linkedIngredientIds = new Set(
+        umbrellaIngredients.flatMap((u) => u.master_ingredients || [])
+      );
+      
+      for (const ing of suggestion.ingredients) {
+        // Skip if already linked to another umbrella
+        if (!linkedIngredientIds.has(ing.id)) {
+          await addMasterIngredientToUmbrella(newUmbrella.id, ing.id);
+        }
+      }
+
+      toast.success(
+        `Created "${suggestion.commonName}" with ${suggestion.ingredients.length} linked ingredients`
+      );
+      setIsCreating(false);
+    } catch (err) {
+      console.error("Error creating umbrella from suggestion:", err);
+      toast.error("Failed to create umbrella from suggestion");
+    }
+  };
 
   // Handle creating a new umbrella ingredient
   const handleCreateUmbrella = async () => {
@@ -222,80 +313,135 @@ export const UmbrellaIngredientManager: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between mb-6 bg-[#262d3c] p-2 rounded-lg shadow-lg">
-        <div className="flex items-center gap-3 p-4 rounded-lg bg-[#262d3c]">
-          <div className="w-10 h-10 rounded-lg bg-rose-500/20 flex items-center justify-center">
-            <Umbrella className="w-5 h-5 text-rose-400" />
+      {/* L5 Diagnostic Path */}
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/admin/components/sections/VendorInvoice/components/UmbrellaIngredientManager.tsx
+        </div>
+      )}
+
+      {/* L5 Sub-header - Rose to match Umbrella tab */}
+      <div className="subheader">
+        <div className="subheader-row">
+          {/* Left: Icon + Title */}
+          <div className="subheader-left">
+            <div className="w-10 h-10 rounded-lg bg-rose-500/20 flex items-center justify-center">
+              <Umbrella className="w-7 h-7 text-rose-400/80" />
+            </div>
+            <div>
+              <h3 className="subheader-title">Umbrella Items</h3>
+              <p className="subheader-subtitle">Group equivalent vendor items under one kitchen name</p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-lg font-medium text-white">
-              Umbrella Ingredient Management
-            </h3>
-            <p className="text-sm text-gray-400">
-              Create and manage umbrella ingredients to group related products
-            </p>
+
+          {/* Right: Stats only */}
+          <div className="subheader-right">
+            <div className="subheader-toggle">
+              <div className="subheader-toggle-icon">
+                <span className="text-sm font-semibold text-gray-400">{umbrellaIngredients.length}</span>
+              </div>
+              <span className="subheader-toggle-label">Groups</span>
+            </div>
+            <div className="subheader-toggle">
+              <div className="subheader-toggle-icon">
+                <span className="text-sm font-semibold text-gray-400">
+                  {umbrellaIngredients.reduce((acc, u) => acc + (u.master_ingredients?.length || 0), 0)}
+                </span>
+              </div>
+              <span className="subheader-toggle-label">Linked</span>
+            </div>
+            {/* Suggestions badge - shows when there are common names to group */}
+            {commonNameSuggestions.length > 0 && (
+              <div className="subheader-toggle">
+                <div className="subheader-toggle-icon bg-primary-500/20">
+                  <Sparkles className="w-4 h-4 text-primary-400" />
+                </div>
+                <span className="subheader-toggle-label text-primary-400">
+                  {commonNameSuggestions.length} Suggested
+                </span>
+              </div>
+            )}
           </div>
         </div>
-        <div className="flex gap-2 mr-2">
+
+        {/* Expandable Info Section */}
+        <div className={`subheader-info expandable-info-section ${isInfoExpanded ? 'expanded' : ''}`}>
           <button
-            onClick={() => fetchUmbrellaIngredients()}
-            className="btn-ghost"
+            onClick={() => setIsInfoExpanded(!isInfoExpanded)}
+            className="expandable-info-header w-full justify-between"
           >
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh
+            <div className="flex items-center gap-2">
+              <Info className="w-4 h-4 text-gray-400 flex-shrink-0" />
+              <span className="text-sm font-medium text-gray-300">About Umbrella Items</span>
+            </div>
+            <ChevronUp className={`w-4 h-4 text-gray-400 transition-transform ${isInfoExpanded ? '' : 'rotate-180'}`} />
           </button>
-          <button
-            onClick={() => setIsCreating(true)}
-            className="btn-ghost text-primary-400 hover:text-primary-300 hover:bg-primary-500/10 focus:ring-primary-500/50 border border-primary-500/30"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Create Umbrella Ingredient
-          </button>
-        </div>
-      </div>
-      {/* Expandable Info Section */}
-      <div className="expandable-info-section mb-6">
-        <button
-          className="expandable-info-header w-full justify-between"
-          onClick={() => setInfoExpanded(!infoExpanded)}
-        >
-          <div className="flex items-center gap-2">
-            <Info className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-            <h3 className="text-lg font-medium text-white">
-              What are Umbrella Ingredients?
-            </h3>
-          </div>
-          {infoExpanded ? (
-            <ChevronUp className="w-5 h-5 text-gray-400" />
-          ) : (
-            <ChevronDown className="w-5 h-5 text-gray-400" />
-          )}
-        </button>
-        {infoExpanded && (
           <div className="expandable-info-content">
-            <p className="text-sm text-gray-300 p-4">
-              Umbrella Ingredients let you group similar products that serve the
-              same purpose in your kitchen. For example, you might create an
-              "Olive Oil" umbrella that includes different brands, sizes, and
-              grades of olive oil. This helps with recipe costing, inventory
-              management, and makes it easier to substitute products when
-              needed.
-            </p>
+            <div className="p-4 pt-2 space-y-4">
+              <p className="text-sm text-gray-400">
+                Umbrella Items let you group equivalent products from different vendors under one kitchen name. 
+                For example, "BRISKET" might include items from GFS, Flanagan, and Sysco — all tracked together 
+                for price comparison, usage reporting, and easy substitution.
+              </p>
+
+              {/* Feature cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="flex items-start gap-3 p-3 rounded-lg border border-gray-700/30">
+                  <DollarSign className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <span className="text-sm font-medium text-emerald-400">Price Comparison</span>
+                    <p className="text-xs text-gray-500">See best price across vendors</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3 p-3 rounded-lg border border-gray-700/30">
+                  <FileText className="w-4 h-4 text-primary-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <span className="text-sm font-medium text-primary-400">Usage Tracking</span>
+                    <p className="text-xs text-gray-500">Combined usage reports</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3 p-3 rounded-lg border border-gray-700/30">
+                  <Link className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <span className="text-sm font-medium text-amber-400">Easy Substitution</span>
+                    <p className="text-xs text-gray-500">Know your alternatives</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3 p-3 rounded-lg border border-gray-700/30">
+                  <Umbrella className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <span className="text-sm font-medium text-rose-400">Recipe Costing</span>
+                    <p className="text-xs text-gray-500">Use best or average price</p>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-xs text-gray-500 text-center">
+                Click any umbrella group to expand and see linked items with price comparison
+              </p>
+            </div>
           </div>
-        )}
+        </div>
       </div>
-      {/* Search Bar and Action Buttons */}
-      <div className="flex items-center justify-between gap-4">
+      {/* Search Bar and Action Button */}
+      <div className="flex items-center gap-4">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
           <input
             type="text"
-            placeholder="Search umbrella ingredients..."
+            placeholder="Search umbrella items..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="input pl-10 w-full"
+            className="input pl-11 w-full min-h-[48px]"
           />
         </div>
+        <button
+          onClick={() => setIsCreating(true)}
+          className="btn-ghost text-primary-400 hover:text-primary-300 border border-primary-500/30 min-h-[48px] px-5"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          Create Umbrella
+        </button>
       </div>
       {/* Create New Umbrella Ingredient Form */}
       {isCreating && (
@@ -313,6 +459,63 @@ export const UmbrellaIngredientManager: React.FC = () => {
                 <X className="w-4 h-4" />
               </button>
             </div>
+
+            {/* Common Name Suggestions Panel */}
+            {commonNameSuggestions.length > 0 && (
+              <div className="bg-primary-500/10 border border-primary-500/30 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles className="w-4 h-4 text-primary-400" />
+                  <span className="text-sm font-medium text-primary-300">Quick Create from Common Names</span>
+                  <span className="text-xs text-gray-500">({commonNameSuggestions.length} suggestions)</span>
+                </div>
+                <p className="text-xs text-gray-400 mb-3">
+                  These ingredients share a Common Name in your Master List — one click creates an umbrella and links them all:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {commonNameSuggestions.slice(0, 8).map((suggestion) => (
+                    <button
+                      key={suggestion.commonName}
+                      onClick={() => handleCreateFromSuggestion(suggestion)}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-800/50 border border-gray-700 hover:border-primary-500/50 hover:bg-primary-500/10 transition-all group"
+                    >
+                      <Zap className="w-3.5 h-3.5 text-amber-400 group-hover:text-amber-300" />
+                      <span className="text-sm text-white font-medium">{suggestion.commonName}</span>
+                      <span className="text-xs text-gray-500">
+                        {suggestion.ingredients.length} items
+                      </span>
+                      <div className="flex -space-x-1">
+                        {suggestion.ingredients.slice(0, 3).map((ing) => (
+                          <div
+                            key={ing.id}
+                            className="w-5 h-5 rounded-full bg-gray-700 border border-gray-600 flex items-center justify-center"
+                            title={`${ing.product} (${ing.vendor})`}
+                          >
+                            <ShoppingCart className="w-2.5 h-2.5 text-gray-400" />
+                          </div>
+                        ))}
+                        {suggestion.ingredients.length > 3 && (
+                          <div className="w-5 h-5 rounded-full bg-gray-600 border border-gray-500 flex items-center justify-center text-[10px] text-gray-300">
+                            +{suggestion.ingredients.length - 3}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                  {commonNameSuggestions.length > 8 && (
+                    <span className="text-xs text-gray-500 self-center">+{commonNameSuggestions.length - 8} more</span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Divider if suggestions exist */}
+            {commonNameSuggestions.length > 0 && (
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-gray-700" />
+                <span className="text-xs text-gray-500 uppercase tracking-wider">or create manually</span>
+                <div className="flex-1 h-px bg-gray-700" />
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
@@ -699,25 +902,37 @@ export const UmbrellaIngredientManager: React.FC = () => {
 
               {/* Linked Master Ingredients (expanded view) */}
               {expandedUmbrellas.includes(umbrella.id) && (
-                <div className="mt-4 border-t border-gray-700 pt-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-sm font-medium text-white">
-                      Linked Master Ingredients
-                    </h4>
+                <div className="mt-4 pt-4 border-t border-gray-700">
+                  {/* Simple section header per L5 Phase 1.2 */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h4 className="text-sm font-medium text-white">Linked Items</h4>
+                      <p className="text-xs text-gray-500">
+                        {umbrella.master_ingredient_details.filter(i => !i.item_code?.startsWith("UMB-")).length} vendor items
+                        {umbrella.master_ingredient_details.filter(i => !i.item_code?.startsWith("UMB-") && i.cost_per_recipe_unit > 0).length > 0 && (
+                          <span className="text-emerald-400 ml-2">
+                            • Best: ${Math.min(
+                              ...umbrella.master_ingredient_details
+                                .filter(i => !i.item_code?.startsWith("UMB-") && i.cost_per_recipe_unit > 0)
+                                .map(i => i.cost_per_recipe_unit)
+                            ).toFixed(2)}/unit
+                          </span>
+                        )}
+                      </p>
+                    </div>
                     <button
                       onClick={() => setIsLinkingIngredient(umbrella.id)}
                       className="btn-ghost text-xs"
                     >
                       <Plus className="w-3 h-3 mr-1" />
-                      Link New Ingredient
+                      Link Item
                     </button>
                   </div>
 
                   {umbrella.master_ingredient_details.length === 0 ? (
-                    <div className="text-center py-4 bg-gray-900/30 rounded-lg">
+                    <div className="text-center py-8 bg-gray-800/30 rounded-lg">
                       <p className="text-gray-400 text-sm">
-                        No master ingredients linked to this umbrella ingredient
-                        yet.
+                        No items linked yet. Click "Link Item" to add vendor products to this umbrella.
                       </p>
                     </div>
                   ) : (
@@ -753,30 +968,55 @@ export const UmbrellaIngredientManager: React.FC = () => {
                         </thead>
                         <tbody className="divide-y divide-gray-700">
                           {umbrella.master_ingredient_details.map(
-                            (ingredient) => (
+                            (ingredient) => {
+                              // Check if this is a UMB- master ingredient (the umbrella item itself)
+                              const isUmbrellaItem = ingredient.item_code?.startsWith("UMB-");
+                              
+                              return (
                               <tr
                                 key={ingredient.id}
-                                className="hover:bg-gray-700/30"
+                                className={isUmbrellaItem 
+                                  ? "table-row-highlight rose" 
+                                  : "hover:bg-gray-700/30"
+                                }
                               >
-                                <td className="px-4 py-2 text-left text-xs text-white">
-                                  {ingredient.product}
+                                <td className="px-4 py-2 text-left text-xs">
+                                  <div className="flex items-center gap-2">
+                                    {isUmbrellaItem && (
+                                      <Umbrella className="w-3 h-3 text-rose-400 flex-shrink-0" />
+                                    )}
+                                    <span className={isUmbrellaItem ? "row-label" : "text-white"}>
+                                      {ingredient.product}
+                                    </span>
+                                    {isUmbrellaItem && (
+                                      <span className="row-badge">UMBRELLA</span>
+                                    )}
+                                  </div>
                                 </td>
-                                <td className="px-4 py-2 text-center text-xs text-gray-300">
+                                <td className={`px-4 py-2 text-center text-xs ${!isUmbrellaItem && "text-gray-300"}`}>
                                   {ingredient.item_code}
                                 </td>
-                                <td className="px-4 py-2 text-center text-xs text-gray-300">
+                                <td className={`px-4 py-2 text-center text-xs ${!isUmbrellaItem && "text-gray-300"}`}>
                                   {ingredient.vendor}
                                 </td>
-                                <td className="px-4 py-2 text-center text-xs text-gray-300">
+                                <td className={`px-4 py-2 text-center text-xs ${!isUmbrellaItem && "text-gray-300"}`}>
                                   ${ingredient.current_price.toFixed(2)}
                                 </td>
-                                <td className="text-xs text-center text-gray-300 px-0.5 py-2">
+                                <td className={`text-xs text-center px-0.5 py-2 ${!isUmbrellaItem && "text-gray-300"}`}>
                                   {ingredient.recipe_unit_type || "EA"}
                                 </td>
-                                <td className="px-4 py-2 text-center text-bold text-xs text-green-400">
+                                <td className={`px-4 py-2 text-center text-bold text-xs ${!isUmbrellaItem && "text-green-400"}`}>
                                   ${ingredient.cost_per_recipe_unit.toFixed(2)}
                                 </td>
                                 <td className="px-4 py-2 text-xs text-center">
+                                  {isUmbrellaItem ? (
+                                    <input
+                                      type="radio"
+                                      disabled
+                                      className="form-radio h-3 w-3 text-gray-600 cursor-not-allowed opacity-30"
+                                      title="This is the umbrella item - select a vendor item as primary"
+                                    />
+                                  ) : (
                                   <input
                                     type="radio"
                                     checked={
@@ -801,6 +1041,7 @@ export const UmbrellaIngredientManager: React.FC = () => {
                                     }}
                                     className="form-radio h-3 w-3 text-rose-500"
                                   />
+                                  )}
                                 </td>
                                 <td className="px-4 py-2 text-xs text-right">
                                   <div className="flex justify-end gap-2">
@@ -811,8 +1052,9 @@ export const UmbrellaIngredientManager: React.FC = () => {
                                           `View price history for ${ingredient.product}`,
                                         );
                                       }}
-                                      className="p-1 text-gray-400 hover:text-blue-400 transition-colors"
+                                      className={`p-1 transition-colors ${isUmbrellaItem ? "opacity-30 cursor-not-allowed" : "text-gray-400 hover:text-blue-400"}`}
                                       title="View price history"
+                                      disabled={isUmbrellaItem}
                                     >
                                       <DollarSign className="w-3 h-3" />
                                     </button>
@@ -823,16 +1065,17 @@ export const UmbrellaIngredientManager: React.FC = () => {
                                           ingredient.id,
                                         )
                                       }
-                                      className="p-1 text-gray-400 hover:text-rose-400 transition-colors"
-                                      title="Unlink from umbrella"
+                                      className={`p-1 transition-colors ${isUmbrellaItem ? "opacity-30 cursor-not-allowed" : "text-gray-400 hover:text-rose-400"}`}
+                                      title={isUmbrellaItem ? "Cannot unlink umbrella item" : "Unlink from umbrella"}
+                                      disabled={isUmbrellaItem}
                                     >
                                       <Trash2 className="w-3 h-3" />
                                     </button>
                                   </div>
                                 </td>
                               </tr>
-                            ),
-                          )}
+                            );
+                          })}
                         </tbody>
                       </table>
 

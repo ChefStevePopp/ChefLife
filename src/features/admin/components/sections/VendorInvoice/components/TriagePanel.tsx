@@ -445,7 +445,9 @@ export const TriagePanel: React.FC = () => {
     if (item.source === "incomplete" && item.ingredient_id) {
       navigate(`/admin/data/ingredients/${item.ingredient_id}`);
     } else if (item.source === "skipped") {
-      navigate(`/admin/data/ingredients/new?item_code=${item.item_code}&product=${encodeURIComponent(item.product_name)}&price=${item.unit_price || ""}&pending_id=${item.id}`);
+      // Pass org_id to avoid race condition with useAuth loading organization
+      const orgId = user?.user_metadata?.organizationId;
+      navigate(`/admin/data/ingredients/new?org_id=${orgId}&item_code=${item.item_code}&product=${encodeURIComponent(item.product_name)}&price=${item.unit_price || ""}&vendor=${encodeURIComponent(item.vendor_name || "")}&uom=${encodeURIComponent(item.unit_of_measure || "")}&pending_id=${item.id}`);
     }
   };
 
