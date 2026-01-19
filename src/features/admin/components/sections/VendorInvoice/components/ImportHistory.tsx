@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   RefreshCw,
   Search,
@@ -6,10 +6,17 @@ import {
   AlertTriangle,
   History,
   ChevronDown,
+  ChevronUp,
   Pencil,
+  Info,
+  FileText,
+  GitBranch,
+  CheckCircle,
+  Clock,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import toast from "react-hot-toast";
 import { ExcelDataGrid } from "@/shared/components/ExcelDataGrid";
 import type { ExcelColumn } from "@/types/excel";
@@ -57,10 +64,12 @@ type DateRangeOption =
 
 export const ImportHistory: React.FC<ImportHistoryProps> = ({ onRecall }) => {
   const { user, isLoading: authLoading, organizationId } = useAuth();
+  const { showDiagnostics } = useDiagnostics();
   const [imports, setImports] = useState<ImportRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [isInfoExpanded, setIsInfoExpanded] = useState(false);
   const [dateRangeOption, setDateRangeOption] =
     useState<DateRangeOption>("all");
   const [dateRange, setDateRange] = useState<{ start: string; end: string }>(
@@ -181,6 +190,19 @@ export const ImportHistory: React.FC<ImportHistoryProps> = ({ onRecall }) => {
   const handleRefresh = () => {
     fetchImportHistory();
   };
+
+  // ---------------------------------------------------------------------------
+  // STATS CALCULATION
+  // ---------------------------------------------------------------------------
+  const stats = useMemo(() => {
+    const total = imports.length;
+    const completed = imports.filter(i => i.status === 'completed').length;
+    const superseded = imports.filter(i => i.status === 'superseded').length;
+    const totalItems = imports.reduce((sum, i) => sum + (i.items_count || 0), 0);
+    const totalPriceChanges = imports.reduce((sum, i) => sum + (i.price_changes || 0), 0);
+    
+    return { total, completed, superseded, totalItems, totalPriceChanges };
+  }, [imports]);
 
   // ---------------------------------------------------------------------------
   // L5 STATUS BADGE - Only colorize when status varies
@@ -458,23 +480,124 @@ export const ImportHistory: React.FC<ImportHistoryProps> = ({ onRecall }) => {
   // ---------------------------------------------------------------------------
   return (
     <div className="space-y-4">
-      {/* L5 Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-lime-500/20 flex items-center justify-center">
-            <History className="w-5 h-5 text-lime-400" />
+      {/* Omega Diagnostics */}
+      {showDiagnostics && (
+        <div className="text-xs text-gray-600 font-mono">
+          src/features/admin/components/sections/VendorInvoice/components/ImportHistory.tsx
+        </div>
+      )}
+
+      {/* L5 Subheader - Lime for History tab */}
+      <div className="subheader">
+        <div className="subheader-row">
+          {/* Left: Icon + Title */}
+          <div className="subheader-left">
+            <div className="subheader-icon-box lime">
+              <History className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="subheader-title">Import History</h3>
+              <p className="subheader-subtitle">Version-controlled audit trail of all invoice imports</p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-lg font-medium text-white">Import History</h3>
-            <p className="text-sm text-gray-400">
-              Version-controlled audit trail of all invoice imports
-            </p>
+          
+          {/* Right: Stats + Refresh */}
+          <div className="subheader-right">
+            <div className="subheader-toggle">
+              <div className="subheader-toggle-icon">
+                <span className="text-sm font-medium text-gray-500">{stats.total}</span>
+              </div>
+              <span className="subheader-toggle-label">Imports</span>
+            </div>
+            {stats.completed > 0 && (
+              <div className="subheader-toggle">
+                <div className="subheader-toggle-icon">
+                  <span className="text-sm font-medium text-gray-400">{stats.completed}</span>
+                </div>
+                <span className="subheader-toggle-label">Completed</span>
+              </div>
+            )}
+            {stats.superseded > 0 && (
+              <div className="subheader-toggle">
+                <div className="subheader-toggle-icon">
+                  <span className="text-sm font-medium text-gray-600">{stats.superseded}</span>
+                </div>
+                <span className="subheader-toggle-label">Superseded</span>
+              </div>
+            )}
+            <div className="subheader-toggle">
+              <div className="subheader-toggle-icon">
+                <span className="text-sm font-medium text-gray-400">{stats.totalPriceChanges}</span>
+              </div>
+              <span className="subheader-toggle-label">Price Updates</span>
+            </div>
+            
+            <button onClick={handleRefresh} className="btn-ghost p-2" title="Refresh">
+              <RefreshCw className="w-4 h-4" />
+            </button>
           </div>
         </div>
-        <button onClick={handleRefresh} className="btn-ghost">
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Refresh
-        </button>
+
+        {/* Expandable Info Section */}
+        <div className={`subheader-info expandable-info-section ${isInfoExpanded ? "expanded" : ""}`}>
+          <button
+            onClick={() => setIsInfoExpanded(!isInfoExpanded)}
+            className="expandable-info-header w-full justify-between"
+          >
+            <div className="flex items-center gap-2">
+              <Info className="w-4 h-4 text-lime-400 flex-shrink-0" />
+              <span className="text-sm font-medium text-white">About Import History</span>
+            </div>
+            <ChevronUp className={`w-4 h-4 text-gray-500 transition-transform ${isInfoExpanded ? "" : "rotate-180"}`} />
+          </button>
+          <div className="expandable-info-content">
+            <div className="p-4 pt-2 space-y-4">
+              <p className="text-sm text-gray-400">
+                Every invoice import is recorded here with full version control. If you need to correct 
+                a previous import, click the edit button — this creates a new version that
+                <span className="font-semibold"> supersedes </span>
+                the original while preserving the audit trail.
+              </p>
+              
+              {/* Feature cards - lime icons, gray title palette */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="p-3 rounded-lg border border-gray-700/30 bg-gray-800/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <FileText className="w-4 h-4 text-lime-400/80" />
+                    <span className="text-sm font-medium text-gray-300">Full Audit Trail</span>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Who imported what, when, and from which file — always traceable.
+                  </p>
+                </div>
+                
+                <div className="p-3 rounded-lg border border-gray-700/30 bg-gray-800/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <GitBranch className="w-4 h-4 text-lime-400/80" />
+                    <span className="text-sm font-medium text-gray-300">Version Control</span>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Corrections create new versions (v2, v3...) without destroying history.
+                  </p>
+                </div>
+                
+                <div className="p-3 rounded-lg border border-gray-700/30 bg-gray-800/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Pencil className="w-4 h-4 text-lime-400/80" />
+                    <span className="text-sm font-medium text-gray-300">Edit & Recall</span>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Click edit to recall an import for correction — reopens in Import tab.
+                  </p>
+                </div>
+              </div>
+              
+              <p className="text-xs text-gray-500 text-center">
+                Superseded imports are grayed out but never deleted — your data integrity is protected.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Filters Row */}

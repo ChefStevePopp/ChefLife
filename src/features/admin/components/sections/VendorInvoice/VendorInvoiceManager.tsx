@@ -12,6 +12,7 @@ import {
   Info,
   ChevronUp,
   ClipboardList,
+  X,
 } from "lucide-react";
 import { CSVUploader } from "./components/CSVUploader";
 import { ImportSettings } from "./components/ImportSettings";
@@ -85,6 +86,7 @@ export const VendorInvoiceManager = () => {
   const [selectedVendor, setSelectedVendor] = useState("");
   const [manualVendorId, setManualVendorId] = useState("");
   const [isInfoExpanded, setIsInfoExpanded] = useState(false);
+  const [isCSVInfoExpanded, setIsCSVInfoExpanded] = useState(false);
   const [importType, setImportType] = useState<"csv" | "pdf" | "manual">("csv");
   const [sourceFile, setSourceFile] = useState<File | null>(null); // For audit trail
   const [supersedeInfo, setSupersedeInfo] = useState<{ isSupersede: boolean; existingDate: string } | null>(null);
@@ -625,11 +627,80 @@ export const VendorInvoiceManager = () => {
                             {activeTab === "import" && (
                 <>
                   {importType === "csv" && (
-                    <CSVUploader
-                      onUpload={handleUpload}
-                      hasTemplate={templates.some((t) => t.vendor_id === selectedVendor)}
-                      vendorId={selectedVendor}
-                    />
+                    selectedVendor ? (
+                      <div className="space-y-4">
+                        {/* Header - matches ImportWorkspace pattern */}
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="text-lg font-medium text-white">
+                              CSV Import: {selectedVendor}
+                            </h3>
+                            <p className="text-sm text-gray-400">
+                              {templates.some((t) => t.vendor_id === selectedVendor)
+                                ? "Upload CSV to import invoice"
+                                : "Template setup required"
+                              }
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => setSelectedVendor("")}
+                            className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-700/50"
+                          >
+                            <X className="w-5 h-5" />
+                          </button>
+                        </div>
+
+                        {/* Info Section - matches ImportWorkspace pattern */}
+                        <div className={`expandable-info-section ${isCSVInfoExpanded ? "expanded" : ""}`}>
+                          <button
+                            onClick={() => setIsCSVInfoExpanded(!isCSVInfoExpanded)}
+                            className="expandable-info-header w-full justify-between"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Info className="w-4 h-4 text-primary-400 flex-shrink-0" />
+                              <span className="text-sm font-medium text-gray-300">
+                                How CSV Import Works
+                              </span>
+                            </div>
+                            <ChevronUp className="w-4 h-4 text-gray-400" />
+                          </button>
+                          <div className="expandable-info-content">
+                            <div className="p-4 pt-2 space-y-2 text-sm text-gray-400">
+                              <p>
+                                Upload your vendor's CSV invoice file. We'll use your configured column mapping 
+                                to extract item codes, prices, and quantities.
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                Tip: Name your file with the invoice date (e.g., 01-15-2026.csv) for automatic date detection.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* CSVUploader */}
+                        <CSVUploader
+                          onUpload={handleUpload}
+                          hasTemplate={templates.some((t) => t.vendor_id === selectedVendor)}
+                          vendorId={selectedVendor}
+                          onGoToSettings={() => handleTabChange("settings")}
+                        />
+                      </div>
+                    ) : (
+                      /* Select vendor first - L5 placemat */
+                      <div className="card p-8">
+                        <div className="flex flex-col items-center justify-center text-center">
+                          <div className="w-14 h-14 rounded-xl bg-gray-700/50 flex items-center justify-center mb-4">
+                            <FileSpreadsheet className="w-7 h-7 text-gray-500" />
+                          </div>
+                          <h3 className="text-lg font-medium text-white mb-2">
+                            CSV Import
+                          </h3>
+                          <p className="text-gray-400 text-sm">
+                            Select a vendor above to begin
+                          </p>
+                        </div>
+                      </div>
+                    )
                   )}
                   {(importType === "pdf" || importType === "manual") && (
                     selectedVendor ? (
@@ -654,13 +725,23 @@ export const VendorInvoiceManager = () => {
                         }}
                       />
                     ) : (
-                      <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-700 rounded-lg bg-gray-800/50">
-                        <h3 className="text-lg font-medium text-white mb-2">
-                          {importType === "pdf" ? "PDF Import" : "Manual Entry"}
-                        </h3>
-                        <p className="text-gray-400 text-center mb-4">
-                          Please select a vendor first to begin
-                        </p>
+                      /* Select vendor first - L5 placemat */
+                      <div className="card p-8">
+                        <div className="flex flex-col items-center justify-center text-center">
+                          <div className="w-14 h-14 rounded-xl bg-gray-700/50 flex items-center justify-center mb-4">
+                            {importType === "pdf" ? (
+                              <FileSpreadsheet className="w-7 h-7 text-gray-500" />
+                            ) : (
+                              <FileSpreadsheet className="w-7 h-7 text-gray-500" />
+                            )}
+                          </div>
+                          <h3 className="text-lg font-medium text-white mb-2">
+                            {importType === "pdf" ? "PDF Import" : "Manual Entry"}
+                          </h3>
+                          <p className="text-gray-400 text-sm">
+                            Select a vendor above to begin
+                          </p>
+                        </div>
                       </div>
                     )
                   )}

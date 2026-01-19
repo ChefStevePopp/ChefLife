@@ -320,8 +320,8 @@ export const PriceHistory = () => {
             onClick={() => setShowInfo(!showInfo)}
           >
             <div className="flex items-center gap-2">
-              <Info className="w-4 h-4 text-gray-400" />
-              <span className="text-sm font-medium text-gray-300">About Price History</span>
+              <Info className="w-4 h-4 text-primary-400" />
+              <span className="text-sm font-medium text-white">About Price History</span>
             </div>
             {showInfo ? (
               <ChevronUp className="w-4 h-4 text-gray-400" />
@@ -333,30 +333,30 @@ export const PriceHistory = () => {
             <div className="p-4 pt-2">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="subheader-feature-card">
-                  <Zap className="w-4 h-4 text-primary-400" />
+                  <Zap className="w-4 h-4 text-primary-400/80" />
                   <div>
-                    <span className="subheader-feature-title text-primary-400">Auto-Tracked</span>
+                    <span className="subheader-feature-title text-gray-300">Auto-Tracked</span>
                     <p className="subheader-feature-desc">Every invoice import logs price changes automatically</p>
                   </div>
                 </div>
                 <div className="subheader-feature-card">
-                  <Bell className="w-4 h-4 text-purple-400" />
+                  <Bell className="w-4 h-4 text-primary-400/80" />
                   <div>
-                    <span className="subheader-feature-title text-purple-400">Price Alerts</span>
+                    <span className="subheader-feature-title text-gray-300">Price Alerts</span>
                     <p className="subheader-feature-desc">Track specific ingredients by enabling alerts in MIL</p>
                   </div>
                 </div>
                 <div className="subheader-feature-card">
-                  <Target className="w-4 h-4 text-amber-400" />
+                  <Target className="w-4 h-4 text-primary-400/80" />
                   <div>
-                    <span className="subheader-feature-title text-amber-400">Vendor Insights</span>
+                    <span className="subheader-feature-title text-gray-300">Vendor Insights</span>
                     <p className="subheader-feature-desc">See which vendors are raising prices most frequently</p>
                   </div>
                 </div>
                 <div className="subheader-feature-card">
-                  <TrendingUp className="w-4 h-4 text-rose-400" />
+                  <TrendingUp className="w-4 h-4 text-primary-400/80" />
                   <div>
-                    <span className="subheader-feature-title text-rose-400">Cost Impact</span>
+                    <span className="subheader-feature-title text-gray-300">Cost Impact</span>
                     <p className="subheader-feature-desc">Changes ripple through to recipe costs automatically</p>
                   </div>
                 </div>

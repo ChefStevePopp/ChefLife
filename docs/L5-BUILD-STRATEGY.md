@@ -1650,11 +1650,218 @@ ChefLife aims for Tesla.
 
 ---
 
-*Last updated: January 16, 2026 - Premium Interaction Patterns (Two-Stage Button, Morph Animation) added*
+## Tablecloth/Placemat Visual Hierarchy
+
+For expandable sections with nested content, use the tablecloth/placemat metaphor:
+
+```
+┌─ Expandable Section (Tablecloth) ───────────────────────────────────────┐
+│  bg-primary-800/10                                            │
+│                                                               │
+│  ┌─ Placemat (.card) ───────┐  ┌─ Placemat (.card) ───────┐  │
+│  │                          │  │                          │  │
+│  │  Content row             │  │  Content row             │  │
+│  │    hover:bg-gray-700/30  │  │    hover:bg-gray-700/30  │  │
+│  │  Content row             │  │  Content row             │  │
+│  │                          │  │                          │  │
+│  └──────────────────────────┘  └──────────────────────────┘  │
+│                                                               │
+└───────────────────────────────────────────────────────────────┘
+```
+
+**Depth Hierarchy:**
+
+| Layer | Element | Style |
+|-------|---------|-------|
+| 0 | Tablecloth | `bg-primary-800/10` (subtle tint on expandable section) |
+| 1 | Placemats | `.card` class (blur, shadow, solid border) |
+| 2 | Content | Rows/buttons with `hover:bg-gray-700/30` (no background wrapper) |
+
+**Key Principles:**
+- Placemats use the `.card` class from index.css
+- Content sits directly on placemat — no extra wrapper divs
+- Hover states provide interactivity without visual noise
+- Section headers above placemats, not inside
+
+**Section Header Pattern:**
+```tsx
+<div className="mb-3">
+  <h5 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
+    Section Title
+  </h5>
+  <p className="text-xs text-gray-500 mt-1">
+    Optional subtitle explanation
+  </p>
+</div>
+<div className="card p-4 space-y-2">
+  {/* Content rows here */}
+</div>
+```
+
+**Reference Implementation:** `UmbrellaItemCard.tsx` — Vendor Sources, Price Calculation, From Primary placemats
+
+---
+
+## Selection Button Pattern (Radio-Style)
+
+For mutually exclusive options within a placemat:
+
+```tsx
+<button
+  onClick={() => handleSelect(option)}
+  className={`w-full p-3 rounded-lg text-left transition-all ${
+    isSelected
+      ? 'ring-2 ring-gray-500 bg-gray-700/20'  // Subtle ring + tint
+      : 'hover:bg-gray-700/30'                   // Just hover
+  }`}
+>
+  <div className="flex items-center gap-3">
+    <div className="icon-badge bg-gray-700/50">
+      <Icon className={`w-4 h-4 ${isSelected ? 'text-gray-300' : 'text-gray-500'}`} />
+    </div>
+    <div className="flex-1">
+      <span className={`text-sm font-medium ${isSelected ? 'text-white' : 'text-gray-400'}`}>
+        Option Label
+      </span>
+      <p className="text-2xs text-gray-500 mt-0.5">Description</p>
+    </div>
+    <span className="text-sm font-semibold tabular-nums text-teal-400/70">
+      $00.00
+    </span>
+    {isSelected && <Check className="w-4 h-4 text-gray-400" />}
+  </div>
+</button>
+```
+
+**Design Decisions:**
+- Gray ring instead of colored fills (professional, not flashy)
+- Icons remain static gray — no color changes on selection
+- Checkmark appears only when selected
+- All values use `tabular-nums` for alignment
+
+---
+
+## Pending State + Floating Action Bar Pattern
+
+For important decisions that deserve gravitas (price mode, status changes):
+
+```tsx
+// State
+const [currentValue, setCurrentValue] = useState(initialValue);
+const [pendingValue, setPendingValue] = useState<ValueType | null>(null);
+const displayValue = pendingValue || currentValue;
+const hasPendingChange = pendingValue !== null && pendingValue !== currentValue;
+
+// Selection handler - doesn't save immediately
+const handleSelect = (newValue: ValueType) => {
+  if (newValue === currentValue) {
+    setPendingValue(null);  // Clicking current clears pending
+  } else {
+    setPendingValue(newValue);
+  }
+};
+
+// Floating action bar (warning variant for changes)
+{hasPendingChange && (
+  <div className="floating-action-bar warning">
+    <div className="floating-action-bar-inner">
+      <div className="floating-action-bar-content">
+        <Icon className="w-4 h-4 text-amber-400" />
+        <span className="text-sm text-gray-300">
+          Field: <span className="text-white font-medium">{currentValue}</span>
+          <span className="text-gray-500 mx-1">→</span>
+          <span className="text-amber-400 font-medium">{pendingValue}</span>
+        </span>
+        <div className="w-px h-6 bg-gray-700" />
+        <button onClick={handleCancel} className="btn-ghost text-sm py-1.5 px-4">
+          Cancel
+        </button>
+        <button onClick={handleSave} className="btn-primary text-sm py-1.5 px-4">
+          <Save className="w-3.5 h-3.5 mr-1" /> Save
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+```
+
+**When to Use:**
+- Price mode changes (affects recipe costing)
+- Status transitions (active → archived)
+- Any change where "oops, didn't mean to click that" is possible
+
+**Reference Implementation:** `UmbrellaItemCard.tsx` — Price mode selection
+
+---
+
+## Unified Financial Color (Teal at 70%)
+
+All money-related values use a single teal accent:
+
+```tsx
+// Prices
+<span className="text-teal-400/70">${price.toFixed(2)}</span>
+
+// Primary badge
+<span className="bg-teal-500/10 text-teal-400/70 px-1.5 py-0.5 rounded">
+  Primary
+</span>
+
+// Selection circle (when selected)
+<button className="border-teal-400/70 bg-teal-500/80">
+  <Check className="text-white" />
+</button>
+```
+
+**Why 70% opacity?**
+- Muted enough to not compete with white text
+- Distinct enough to signal "this is money"
+- Consistent across all financial data
+
+---
+
+*Last updated: January 18, 2026 - Tablecloth/Placemat Hierarchy, Selection Pattern, Pending State Pattern added*
 
 ---
 
 ## Changelog
+
+**Jan 18, 2026 (Session - L5 Visual Hierarchy Refinement):**
+- **Refined L5 Expandable Info Pattern** across all VIM tabs:
+  - Tab identity color reserved for expandable info icon only
+  - White title, gray-300 card titles, tab-color/80 icons
+  - Pattern documented in L5-SUBHEADER-PATTERN.md
+- Files updated: VendorAnalytics.tsx, ItemCodeGroupManager.tsx, UmbrellaIngredientManager.tsx
+- Added `.subheader-icon-box` color variants to index.css (lime, cyan, green, amber, rose, primary, gray)
+
+**Jan 18, 2026 (Session - Umbrella Price Mode):
+- **Tablecloth/Placemat Visual Hierarchy** pattern documented:
+  - Layer 0: Tablecloth = `bg-primary-800/10` (expandable section background)
+  - Layer 1: Placemats = `.card` class (blur, shadow, solid border)
+  - Layer 2: Content = rows/buttons with `hover:bg-gray-700/30` (no wrapper)
+  - Section headers above placemats: `text-sm font-semibold text-gray-400 uppercase tracking-wider`
+- **Selection Button Pattern (Radio-style)** documented:
+  - Active state: `ring-2 ring-gray-500 bg-gray-700/20` (subtle ring, not colored fill)
+  - Inactive: `hover:bg-gray-700/30`
+  - Icon stays gray, checkmark appears only when selected
+  - `tabular-nums` for all numeric values
+- **Pending State + Floating Action Bar Pattern** documented:
+  - For strategic decisions (price mode, status changes)
+  - Click sets pending → floating bar appears → confirm/cancel
+  - Warning variant (amber glow) for unsaved changes
+  - Pattern: `displayValue = pendingValue || currentValue`
+- **Unified Financial Color (Teal at 70%)** documented:
+  - All prices: `text-teal-400/70`
+  - Primary badge: `bg-teal-500/10 text-teal-400/70`
+  - Selection circle: `border-teal-400/70 bg-teal-500/80`
+- **Reference Implementation:** `UmbrellaItemCard.tsx` - price mode selection, aggregate purchase modal
+- **Chart Patterns** added to UTILS.md:
+  - Dark theme defaults for Recharts
+  - Line chart (single series) pattern
+  - Scatter chart (multi-series) pattern
+  - Quantity-scaled dots formula
+  - VENDOR_COLORS palette (8 colors)
+  - Stats row pattern
 
 **Jan 12, 2026 (Session 46 - Price Source Tracking):**
 - **TwoStageButton Enhancement** - Added `size` and `confirmIcon` props:

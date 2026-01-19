@@ -294,6 +294,13 @@ select::-ms-expand {
     @apply text-cyan-400/80;
   }
 
+  .subheader-icon-box.lime {
+    @apply bg-lime-500/20;
+  }
+  .subheader-icon-box.lime svg {
+    @apply text-lime-400/80;
+  }
+
   .subheader-icon-box.gray {
     @apply bg-gray-700/50;
   }
@@ -369,6 +376,16 @@ select::-ms-expand {
   }
   .subheader-toggle.active.green .subheader-toggle-label {
     @apply text-green-400;
+  }
+
+  .subheader-toggle.active.emerald .subheader-toggle-icon {
+    @apply bg-emerald-500/30 ring-emerald-500;
+  }
+  .subheader-toggle.active.emerald .subheader-toggle-icon svg {
+    @apply text-emerald-400;
+  }
+  .subheader-toggle.active.emerald .subheader-toggle-label {
+    @apply text-emerald-400;
   }
 
   .subheader-toggle.active.amber .subheader-toggle-icon {

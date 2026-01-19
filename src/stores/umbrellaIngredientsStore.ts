@@ -253,7 +253,50 @@ export const useUmbrellaIngredientsStore = create<UmbrellaIngredientsStore>(
       try {
         set({ isLoading: true, error: null });
 
-        // If there's a primary master ingredient, copy its data to the umbrella ingredient
+        // Quick path: If only updating price_mode or price_lookback_days, do a simple update
+        const isSimplePriceUpdate = 
+          Object.keys(data).every(key => 
+            ['price_mode', 'price_lookback_days'].includes(key)
+          );
+        
+        if (isSimplePriceUpdate) {
+          const simpleUpdateData: Record<string, any> = {
+            updated_at: new Date().toISOString(),
+          };
+          if (data.price_mode !== undefined) simpleUpdateData.price_mode = data.price_mode;
+          if (data.price_lookback_days !== undefined) simpleUpdateData.price_lookback_days = data.price_lookback_days;
+
+          console.log("Simple price mode update:", simpleUpdateData);
+          
+          const { error } = await supabase
+            .from("umbrella_ingredients")
+            .update(simpleUpdateData)
+            .eq("id", id);
+
+          if (error) throw error;
+
+          // Update state
+          set((state) => {
+            const updatedUmbrellaIngredients = state.umbrellaIngredients.map(
+              (umbrella) => {
+                if (umbrella.id === id) {
+                  return { ...umbrella, ...simpleUpdateData };
+                }
+                return umbrella;
+              },
+            );
+            return {
+              ...state,
+              umbrellaIngredients: updatedUmbrellaIngredients,
+              isLoading: false,
+            };
+          });
+
+          // Don't show toast for simple price mode changes
+          return;
+        }
+
+        // Full update path: If there's a primary master ingredient, copy its data
         if (data.primary_master_ingredient_id) {
           // Get the master ingredient details
           const { data: masterIngredient, error: masterError } = await supabase
@@ -518,6 +561,9 @@ export const useUmbrellaIngredientsStore = create<UmbrellaIngredientsStore>(
               ? Boolean(data.allergen_custom3_active)
               : false,
           allergen_notes: data.allergen_notes || null,
+          // Price mode fields
+          ...(data.price_mode !== undefined && { price_mode: data.price_mode }),
+          ...(data.price_lookback_days !== undefined && { price_lookback_days: data.price_lookback_days }),
           updated_at: new Date().toISOString(),
         };
 

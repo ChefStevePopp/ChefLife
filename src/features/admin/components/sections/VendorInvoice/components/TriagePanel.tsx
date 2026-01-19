@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, createContext, useContext } from "react";
 import {
   AlertTriangle,
   CheckCircle,
@@ -13,6 +13,9 @@ import {
   ChevronUp,
   Inbox,
   BookOpen,
+  GraduationCap,
+  Sparkles,
+  ClipboardList,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
@@ -36,7 +39,72 @@ import toast from "react-hot-toast";
 // Now uses:
 // - StatBar for muted gray stat cards
 // - ExcelDataGrid for filtering, sorting, pagination
+// - Guided Mode for thorough educational content
 // =============================================================================
+
+// ---------------------------------------------------------------------------
+// GUIDED MODE CONTEXT
+// ---------------------------------------------------------------------------
+const GuidedModeContext = createContext<{
+  isGuided: boolean;
+  setIsGuided: (v: boolean) => void;
+}>({ isGuided: false, setIsGuided: () => {} });
+
+const useGuidedMode = () => useContext(GuidedModeContext);
+
+// ---------------------------------------------------------------------------
+// GUIDED MODE TOGGLE
+// ---------------------------------------------------------------------------
+const GuidedModeToggle: React.FC = () => {
+  const { isGuided, setIsGuided } = useGuidedMode();
+  
+  return (
+    <button
+      onClick={() => setIsGuided(!isGuided)}
+      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+        isGuided 
+          ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 shadow-lg shadow-cyan-500/10" 
+          : "bg-gray-800/50 text-gray-500 border border-gray-700/50 hover:text-gray-400 hover:border-gray-600"
+      }`}
+      title={isGuided ? "Guided mode: ON" : "Guided mode: OFF"}
+    >
+      <GraduationCap className="w-3.5 h-3.5" />
+      <span>{isGuided ? "Guided" : "Guide"}</span>
+    </button>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// GUIDANCE TIP COMPONENT
+// ---------------------------------------------------------------------------
+interface GuidanceTipProps {
+  children: React.ReactNode;
+  color?: "cyan" | "amber" | "green";
+}
+
+const GuidanceTip: React.FC<GuidanceTipProps> = ({ children, color = "cyan" }) => {
+  const { isGuided } = useGuidedMode();
+  if (!isGuided) return null;
+
+  const colors = {
+    cyan: "bg-cyan-500/10 border-cyan-500/20",
+    amber: "bg-amber-500/10 border-amber-500/20",
+    green: "bg-emerald-500/10 border-emerald-500/20",
+  };
+  
+  const iconColors = {
+    cyan: "text-cyan-400",
+    amber: "text-amber-400",
+    green: "text-emerald-400",
+  };
+
+  return (
+    <div className={`flex items-start gap-3 p-3 rounded-lg border ${colors[color]} mb-4`}>
+      <Sparkles className={`w-4 h-4 mt-0.5 flex-shrink-0 ${iconColors[color]}`} />
+      <p className="text-sm text-gray-300">{children}</p>
+    </div>
+  );
+};
 
 interface PendingItem {
   id: string;
@@ -67,11 +135,23 @@ const COMPLETION_FIELDS = [
 // =============================================================================
 // COLUMN DEFINITIONS FOR EXCEL DATA GRID
 // =============================================================================
+// Visual Hierarchy (matching Price History pattern):
+// Tier 1 (Primary):   Product Name — white, prominent
+// Tier 2 (Secondary): Vendor, Code — gray-300/400, readable
+// Tier 3 (Supporting): Price, Completion — contextual colors
+//
+// Color Semantics:
+// - Amber: Skipped items (warning/attention)
+// - Rose: Incomplete items (needs action)
+// - Cyan: Completion progress (tab identity)
+// - Emerald: Price (consistent with financial data)
+// =============================================================================
 
 const getTriageColumns = (
   onEdit: (item: PendingItem) => void,
   onDelete: (item: PendingItem) => void
 ): ExcelColumn[] => [
+  // --- Source Icon (visual status indicator) ---
   {
     key: "source",
     name: "Source",
@@ -95,6 +175,7 @@ const getTriageColumns = (
       </div>
     ),
   },
+  // --- Type Icon (purchased vs prep) ---
   {
     key: "ingredient_type",
     name: "Type",
@@ -118,6 +199,7 @@ const getTriageColumns = (
       </div>
     ),
   },
+  // --- Tier 3: Item Code (supporting, muted) ---
   {
     key: "item_code",
     name: "Code",
@@ -128,66 +210,92 @@ const getTriageColumns = (
     sortable: true,
     align: "center",
     render: (value: string) => (
-      <span className="text-sm text-gray-500 font-mono">{value}</span>
+      <span className="text-gray-400 font-mono text-sm">{value || "—"}</span>
     ),
   },
+  // --- Tier 1: Product Name (primary, prominent) ---
   {
     key: "product_name",
-    name: "Product Name",
+    name: "Product",
     type: "custom",
     filterType: "text",
-    width: 280,
+    width: 260,
     filterable: true,
     sortable: true,
-    align: "center",
     render: (value: string, row: PendingItem) => (
-      <div className="text-center">
-        <span className="text-white font-medium">{value}</span>
+      <div>
+        <span className="text-white font-medium">{value || "—"}</span>
         {row.vendor_name && (
-          <div className="text-xs text-gray-600">{row.vendor_name}</div>
+          <div className="text-xs text-gray-500">{row.vendor_name}</div>
         )}
       </div>
     ),
   },
+  // --- Tier 3: Price (supporting, emerald for currency) ---
   {
     key: "unit_price",
     name: "Price",
     type: "custom",
     filterType: "number",
-    width: 90,
+    width: 100,
     filterable: true,
     sortable: true,
-    align: "center",
+    align: "right",
     render: (value: number | null) => (
-      <span className="font-semibold">
-        <span className="text-emerald-500">$</span>
-        <span className="text-white">{value != null ? value.toFixed(2) : "—"}</span>
-      </span>
+      <div className="text-right">
+        {value != null ? (
+          <span className="text-gray-300 font-medium">
+            <span className="text-gray-500">$</span> {value.toFixed(2)}
+          </span>
+        ) : (
+          <span className="text-gray-600">—</span>
+        )}
+      </div>
     ),
   },
+  // --- Completion Bar (cyan for tab identity) ---
   {
     key: "percent_complete",
     name: "Complete",
     type: "custom",
     filterType: "number",
-    width: 130,
+    width: 140,
     filterable: true,
     sortable: true,
     align: "center",
-    render: (value: number) => (
-      <div className="w-full flex items-center justify-center gap-2">
-        <div className="w-16 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-          <div
-            className="h-full rounded-full bg-primary-500/40"
-            style={{ width: `${value}%` }}
-          />
+    render: (value: number) => {
+      // Color based on completion level
+      const barColor = value === 0 
+        ? "bg-amber-500/50" 
+        : value < 50 
+          ? "bg-rose-500/50" 
+          : value < 100 
+            ? "bg-cyan-500/50" 
+            : "bg-emerald-500/50";
+      const textColor = value === 0
+        ? "text-amber-400"
+        : value < 50
+          ? "text-rose-400"
+          : value < 100
+            ? "text-cyan-400"
+            : "text-emerald-400";
+      
+      return (
+        <div className="w-full flex items-center justify-center gap-2">
+          <div className="w-16 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full ${barColor} transition-all`}
+              style={{ width: `${value}%` }}
+            />
+          </div>
+          <span className={`text-sm font-medium tabular-nums ${textColor}`}>
+            {value}%
+          </span>
         </div>
-        <span className="text-sm text-gray-500 tabular-nums">
-          {value}%
-        </span>
-      </div>
-    ),
+      );
+    },
   },
+  // --- Actions (edit/delete) ---
   {
     key: "actions",
     name: "",
@@ -203,7 +311,7 @@ const getTriageColumns = (
             e.stopPropagation();
             onEdit(row);
           }}
-          className="h-8 w-8 rounded-lg flex items-center justify-center bg-gray-800/50 hover:bg-primary-500/20 text-gray-500 hover:text-primary-400 transition-colors"
+          className="h-8 w-8 rounded-lg flex items-center justify-center bg-gray-800/50 hover:bg-cyan-500/20 text-gray-500 hover:text-cyan-400 transition-colors"
           title="Edit / Complete Setup"
         >
           <Pencil className="w-4 h-4" />
@@ -284,8 +392,18 @@ export const TriagePanel: React.FC = () => {
   
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isLegendExpanded, setIsLegendExpanded] = useState(false);
+  const [isInfoExpanded, setIsInfoExpanded] = useState(false);
   const [prepWarningItem, setPrepWarningItem] = useState<PendingItem | null>(null);
+  
+  // Guided mode state with localStorage persistence
+  const [isGuided, setIsGuided] = useState(() => {
+    const stored = localStorage.getItem("cheflife-triage-guided");
+    return stored === "true";
+  });
+  
+  useEffect(() => {
+    localStorage.setItem("cheflife-triage-guided", isGuided.toString());
+  }, [isGuided]);
 
   // ---------------------------------------------------------------------------
   // FETCH DATA
@@ -467,73 +585,154 @@ export const TriagePanel: React.FC = () => {
   // ---------------------------------------------------------------------------
   // RENDER
   // ---------------------------------------------------------------------------
+  // Stats for subheader
+  const skippedCount = pendingItems.filter((i) => i.source === "skipped").length;
+  const incompleteCount = pendingItems.filter((i) => i.source === "incomplete").length;
+
   return (
-    <div className="space-y-6">
-      {/* Omega Diagnostics */}
-      {showDiagnostics && (
-        <div className="text-xs text-gray-600 font-mono">
-          src/features/admin/components/sections/VendorInvoice/components/TriagePanel.tsx
-        </div>
-      )}
-
-      {/* Stats Bar - L5 Muted Gray Palette */}
-      <TriageStats pendingItems={pendingItems} />
-
-      {/* Expandable Legend */}
-      <div className={`expandable-info-section ${isLegendExpanded ? "expanded" : ""}`}>
-        <button
-          onClick={() => setIsLegendExpanded(!isLegendExpanded)}
-          className="expandable-info-header w-full justify-between"
-        >
-          <div className="flex items-center gap-2">
-            <Info className="w-4 h-4 text-gray-500 flex-shrink-0" />
-            <span className="text-sm font-medium text-gray-400">
-              Icon Legend
-            </span>
+    <GuidedModeContext.Provider value={{ isGuided, setIsGuided }}>
+      <div className="space-y-6">
+        {/* Omega Diagnostics */}
+        {showDiagnostics && (
+          <div className="text-xs text-gray-600 font-mono">
+            src/features/admin/components/sections/VendorInvoice/components/TriagePanel.tsx
           </div>
-          <ChevronUp className="w-4 h-4 text-gray-500" />
-        </button>
-        <div className="expandable-info-content">
-          <div className="p-4 pt-2">
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Source</div>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="icon-badge-amber">
-                      <Ghost />
-                    </div>
-                    <span className="text-sm text-gray-400">Skipped — Parked during import</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="icon-badge-rose">
-                      <AlertTriangle />
-                    </div>
-                    <span className="text-sm text-gray-400">Incomplete — Missing required fields</span>
-                  </div>
-                </div>
+        )}
+
+        {/* L5 Subheader - Cyan for Triage tab */}
+        <div className="subheader">
+          <div className="subheader-row">
+            {/* Left: Icon + Title */}
+            <div className="subheader-left">
+              <div className="subheader-icon-box cyan">
+                <ClipboardList className="w-5 h-5" />
               </div>
               <div>
-                <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Type</div>
-                <div className="space-y-2">
+                <h3 className="subheader-title">Ingredient Triage</h3>
+                <p className="subheader-subtitle">Items needing attention before they're fully operational</p>
+              </div>
+            </div>
+            
+            {/* Right: Stats + Guided Toggle + Refresh */}
+            <div className="subheader-right">
+              <div className="subheader-toggle">
+                <div className="subheader-toggle-icon">
+                  <span className="text-sm font-medium text-gray-400">{pendingItems.length}</span>
+                </div>
+                <span className="subheader-toggle-label">Total</span>
+              </div>
+              {skippedCount > 0 && (
+                <div className="subheader-toggle">
+                  <div className="subheader-toggle-icon">
+                    <span className="text-sm font-medium text-gray-400">{skippedCount}</span>
+                  </div>
+                  <span className="subheader-toggle-label">Skipped</span>
+                </div>
+              )}
+              {incompleteCount > 0 && (
+                <div className="subheader-toggle">
+                  <div className="subheader-toggle-icon">
+                    <span className="text-sm font-medium text-gray-400">{incompleteCount}</span>
+                  </div>
+                  <span className="subheader-toggle-label">Incomplete</span>
+                </div>
+              )}
+              
+              <GuidedModeToggle />
+              
+              <button 
+                onClick={() => fetchPendingData()} 
+                className="btn-ghost p-2" 
+                title="Refresh"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Expandable Info Section - Thorough Education */}
+          <div className={`subheader-info expandable-info-section ${isInfoExpanded ? "expanded" : ""}`}>
+            <button
+              onClick={() => setIsInfoExpanded(!isInfoExpanded)}
+              className="expandable-info-header w-full justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <Info className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+                <span className="text-sm font-medium text-white">What is Triage?</span>
+              </div>
+              <ChevronUp className={`w-4 h-4 text-gray-500 transition-transform ${isInfoExpanded ? "" : "rotate-180"}`} />
+            </button>
+            <div className="expandable-info-content">
+              <div className="p-4 pt-2 space-y-4">
+                <p className="text-sm text-gray-400">
+                  <span className="font-semibold">Triage</span> is your finishing queue — items that entered ChefLife 
+                  but aren't quite ready for prime time. Unlike medical triage, nothing here is urgent. 
+                  These are ingredients waiting for you to complete their setup when you have time.
+                </p>
+                
+                {/* Two sources explained */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-3 rounded-lg border border-amber-500/20 bg-amber-500/5">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="icon-badge-amber">
+                        <Ghost />
+                      </div>
+                      <span className="text-sm font-medium text-amber-400">Skipped Items</span>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      During invoice import, you can "skip" items that don't match existing ingredients. 
+                      They land here with 0% completion. Click edit to create a new ingredient from the invoice data.
+                    </p>
+                  </div>
+                  
+                  <div className="p-3 rounded-lg border border-rose-500/20 bg-rose-500/5">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="icon-badge-rose">
+                        <AlertTriangle />
+                      </div>
+                      <span className="text-sm font-medium text-rose-400">Incomplete Items</span>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Ingredients created via Quick Add or partial imports that are missing required fields 
+                      (category, recipe units, yield, etc.). They work, but costing may be incomplete.
+                    </p>
+                  </div>
+                </div>
+                
+                {/* Type legend */}
+                <div className="flex items-center justify-center gap-6 py-2">
                   <div className="flex items-center gap-2">
                     <div className="icon-badge-primary">
                       <ShoppingCart />
                     </div>
-                    <span className="text-sm text-gray-400">Purchased — From vendor</span>
+                    <span className="text-xs text-gray-500">Purchased — From vendors</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="icon-badge-purple">
                       <ChefHat />
                     </div>
-                    <span className="text-sm text-gray-400">Prep — Made in kitchen</span>
+                    <span className="text-xs text-gray-500">Prep — Made in kitchen</span>
                   </div>
                 </div>
+                
+                <p className="text-xs text-gray-500 text-center">
+                  Work through items at your own pace. Click edit to complete setup, or delete if not needed.
+                </p>
               </div>
             </div>
           </div>
         </div>
-      </div>
+
+        {/* Guided Mode Educational Tip */}
+        <GuidanceTip>
+          <span className="font-medium text-white">How Triage Works:</span> Each row represents an ingredient 
+          that needs your attention. The <span className="text-cyan-400">% Complete</span> bar shows how much 
+          data is filled in. Click the <span className="text-primary-400">✎ edit</span> button to open the 
+          ingredient detail page and fill in missing fields. Once at 100%, the item leaves Triage automatically.
+        </GuidanceTip>
+
+        {/* Stats Bar - L5 Muted Gray Palette */}
+        <TriageStats pendingItems={pendingItems} />
 
       {/* Data Grid or Empty State */}
       {pendingItems.length === 0 && !isLoading ? (
@@ -605,7 +804,8 @@ export const TriagePanel: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </GuidedModeContext.Provider>
   );
 };
 

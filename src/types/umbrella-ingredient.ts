@@ -1,5 +1,7 @@
 import { MasterIngredient } from "./master-ingredient";
 
+export type UmbrellaPriceMode = 'primary' | 'average' | 'weighted';
+
 export interface UmbrellaIngredient {
   id: string;
   organization_id: string;
@@ -15,6 +17,11 @@ export interface UmbrellaIngredient {
   major_group_name?: string;
   category_name?: string;
   sub_category_name?: string;
+  // Price mode settings
+  price_mode?: UmbrellaPriceMode;
+  price_lookback_days?: number;
+  computed_cost?: number;
+  cost_computed_at?: string;
   // Primary ingredient data
   recipe_unit_type?: string;
   cost_per_recipe_unit?: number;

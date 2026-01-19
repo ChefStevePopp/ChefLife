@@ -1104,3 +1104,215 @@ This widget cycles through 9 sensors with premium morph animation — the canoni
 ❌ User-initiated changes (use immediate feedback)  
 ❌ Critical alerts (use attention-grabbing transitions)  
 ❌ Static values that never change
+
+---
+
+## ChefLife Charts (Recharts Patterns)
+
+ChefLife uses Recharts for data visualization. These patterns ensure visual consistency across all charts.
+
+### Dark Theme Defaults
+
+All charts share these styling conventions:
+
+```tsx
+// Axis styling
+<XAxis 
+  tick={{ fontSize: 10, fill: "#6b7280" }}  // gray-500
+  tickLine={false}
+  axisLine={false}
+/>
+
+// Tooltip styling
+<Tooltip
+  contentStyle={{
+    backgroundColor: "#1f2937",  // gray-800
+    border: "1px solid #374151",  // gray-700
+    borderRadius: "8px",
+    fontSize: "12px",
+  }}
+  labelStyle={{ color: "#9ca3af" }}  // gray-400
+/>
+
+// Reference line (dashed)
+<ReferenceLine 
+  y={value} 
+  stroke="#6b7280"  // or #2dd4bf for emphasis
+  strokeDasharray="3 3"
+  strokeWidth={1}
+/>
+```
+
+### Line Chart (Single Series)
+
+**Use for:** Price history, temperature over time, single-metric trends
+
+```tsx
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+
+<ResponsiveContainer width="100%" height={120}>
+  <LineChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
+    <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={false} />
+    <YAxis 
+      domain={["dataMin - 0.1", "dataMax + 0.1"]}
+      tick={{ fontSize: 10, fill: "#6b7280" }}
+      tickLine={false}
+      axisLine={false}
+      tickFormatter={(v) => `${v.toFixed(2)}`}
+      width={45}
+    />
+    <Tooltip /* dark theme styles */ />
+    <ReferenceLine y={avgValue} stroke="#6b7280" strokeDasharray="3 3" />
+    <Line
+      type="monotone"
+      dataKey="price"
+      stroke="#2dd4bf"  // teal-400
+      strokeWidth={2}
+      dot={{ fill: "#2dd4bf", strokeWidth: 0, r: 3 }}
+      activeDot={{ fill: "#5eead4", strokeWidth: 0, r: 5 }}
+    />
+  </LineChart>
+</ResponsiveContainer>
+```
+
+**Reference:** `PriceHistoryModal` in `UmbrellaItemCard.tsx`
+
+### Scatter Chart (Multi-Series)
+
+**Use for:** Aggregate purchase history, multi-vendor comparisons, quantity-weighted data
+
+```tsx
+import { ScatterChart, Scatter, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+
+// Color palette for multiple series
+const VENDOR_COLORS = [
+  { stroke: "#2dd4bf", fill: "#2dd4bf" }, // teal
+  { stroke: "#f59e0b", fill: "#f59e0b" }, // amber
+  { stroke: "#a78bfa", fill: "#a78bfa" }, // purple
+  { stroke: "#fb7185", fill: "#fb7185" }, // rose
+  { stroke: "#38bdf8", fill: "#38bdf8" }, // sky
+  { stroke: "#4ade80", fill: "#4ade80" }, // green
+  { stroke: "#f472b6", fill: "#f472b6" }, // pink
+  { stroke: "#facc15", fill: "#facc15" }, // yellow
+];
+
+<ResponsiveContainer width="100%" height={200}>
+  <ScatterChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+    <XAxis 
+      dataKey="date"
+      type="number"
+      domain={['dataMin', 'dataMax']}
+      tickFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+      /* dark theme styles */
+    />
+    <YAxis 
+      dataKey="price"
+      type="number"
+      domain={[chartDomain.min, chartDomain.max]}
+      tickFormatter={(v) => `${v.toFixed(0)}`}
+      width={40}
+      /* dark theme styles */
+    />
+    <Tooltip content={<CustomTooltip />} />
+    
+    {/* Weighted average reference line */}
+    <ReferenceLine 
+      y={weightedAvg} 
+      stroke="#2dd4bf" 
+      strokeDasharray="5 5"
+      strokeWidth={2}
+      label={{ value: `${weightedAvg.toFixed(2)} weighted`, fill: '#2dd4bf', fontSize: 10, position: 'right' }}
+    />
+    
+    {/* One Scatter per data series */}
+    {vendors.map((vendor, idx) => (
+      <Scatter
+        key={vendor.id}
+        name={vendor.name}
+        data={vendor.data}
+        fill={VENDOR_COLORS[idx % VENDOR_COLORS.length].fill}
+        opacity={0.8}
+      />
+    ))}
+  </ScatterChart>
+</ResponsiveContainer>
+```
+
+**Reference:** `AggregatePurchaseHistoryModal` in `UmbrellaItemCard.tsx`
+
+### Quantity-Scaled Dots
+
+For scatter charts where dot size should reflect quantity:
+
+```tsx
+// Scale dot size by quantity (min 6px, max 16px)
+const minQty = Math.min(...data.map(d => d.quantity));
+const maxQty = Math.max(...data.map(d => d.quantity));
+const range = maxQty - minQty || 1;
+const normalizedQty = (entry.quantity - minQty) / range;
+const dotSize = 6 + (normalizedQty * 10);  // 6 to 16
+```
+
+### Stats Row Pattern
+
+Display key metrics below charts:
+
+```tsx
+<div className="grid grid-cols-4 gap-2">
+  <div className="bg-gray-900/50 rounded-lg p-2.5 text-center">
+    <p className="text-2xs text-gray-500 uppercase">Weighted Avg</p>
+    <p className="text-sm font-semibold text-teal-400 tabular-nums">${stats.weightedAvg.toFixed(2)}</p>
+  </div>
+  <div className="bg-gray-900/50 rounded-lg p-2.5 text-center">
+    <p className="text-2xs text-gray-500 uppercase">Simple Avg</p>
+    <p className="text-sm font-medium text-gray-300 tabular-nums">${stats.simpleAvg.toFixed(2)}</p>
+  </div>
+  <div className="bg-gray-900/50 rounded-lg p-2.5 text-center">
+    <p className="text-2xs text-gray-500 uppercase">Spread</p>
+    <p className="text-sm font-medium text-amber-400/70 tabular-nums">${stats.spread.toFixed(2)}</p>
+  </div>
+  <div className="bg-gray-900/50 rounded-lg p-2.5 text-center">
+    <p className="text-2xs text-gray-500 uppercase">Purchases</p>
+    <p className="text-sm font-medium text-gray-300 tabular-nums">{stats.count}</p>
+  </div>
+</div>
+```
+
+### Custom Tooltip Pattern
+
+```tsx
+const CustomTooltip = ({ active, payload }: any) => {
+  if (!active || !payload || !payload.length) return null;
+  const data = payload[0].payload;
+  
+  return (
+    <div className="bg-gray-800 border border-gray-700 rounded-lg p-2 shadow-xl">
+      <p className="text-xs text-gray-400">{data.dateStr}</p>
+      <p className="text-sm font-medium text-white">${data.price.toFixed(2)}</p>
+      <p className="text-xs text-gray-500">{data.product}</p>
+      <p className="text-xs text-gray-500">Qty: {data.quantity}</p>
+    </div>
+  );
+};
+```
+
+### Chart Container Pattern
+
+Wrap charts in a subtle container:
+
+```tsx
+<div className="bg-gray-900/50 rounded-lg p-3">
+  <ResponsiveContainer width="100%" height={200}>
+    {/* Chart here */}
+  </ResponsiveContainer>
+</div>
+```
+
+### Color Semantics
+
+| Color | Hex | Use For |
+|-------|-----|--------|
+| Teal | `#2dd4bf` | Primary data, prices, positive values |
+| Amber | `#f59e0b` | Secondary data, warnings, spread |
+| Rose | `#fb7185` | Negative changes, errors |
+| Gray | `#6b7280` | Reference lines, axes, muted text |

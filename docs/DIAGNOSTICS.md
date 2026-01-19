@@ -123,7 +123,11 @@ The hook also adds `show-diagnostics` class to `document.body` when enabled. Thi
 | Component | Path |
 |-----------|------|
 | VendorInvoiceManager | `src/features/admin/components/sections/VendorInvoice/VendorInvoiceManager.tsx` |
+| VendorSelector | `src/features/admin/components/sections/VendorInvoice/components/VendorSelector.tsx` |
+| CSVUploader | `src/features/admin/components/sections/VendorInvoice/components/CSVUploader.tsx` |
+| ImportWorkspace | `src/features/admin/components/sections/VendorInvoice/components/ImportWorkspace.tsx` |
 | UmbrellaIngredientManager | `src/features/admin/components/sections/VendorInvoice/components/UmbrellaIngredientManager.tsx` |
+| ItemCodeGroupManager | `src/features/admin/components/sections/VendorInvoice/components/ItemCodeGroupManager.tsx` |
 
 ---
 

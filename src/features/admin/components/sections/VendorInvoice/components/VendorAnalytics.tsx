@@ -498,8 +498,8 @@ export const VendorAnalytics: React.FC = () => {
               onClick={() => setShowInfo(!showInfo)}
             >
               <div className="flex items-center gap-2">
-                <Info className="w-4 h-4 text-gray-400" />
-                <span className="text-sm font-medium text-gray-300">About Vendor Analytics</span>
+                <Info className="w-4 h-4 text-green-400" />
+                <span className="text-sm font-medium text-white">About Vendor Analytics</span>
               </div>
               {showInfo ? (
                 <ChevronUp className="w-4 h-4 text-gray-400" />
@@ -512,12 +512,11 @@ export const VendorAnalytics: React.FC = () => {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {SECTIONS.map((section) => {
                     const Icon = section.icon;
-                    const colors = colorClasses[section.color];
                     return (
                       <div key={section.id} className="subheader-feature-card">
-                        <Icon className={`w-4 h-4 ${colors.text}`} />
+                        <Icon className="w-4 h-4 text-green-400/80" />
                         <div>
-                          <span className={`subheader-feature-title ${colors.text}`}>{section.label}</span>
+                          <span className="subheader-feature-title text-gray-300">{section.label}</span>
                           <p className="subheader-feature-desc">{section.subtitle}</p>
                         </div>
                       </div>

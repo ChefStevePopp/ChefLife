@@ -1,40 +1,38 @@
 import React, { useCallback, useState } from "react";
-import { useDropzone } from "react-dropzone";
 import {
-  FileSpreadsheet,
   AlertTriangle,
-  Info,
-  Settings,
   Calendar,
   Check,
-  X,
-  ChevronDown,
-  ChevronUp,
   Copy,
   ShieldAlert,
+  Settings,
 } from "lucide-react";
 import Papa from "papaparse";
 import { useVendorInvoiceStore } from "@/stores/vendorInvoiceStore";
 import { parseLocalDate, formatDateForDisplay, getLocalDateString } from "@/utils/dateUtils";
 import { useAuth } from "@/hooks/useAuth";
 import { SECURITY_LEVELS } from "@/config/security";
+import { FileDropzone } from "@/shared/components/FileDropzone";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 
 interface Props {
   onUpload: (data: any[], fileDate?: Date, sourceFile?: File, supersedeInfo?: { isSupersede: boolean; existingDate: string }) => void;
   hasTemplate?: boolean;
   vendorId?: string;
+  onGoToSettings?: () => void;
 }
 
 export const CSVUploader: React.FC<Props> = ({
   onUpload,
   hasTemplate = true,
   vendorId,
+  onGoToSettings,
 }) => {
   const { checkDuplicateFile } = useVendorInvoiceStore();
   const { securityLevel } = useAuth();
+  const { showDiagnostics } = useDiagnostics();
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showFormatInfo, setShowFormatInfo] = useState(false);
   const [duplicateWarning, setDuplicateWarning] = useState<{
     filename: string;
     existingDate: string;
@@ -255,98 +253,67 @@ export const CSVUploader: React.FC<Props> = ({
     [vendorId, checkDuplicateFile, processFile],
   );
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      "text/csv": [".csv"],
-      "application/vnd.ms-excel": [".csv"],
-      "text/plain": [".csv", ".txt"],
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [
-        ".csv",
-      ],
-    },
-    multiple: false,
-    disabled: !hasTemplate,
-  });
-
-  if (!hasTemplate) {
-    return (
-      <div className="space-y-4">
-        <div className="bg-blue-500/10 rounded-lg p-6">
-          <div className="text-center">
-            <Settings className="w-12 h-12 text-blue-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-white mb-2">
-              CSV Template Required
-            </h3>
-            <p className="text-gray-400 mb-4">
-              Upload a sample CSV invoice to set up the column mapping template
-              for this vendor.
-            </p>
-          </div>
-          <CSVUploader onUpload={onUpload} hasTemplate={true} />
-        </div>
-      </div>
-    );
-  }
+  // Handle file from FileDropzone
+  const handleFile = useCallback((file: File) => {
+    onDrop([file]);
+  }, [onDrop]);
 
   return (
     <div className="space-y-4">
-      <div className="bg-blue-500/10 rounded-lg p-4">
-        <div
-          className="flex items-center justify-between cursor-pointer"
-          onClick={() => setShowFormatInfo((prev) => !prev)}
-        >
-          <div className="flex items-center gap-2">
-            <Info className="w-5 h-5 text-blue-400 flex-shrink-0" />
-            <p className="font-medium text-blue-400">Supported Formats</p>
-          </div>
-          {showFormatInfo ? (
-            <ChevronUp className="w-4 h-4 text-blue-400" />
-          ) : (
-            <ChevronDown className="w-4 h-4 text-blue-400" />
-          )}
+      {/* L5 Diagnostic Path */}
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/admin/components/sections/VendorInvoice/components/CSVUploader.tsx
         </div>
+      )}
 
-        {showFormatInfo && (
-          <div className="mt-3 pl-7 text-sm text-gray-300">
-            <ul className="list-disc list-inside space-y-1 text-gray-400">
-              <li>CSV files with comma, tab, or semicolon separators</li>
-              <li>Files must have a header row with column names</li>
-              <li>
-                Required columns: item code, product name, unit price, unit of
-                measure
-              </li>
-              <li>
-                Pro tip: Name your file with a date (e.g., 01-02-2024.csv) to
-                auto-detect the invoice date
-              </li>
-            </ul>
+      {/* No template - direct to Settings */}
+      {!hasTemplate ? (
+        <div className="card p-8">
+          <div className="flex flex-col items-center justify-center text-center">
+            <div className="w-14 h-14 rounded-xl bg-amber-500/20 flex items-center justify-center mb-4">
+              <Settings className="w-7 h-7 text-amber-400" />
+            </div>
+            <h3 className="text-lg font-medium text-white mb-2">
+              CSV Template Required
+            </h3>
+            <p className="text-gray-400 text-sm mb-6 max-w-md">
+              Before importing CSVs from this vendor, you'll need to set up column mapping 
+              so we know which columns contain item codes, prices, etc.
+            </p>
+            {onGoToSettings && (
+              <button
+                onClick={onGoToSettings}
+                className="btn-primary flex items-center gap-2"
+              >
+                <Settings className="w-4 h-4" />
+                Set Up Template
+              </button>
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        /* Main upload card - L5 placemat */
+        <div className="card p-6">
+          {/* FileDropzone - shared component */}
+          <FileDropzone
+            accept=".csv,.txt"
+            onFile={handleFile}
+            isLoading={isProcessing}
+            loadingMessage="Processing CSV..."
+            variant="primary"
+            label="Drop your vendor invoice CSV here"
+            hint="Supports comma, tab, or semicolon separators"
+            disabled={false}
+          />
+        </div>
+      )}
 
-      <div
-        {...getRootProps()}
-        className={`
-          border-2 border-dashed rounded-lg p-8
-          flex flex-col items-center justify-center
-          transition-colors cursor-pointer
-          ${isDragActive ? "border-primary-500 bg-primary-500/10" : "border-gray-700 hover:border-primary-500/50"}
-          ${error ? "border-rose-500" : ""}
-        `}
-      >
-        <input id="csv-file-input" {...getInputProps()} />
-        <FileSpreadsheet className="w-12 h-12 text-gray-400 mb-4" />
-        <p className="text-lg font-medium text-white mb-2">
-          Drop your vendor invoice CSV here
-        </p>
-        <p className="text-sm text-gray-400">or click to select file</p>
-      </div>
-
+      {/* Error display */}
       {error && (
-        <div className="flex items-center gap-2 text-rose-400 bg-rose-500/10 rounded-lg p-4">
+        <div className="flex items-center gap-2 text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg p-4">
           <AlertTriangle className="w-5 h-5 flex-shrink-0" />
-          <p>{error}</p>
+          <p className="text-sm">{error}</p>
         </div>
       )}
 

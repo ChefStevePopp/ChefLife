@@ -14,6 +14,7 @@ import { useOperationsStore } from "@/stores/operationsStore";
 import { useVendorTemplatesStore } from "@/stores/vendorTemplatesStore";
 import { useVendorInvoiceStore } from "@/stores/vendorInvoiceStore";
 import { formatDateForDisplay } from "@/utils/dateUtils";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 
 // =============================================================================
 // VENDOR SELECTOR - L5 Sub-header Pattern
@@ -39,6 +40,7 @@ export const VendorSelector: React.FC<Props> = ({
   const { settings, fetchSettings } = useOperationsStore();
   const { templates } = useVendorTemplatesStore();
   const { fetchLastInvoice, lastInvoice, lastUpload } = useVendorInvoiceStore();
+  const { showDiagnostics } = useDiagnostics();
   const vendors = settings?.vendors || [];
   const [isInfoExpanded, setIsInfoExpanded] = useState(false);
 
@@ -56,11 +58,18 @@ export const VendorSelector: React.FC<Props> = ({
 
   return (
     <div className="subheader">
+      {/* L5 Diagnostic Path */}
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono mb-2">
+          src/features/admin/components/sections/VendorInvoice/components/VendorSelector.tsx
+        </div>
+      )}
+
       {/* Main Row - Fully Justified */}
       <div className="subheader-row">
         {/* Left: Icon + Title */}
         <div className="subheader-left">
-          <div className="subheader-icon">
+          <div className="subheader-icon-box purple">
             <FileText />
           </div>
           <div>
@@ -105,7 +114,7 @@ export const VendorSelector: React.FC<Props> = ({
           <button
             type="button"
             onClick={() => onFileTypeChange("pdf")}
-            className={`subheader-toggle ${fileType === "pdf" ? "active green" : ""}`}
+            className={`subheader-toggle ${fileType === "pdf" ? "active emerald" : ""}`}
             title="PDF Import"
           >
             <div className="subheader-toggle-icon">
@@ -131,14 +140,13 @@ export const VendorSelector: React.FC<Props> = ({
         {/* Status Badges (when vendor selected) */}
         {selectedVendor && (
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-shrink-0">
-            {/* Template Status */}
             {fileType !== "manual" && (
               hasTemplate ? (
                 <div className="flex items-center gap-2 px-2.5 py-1.5 bg-gray-800/50 rounded-lg border border-gray-700/50">
                   <FileCheck2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
                   <div className="flex flex-col text-xs leading-relaxed">
                     <span className="text-gray-300">
-                      <span className="text-gray-500">CSV Template:</span>{" "}
+                      <span className="text-gray-500">Template:</span>{" "}
                       <span className="font-medium text-emerald-400">Ready</span>
                     </span>
                     <span className="text-gray-500">Column mapping configured</span>
@@ -149,7 +157,7 @@ export const VendorSelector: React.FC<Props> = ({
                   <FileX2 className="w-4 h-4 text-rose-400 flex-shrink-0" />
                   <div className="flex flex-col text-xs leading-relaxed">
                     <span className="text-gray-300">
-                      <span className="text-gray-500">CSV Template:</span>{" "}
+                      <span className="text-gray-500">Template:</span>{" "}
                       <span className="font-medium text-rose-400">Not configured</span>
                     </span>
                     <span className="text-gray-500">Go to Settings to set up</span>
@@ -161,7 +169,7 @@ export const VendorSelector: React.FC<Props> = ({
             {/* Invoice History Info */}
             {(lastInvoice || lastUpload) && (
               <div className="flex items-center gap-2 px-2.5 py-1.5 bg-gray-800/50 rounded-lg border border-gray-700/50">
-                <Calendar className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <Calendar className="w-4 h-4 text-purple-400 flex-shrink-0" />
                 <div className="flex flex-col text-xs leading-relaxed">
                   {/* Last Invoice Date (by calendar) - fall back to upload date for legacy */}
                   {(lastInvoice?.invoice_date || lastInvoice?.created_at) && (
@@ -224,8 +232,8 @@ export const VendorSelector: React.FC<Props> = ({
               </div>
               <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
                 <div className="flex items-center gap-2 mb-2">
-                  <FileText className="w-4 h-4 text-green-400" />
-                  <span className="text-sm font-medium text-green-400">PDF Import</span>
+                  <FileText className="w-4 h-4 text-emerald-400" />
+                  <span className="text-sm font-medium text-emerald-400">PDF Import</span>
                 </div>
                 <p className="text-xs text-gray-500">
                   Upload PDF invoices. We'll extract line items and match to ingredients automatically.

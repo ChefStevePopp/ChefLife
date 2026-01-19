@@ -2,16 +2,13 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
   FileText,
   Camera,
-  Upload,
   X,
-  AlertCircle,
   Info,
   ChevronUp,
   ChevronDown,
   Eye,
   EyeOff,
 } from "lucide-react";
-import { useDropzone } from "react-dropzone";
 import { DocumentPreview } from "./DocumentPreview";
 import { InvoiceEntryPanel, LineItemState } from "./InvoiceEntryPanel";
 import { parseInvoice, ParsedInvoice } from "@/lib/vendorPdfParsers";
@@ -22,6 +19,8 @@ import { nexus } from "@/lib/nexus";
 import { generateInvoiceReference } from "@/lib/friendly-id";
 import toast from "react-hot-toast";
 import { ImportRecord } from "./ImportHistory";
+import { FileDropzone } from "@/shared/components/FileDropzone";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 
 // =============================================================================
 // IMPORT WORKSPACE - L6 Design
@@ -52,6 +51,7 @@ export const ImportWorkspace: React.FC<Props> = ({
 }) => {
   const { user } = useAuth();
   const { organizationId } = useOrganizationId();
+  const { showDiagnostics } = useDiagnostics();
   
   // ---------------------------------------------------------------------------
   // STATE
@@ -114,26 +114,16 @@ export const ImportWorkspace: React.FC<Props> = ({
   // ---------------------------------------------------------------------------
   // FILE HANDLING
   // ---------------------------------------------------------------------------
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    const uploadedFile = acceptedFiles[0];
-    if (uploadedFile) {
-      // Validate file size (10MB max)
-      if (uploadedFile.size > 10 * 1024 * 1024) {
-        toast.error("File too large. Maximum size is 10MB.");
-        return;
-      }
-      setFile(uploadedFile);
-      setParsedInvoice(null); // Reset parsed data
+  // Handle file from FileDropzone
+  const handleFile = useCallback((uploadedFile: File) => {
+    // Validate file size (10MB max)
+    if (uploadedFile.size > 10 * 1024 * 1024) {
+      toast.error("File too large. Maximum size is 10MB.");
+      return;
     }
+    setFile(uploadedFile);
+    setParsedInvoice(null); // Reset parsed data
   }, []);
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: importType === "pdf" 
-      ? { "application/pdf": [".pdf"] }
-      : { "image/*": [".jpg", ".jpeg", ".png", ".webp"] },
-    multiple: false,
-  });
 
   const handleTextExtracted = (text: string) => {
     // Parse the extracted text
@@ -589,6 +579,13 @@ export const ImportWorkspace: React.FC<Props> = ({
   // ---------------------------------------------------------------------------
   return (
     <div className="space-y-4">
+      {/* L5 Diagnostic Path */}
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/admin/components/sections/VendorInvoice/components/ImportWorkspace.tsx
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -657,36 +654,21 @@ export const ImportWorkspace: React.FC<Props> = ({
           <p className="text-sm text-gray-400 mt-1">{recallRecord?.file_name}</p>
         </div>
       ) : !file ? (
-        /* Upload Zone */
-        <div
-          {...getRootProps()}
-          className={`
-            border-2 border-dashed rounded-lg p-12
-            flex flex-col items-center justify-center
-            transition-colors cursor-pointer
-            ${isDragActive 
-              ? "border-primary-500 bg-primary-500/10" 
-              : "border-gray-700 hover:border-primary-500/50"
+        /* Upload Zone - L5 placemat with FileDropzone */
+        <div className="card p-6">
+          <FileDropzone
+            accept={importType === "pdf" ? ".pdf" : ".jpg,.jpeg,.png,.webp"}
+            onFile={handleFile}
+            variant={importType === "pdf" ? "green" : "amber"}
+            label={importType === "pdf" 
+              ? "Drop your PDF invoice here" 
+              : "Drop invoice photo here (required for audit trail)"
             }
-          `}
-        >
-          <input {...getInputProps()} />
-          <div className="w-16 h-16 rounded-full bg-gray-800/50 flex items-center justify-center mb-4">
-            {importType === "pdf" ? (
-              <FileText className="w-8 h-8 text-gray-400" />
-            ) : (
-              <Camera className="w-8 h-8 text-gray-400" />
-            )}
-          </div>
-          <p className="text-lg font-medium text-white mb-2">
-            {isDragActive ? "Drop file here" : `Upload ${importType === "pdf" ? "PDF Invoice" : "Invoice Photo (Required)"}`}
-          </p>
-          <p className="text-sm text-gray-400 mb-4">
-            Drag and drop or click to select
-          </p>
-          <p className="text-xs text-gray-600">
-            Maximum file size: 10MB
-          </p>
+            hint={importType === "pdf"
+              ? "We'll extract line items and match to your ingredient list"
+              : "Photo stored permanently for audit compliance • Max 10MB"
+            }
+          />
         </div>
       ) : (
         /* Stacked Workspace: Document on top (collapsible), Table below (full width) */
