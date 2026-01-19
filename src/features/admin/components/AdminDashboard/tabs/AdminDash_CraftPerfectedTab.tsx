@@ -1,9 +1,10 @@
 import React from "react";
 import {
-  BookOpen,
   Award,
   GraduationCap,
-  Sparkles,
+  FileText,
+  CheckCircle,
+  Youtube,
 } from "lucide-react";
 import { useDiagnostics } from "@/hooks/useDiagnostics";
 
@@ -11,14 +12,24 @@ import { useDiagnostics } from "@/hooks/useDiagnostics";
  * =============================================================================
  * NEXUS DASHBOARD - Craft Perfected Tab
  * =============================================================================
- * Future home of culinary education content:
- * - Standards and Practices of the Professional Kitchen e-book
- * - Culinary techniques and best practices
- * - Professional development content
+ * Education and certification platform:
  * 
- * This tab is future-proofed for when the education platform is built.
+ * Phase 1 - Internal:
+ *   - Memphis Fire policies, SOPs, standards
+ *   - Proficiency checklists, station certifications
+ * 
+ * Phase 2 - Education:
+ *   - Basic cooking theory, food safety
+ *   - Culinary techniques and best practices
+ * 
+ * Future - Full Certification:
+ *   - Complete culinary certification via YouTube + self-study
+ *   - Built on 8.5 years of collegiate culinary arts teaching experience
  * =============================================================================
  */
+
+// Craft Perfected logo - platform asset (128px for clarity on large screens)
+const CRAFT_PERFECTED_LOGO = "https://vcfigkwtsqvrvahfprya.supabase.co/storage/v1/object/public/platform-assets/craft_perfected_128.webp";
 
 export const AdminDash_CraftPerfectedTab: React.FC = () => {
   const { showDiagnostics } = useDiagnostics();
@@ -36,33 +47,37 @@ export const AdminDash_CraftPerfectedTab: React.FC = () => {
       <div className="subheader">
         <div className="subheader-row">
           <div className="subheader-left">
-            <div className="subheader-icon-box purple">
-              <BookOpen className="w-6 h-6" />
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden bg-gray-800">
+              <img 
+                src={CRAFT_PERFECTED_LOGO} 
+                alt="Craft Perfected" 
+                className="w-full h-full object-contain"
+              />
             </div>
             <div>
               <h3 className="subheader-title">Craft Perfected</h3>
-              <p className="subheader-subtitle">Standards & Practices of the Professional Kitchen</p>
+              <p className="subheader-subtitle">Training, certifications & culinary education</p>
             </div>
           </div>
           <div className="subheader-right">
-            {/* Future: content type toggles */}
+            {/* Content type toggles */}
             <div className="subheader-toggle">
               <div className="subheader-toggle-icon">
-                <BookOpen className="w-4 h-4" />
+                <FileText className="w-4 h-4" />
               </div>
-              <span className="subheader-toggle-label">Chapters</span>
+              <span className="subheader-toggle-label">Policies</span>
             </div>
             <div className="subheader-toggle">
               <div className="subheader-toggle-icon">
-                <Award className="w-4 h-4" />
+                <CheckCircle className="w-4 h-4" />
               </div>
-              <span className="subheader-toggle-label">Standards</span>
+              <span className="subheader-toggle-label">Proficiency</span>
             </div>
             <div className="subheader-toggle">
               <div className="subheader-toggle-icon">
                 <GraduationCap className="w-4 h-4" />
               </div>
-              <span className="subheader-toggle-label">Training</span>
+              <span className="subheader-toggle-label">Education</span>
             </div>
           </div>
         </div>
@@ -70,60 +85,76 @@ export const AdminDash_CraftPerfectedTab: React.FC = () => {
 
       {/* Coming Soon State */}
       <div className="card p-12 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-purple-500/20 flex items-center justify-center mx-auto mb-6">
-          <Sparkles className="w-8 h-8 text-purple-400" />
+        <div className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6 overflow-hidden bg-gray-800/50 ring-2 ring-red-500/30">
+          <img 
+            src={CRAFT_PERFECTED_LOGO} 
+            alt="Craft Perfected" 
+            className="w-16 h-16 object-contain"
+          />
         </div>
         <h3 className="text-xl font-semibold text-white mb-2">
           Coming Soon
         </h3>
-        <p className="text-gray-400 max-w-md mx-auto mb-6">
-          Craft Perfected will be your gateway to culinary excellence — 
-          professional standards, techniques, and best practices from 
-          35 years of kitchen experience.
+        <p className="text-gray-400 max-w-lg mx-auto mb-6">
+          Craft Perfected will be your complete training and certification platform — 
+          from internal policies and proficiency checklists to full culinary education 
+          via YouTube and self-study.
         </p>
         <div className="flex flex-wrap justify-center gap-3">
-          <span className="px-3 py-1.5 text-xs font-medium bg-purple-500/10 text-purple-400 rounded-full border border-purple-500/20">
-            Professional Standards
+          <span className="px-3 py-1.5 text-xs font-medium bg-red-500/10 text-red-400 rounded-full border border-red-500/20">
+            Internal Policies
           </span>
-          <span className="px-3 py-1.5 text-xs font-medium bg-purple-500/10 text-purple-400 rounded-full border border-purple-500/20">
-            Kitchen Best Practices
+          <span className="px-3 py-1.5 text-xs font-medium bg-red-500/10 text-red-400 rounded-full border border-red-500/20">
+            Station Certifications
           </span>
-          <span className="px-3 py-1.5 text-xs font-medium bg-purple-500/10 text-purple-400 rounded-full border border-purple-500/20">
-            Culinary Techniques
+          <span className="px-3 py-1.5 text-xs font-medium bg-red-500/10 text-red-400 rounded-full border border-red-500/20">
+            Culinary Education
           </span>
         </div>
       </div>
 
-      {/* Teaser Cards */}
+      {/* Phase Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="card p-6 opacity-60">
-          <div className="icon-badge-purple mb-4">
-            <BookOpen />
+        <div className="card p-6 border-l-2 border-l-red-500/50">
+          <div className="icon-badge-rose mb-4">
+            <FileText />
           </div>
-          <h4 className="text-sm font-medium text-white mb-1">The E-Book</h4>
-          <p className="text-xs text-gray-500">
-            Standards and Practices of the Professional Kitchen — your comprehensive guide
+          <h4 className="text-sm font-medium text-white mb-1">Internal Standards</h4>
+          <p className="text-xs text-gray-500 mb-3">
+            Your restaurant's policies, SOPs, and house standards
           </p>
+          <span className="text-2xs text-amber-400 font-medium uppercase tracking-wide">
+            Phase 1
+          </span>
         </div>
 
-        <div className="card p-6 opacity-60">
-          <div className="icon-badge-purple mb-4">
+        <div className="card p-6 opacity-70">
+          <div className="icon-badge-rose mb-4">
             <Award />
           </div>
-          <h4 className="text-sm font-medium text-white mb-1">Quality Standards</h4>
-          <p className="text-xs text-gray-500">
-            What separates good from great — the details that matter
+          <h4 className="text-sm font-medium text-white mb-1">Proficiency Certifications</h4>
+          <p className="text-xs text-gray-500 mb-3">
+            Skills checklists and station certifications for your team
           </p>
+          <span className="text-2xs text-gray-500 font-medium uppercase tracking-wide">
+            Phase 2
+          </span>
         </div>
 
-        <div className="card p-6 opacity-60">
-          <div className="icon-badge-purple mb-4">
-            <GraduationCap />
+        <div className="card p-6 opacity-50">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="icon-badge-rose">
+              <GraduationCap />
+            </div>
+            <Youtube className="w-5 h-5 text-red-500/50" />
           </div>
-          <h4 className="text-sm font-medium text-white mb-1">Team Training</h4>
-          <p className="text-xs text-gray-500">
-            Develop your team with professional development content
+          <h4 className="text-sm font-medium text-white mb-1">Full Certification</h4>
+          <p className="text-xs text-gray-500 mb-3">
+            Complete culinary certification via YouTube & self-study
           </p>
+          <span className="text-2xs text-gray-600 font-medium uppercase tracking-wide">
+            Future
+          </span>
         </div>
       </div>
     </div>

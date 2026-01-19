@@ -57,6 +57,10 @@ interface ExcelDataGridProps<T> {
   initialFilterState?: GridFilterState | null;
   /** Optional callback fired when filter state changes (for persistence) */
   onFilterStateChange?: (state: GridFilterState) => void;
+  /** Optional custom icon for row click affordance (defaults to Pencil) */
+  rowClickIcon?: React.ComponentType<{ className?: string }>;
+  /** Optional tooltip for row click affordance (defaults to "Click to edit") */
+  rowClickTooltip?: string;
 }
 
 // Helper to get nested value from object
@@ -84,6 +88,8 @@ export function ExcelDataGrid<T>({
   onFilteredDataChange,
   initialFilterState,
   onFilterStateChange,
+  rowClickIcon: RowClickIcon = Pencil,
+  rowClickTooltip = "Click to edit",
 }: ExcelDataGridProps<T>) {
   const { showDiagnostics } = useDiagnostics();
   
@@ -914,10 +920,10 @@ export function ExcelDataGrid<T>({
                   </th>
                 );
               })}
-              {/* Edit column header - with tooltip for training */}
+              {/* Row click column header - with tooltip for training */}
               {onRowClick && (
-                <th className="px-3 py-2 text-sm font-medium text-center w-12" title="Click any row to edit">
-                  <Pencil className="w-3.5 h-3.5 text-gray-500 mx-auto" />
+                <th className="px-3 py-2 text-sm font-medium text-center w-12" title={rowClickTooltip}>
+                  <RowClickIcon className="w-3.5 h-3.5 text-gray-500 mx-auto" />
                 </th>
               )}
             </tr>
@@ -949,14 +955,14 @@ export function ExcelDataGrid<T>({
                       </td>
                     );
                   })}
-                  {/* Edit affordance - pencil only with tooltip */}
+                  {/* Row click affordance */}
                   {onRowClick && (
                     <td className="px-3 py-3 text-center w-12">
                       <span 
                         className="inline-flex text-gray-600 group-hover:text-primary-400 transition-colors"
-                        title="Click to edit"
+                        title={rowClickTooltip}
                       >
-                        <Pencil className="w-3.5 h-3.5" />
+                        <RowClickIcon className="w-3.5 h-3.5" />
                       </span>
                     </td>
                   )}

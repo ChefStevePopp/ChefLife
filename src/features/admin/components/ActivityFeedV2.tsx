@@ -240,6 +240,7 @@ export const ActivityFeedV2: React.FC<ActivityFeedV2Props> = ({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showAllRecent, setShowAllRecent] = useState(false);
   const [filterSeverity, setFilterSeverity] = useState<'all' | 'critical' | 'warning' | 'info'>('all');
+  const [showAcknowledged, setShowAcknowledged] = useState(false);
 
   // Fetch activities using NEXUS fields directly
   const fetchActivities = useCallback(async () => {
@@ -360,9 +361,17 @@ export const ActivityFeedV2: React.FC<ActivityFeedV2Props> = ({
     !a.isAcknowledged && (a.severity === 'critical' || a.severity === 'warning')
   );
   
-  const recent = filteredActivities.filter(a => 
-    a.isAcknowledged || a.severity === 'info'
-  );
+  // Recent = info items + acknowledged items (if toggle is on)
+  const recent = filteredActivities.filter(a => {
+    // Always show unacknowledged info items
+    if (a.severity === 'info' && !a.isAcknowledged) return true;
+    // Show acknowledged items only if toggle is on
+    if (a.isAcknowledged && showAcknowledged) return true;
+    return false;
+  });
+  
+  // Count how many acknowledged items are hidden
+  const hiddenAcknowledgedCount = filteredActivities.filter(a => a.isAcknowledged).length;
 
   const displayedRecent = showAllRecent ? recent : recent.slice(0, 5);
 
@@ -524,41 +533,75 @@ export const ActivityFeedV2: React.FC<ActivityFeedV2Props> = ({
               </div>
             )}
 
-            {/* Recent Group */}
-            {recent.length > 0 && (
+            {/* Recent Group - show if items exist OR if there are hidden acknowledged items */}
+            {(recent.length > 0 || hiddenAcknowledgedCount > 0) && (
               <div>
-                <div className="flex items-center gap-2 mb-2 px-1">
-                  <Clock className="w-4 h-4 text-gray-500" />
-                  <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                    Recent
-                  </span>
-                  <span className="text-xs text-gray-600">({recent.length})</span>
-                </div>
-                <div className="bg-gray-800/30 rounded-lg overflow-hidden divide-y divide-gray-700/30">
-                  {displayedRecent.map((activity) => (
-                    <ActivityRow
-                      key={activity.id}
-                      activity={activity}
-                      onAcknowledge={handleAcknowledge}
-                      isExpanded={expandedId === activity.id}
-                      onToggleExpand={() => setExpandedId(
-                        expandedId === activity.id ? null : activity.id
-                      )}
-                    />
-                  ))}
+                <div className="flex items-center justify-between mb-2 px-1">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-gray-500" />
+                    <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      Recent
+                    </span>
+                    <span className="text-xs text-gray-600">({recent.length})</span>
+                  </div>
+                  
+                  {/* Show acknowledged toggle */}
+                  {hiddenAcknowledgedCount > 0 && (
+                    <button
+                      onClick={() => setShowAcknowledged(!showAcknowledged)}
+                      className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                    >
+                      <div className={`w-3 h-3 rounded border ${
+                        showAcknowledged 
+                          ? 'bg-primary-500 border-primary-500' 
+                          : 'border-gray-600'
+                      } flex items-center justify-center`}>
+                        {showAcknowledged && <Check className="w-2 h-2 text-white" />}
+                      </div>
+                      <span>Show acknowledged ({hiddenAcknowledgedCount})</span>
+                    </button>
+                  )}
                 </div>
                 
-                {/* Show more toggle */}
-                {recent.length > 5 && (
-                  <button
-                    onClick={() => setShowAllRecent(!showAllRecent)}
-                    className="w-full mt-2 py-2 text-xs text-gray-400 hover:text-white hover:bg-gray-800/30 rounded-lg transition-colors"
-                  >
-                    {showAllRecent 
-                      ? 'Show less' 
-                      : `Show ${recent.length - 5} more`
-                    }
-                  </button>
+                {/* List of recent items */}
+                {displayedRecent.length > 0 ? (
+                  <>
+                    <div className="bg-gray-800/30 rounded-lg overflow-hidden divide-y divide-gray-700/30">
+                      {displayedRecent.map((activity) => (
+                        <ActivityRow
+                          key={activity.id}
+                          activity={activity}
+                          onAcknowledge={handleAcknowledge}
+                          isExpanded={expandedId === activity.id}
+                          onToggleExpand={() => setExpandedId(
+                            expandedId === activity.id ? null : activity.id
+                          )}
+                        />
+                      ))}
+                    </div>
+                    
+                    {/* Show more toggle */}
+                    {recent.length > 5 && (
+                      <button
+                        onClick={() => setShowAllRecent(!showAllRecent)}
+                        className="w-full mt-2 py-2 text-xs text-gray-400 hover:text-white hover:bg-gray-800/30 rounded-lg transition-colors"
+                      >
+                        {showAllRecent 
+                          ? 'Show less' 
+                          : `Show ${recent.length - 5} more`
+                        }
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  /* Inbox zero state - only acknowledged items exist */
+                  <div className="text-center py-6 bg-gray-800/20 rounded-lg border border-gray-700/30">
+                    <Check className="w-6 h-6 text-emerald-500/50 mx-auto mb-2" />
+                    <p className="text-sm text-gray-400">Inbox zero</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {hiddenAcknowledgedCount} acknowledged item{hiddenAcknowledgedCount !== 1 ? 's' : ''} hidden
+                    </p>
+                  </div>
                 )}
               </div>
             )}

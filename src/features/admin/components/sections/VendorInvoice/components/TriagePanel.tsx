@@ -61,14 +61,14 @@ const GuidedModeToggle: React.FC = () => {
   return (
     <button
       onClick={() => setIsGuided(!isGuided)}
-      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+      className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all ${
         isGuided 
-          ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 shadow-lg shadow-cyan-500/10" 
-          : "bg-gray-800/50 text-gray-500 border border-gray-700/50 hover:text-gray-400 hover:border-gray-600"
+          ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30" 
+          : "bg-gray-700/50 text-gray-500 border border-transparent hover:text-gray-400"
       }`}
       title={isGuided ? "Guided mode: ON" : "Guided mode: OFF"}
     >
-      <GraduationCap className="w-3.5 h-3.5" />
+      <GraduationCap className="w-4 h-4" />
       <span>{isGuided ? "Guided" : "Guide"}</span>
     </button>
   );
@@ -613,36 +613,35 @@ export const TriagePanel: React.FC = () => {
               </div>
             </div>
             
-            {/* Right: Stats + Guided Toggle + Refresh */}
+            {/* Right: Stats | Actions */}
             <div className="subheader-right">
-              <div className="subheader-toggle">
-                <div className="subheader-toggle-icon">
-                  <span className="text-sm font-medium text-gray-400">{pendingItems.length}</span>
-                </div>
-                <span className="subheader-toggle-label">Total</span>
-              </div>
+              {/* Stats Pills */}
+              <span className="subheader-pill">
+                <span className="subheader-pill-value">{pendingItems.length}</span>
+                <span className="subheader-pill-label">Total</span>
+              </span>
               {skippedCount > 0 && (
-                <div className="subheader-toggle">
-                  <div className="subheader-toggle-icon">
-                    <span className="text-sm font-medium text-gray-400">{skippedCount}</span>
-                  </div>
-                  <span className="subheader-toggle-label">Skipped</span>
-                </div>
+                <span className="subheader-pill">
+                  <span className="subheader-pill-value">{skippedCount}</span>
+                  <span className="subheader-pill-label">Skipped</span>
+                </span>
               )}
               {incompleteCount > 0 && (
-                <div className="subheader-toggle">
-                  <div className="subheader-toggle-icon">
-                    <span className="text-sm font-medium text-gray-400">{incompleteCount}</span>
-                  </div>
-                  <span className="subheader-toggle-label">Incomplete</span>
-                </div>
+                <span className="subheader-pill">
+                  <span className="subheader-pill-value">{incompleteCount}</span>
+                  <span className="subheader-pill-label">Incomplete</span>
+                </span>
               )}
               
+              {/* Divider */}
+              <div className="subheader-divider" />
+              
+              {/* Action Buttons */}
               <GuidedModeToggle />
               
               <button 
                 onClick={() => fetchPendingData()} 
-                className="btn-ghost p-2" 
+                className="btn-ghost px-2 ml-1" 
                 title="Refresh"
               >
                 <RefreshCw className="w-4 h-4" />

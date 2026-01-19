@@ -168,53 +168,74 @@ select::-ms-expand {
   }
 
   /* ==========================================================================
-   * L5 SUB-HEADER PATTERN (Gold Standard: VendorSettings.tsx)
+   * L5 SUB-HEADER PATTERN
    * ==========================================================================
    * Use for tab content headers that sit below the main module header.
    * Creates visual hierarchy: Module Header (branded) → Sub-header (workspace)
    * 
-   * ANATOMY:
-   * ┌─────────────────────────────────────────────────────────────────────────┐
-   * │ [Icon Box]  Title                              [Stat] [Stat] [Stat]    │
-   * │             Subtitle                                                   │
-   * ├─────────────────────────────────────────────────────────────────────────┤
-   * │ ⓘ Expandable Info Section                                        ▼    │
-   * │   ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                  │
-   * │   │ Feature  │ │ Feature  │ │ Feature  │ │ Feature  │   (when open)   │
-   * │   └──────────┘ └──────────┘ └──────────┘ └──────────┘                  │
-   * └─────────────────────────────────────────────────────────────────────────┘
+   * TWO LAYOUT PATTERNS:
+   * 
+   * 1. TOGGLE PATTERN (stats-only, no CTA)
+   *    Use .subheader-toggle when you just need stat badges with labels below.
+   *    ┌─────────────────────────────────────────────────────────────────────┐
+   *    │ [Icon] Title                            [Stat] [Stat] [Stat]       │
+   *    │        Subtitle                          label  label  label       │
+   *    └─────────────────────────────────────────────────────────────────────┘
+   * 
+   * 2. PILL PATTERN (Gold Standard: UmbrellaIngredientManager.tsx)
+   *    Use .subheader-pill when you have CTAs - pills match button height.
+   *    ┌─────────────────────────────────────────────────────────────────────┐
+   *    │ [Icon] Title                                                        │
+   *    │        Subtitle                                                     │
+   *    │                                                                     │
+   *    │            [Stat Pills]           |       [Action Buttons]          │
+   *    │                                   |                                 │
+   *    │   [3 Umbrellas] [3 Primary] [✨2 Suggested] | [↻]    [+ New]       │
+   *    │       pill         pill      pill.highlight | btn    btn-ghost-blue │
+   *    └─────────────────────────────────────────────────────────────────────┘
+   * 
+   * PILL PATTERN RULES:
+   * - Stats: .subheader-pill (gray) for counts/metrics
+   * - Highlight: .subheader-pill.highlight (primary blue) for suggestions/alerts
+   * - Divider: .subheader-divider separates stats from actions (mx-3 breathing room)
+   * - Actions: btn-ghost px-2 (icon-only refresh), btn-ghost-blue ml-1 (CTA)
+   * - Animation: .animate-attention on highlight pills (3x glow on mount, then stops)
    * 
    * ICON BOX DESIGN:
    * - Container: w-10 h-10 rounded-lg bg-{color}-500/20
-   * - Icon: w-7 h-7 (or w-5 h-5) text-{color}-400/80
+   * - Icon: w-5 h-5 text-{color}-400/80
    * - Color matches tab color (rose for Settings, primary for Import, etc.)
    * 
-   * STAT TOGGLES:
-   * - Grey inactive boxes with count/icon
-   * - Label below in text-[10px]
-   * - Click to filter (optional)
-   * 
-   * EXAMPLE USAGE:
+   * EXAMPLE USAGE (Pill Pattern):
    *   <div className="subheader">
    *     <div className="subheader-row">
    *       <div className="subheader-left">
    *         <div className="subheader-icon-box rose">
-   *           <Settings className="w-7 h-7" />
+   *           <Umbrella className="w-5 h-5" />
    *         </div>
    *         <div>
-   *           <h3 className="subheader-title">Page Title</h3>
-   *           <p className="subheader-subtitle">Brief description</p>
+   *           <h3 className="subheader-title">Umbrella Ingredients</h3>
+   *           <p className="subheader-subtitle">Group similar products</p>
    *         </div>
    *       </div>
    *       <div className="subheader-right">
-   *         <div className="subheader-toggle">
-   *           <div className="subheader-toggle-icon">42</div>
-   *           <span className="subheader-toggle-label">Items</span>
-   *         </div>
+   *         <span className="subheader-pill">
+   *           <span className="subheader-pill-value">3</span>
+   *           <span className="subheader-pill-label">Umbrellas</span>
+   *         </span>
+   *         <button className="subheader-pill highlight animate-attention">
+   *           <Sparkles className="w-4 h-4" />
+   *           <span className="subheader-pill-value">2</span>
+   *           <span className="subheader-pill-label">Suggested</span>
+   *         </button>
+   *         <div className="subheader-divider" />
+   *         <button className="btn-ghost px-2" title="Refresh">
+   *           <RefreshCw className="w-4 h-4" />
+   *         </button>
+   *         <button className="btn-ghost-blue ml-1">
+   *           <Plus className="w-4 h-4 mr-1" /> New
+   *         </button>
    *       </div>
-   *     </div>
-   *     <div className="subheader-info expandable-info-section">
-   *       <!-- Expandable content -->
    *     </div>
    *   </div>
    * ==========================================================================
@@ -237,6 +258,86 @@ select::-ms-expand {
 
   .subheader-right {
     @apply flex items-center gap-2 flex-shrink-0;
+  }
+
+  /* ---------------------------------------------------------------------------
+   * SUB-HEADER DIVIDER (pipe separator)
+   * Use between stat groups and action groups
+   * ---------------------------------------------------------------------------
+   */
+  .subheader-divider {
+    @apply h-8 w-px bg-gray-600/50 mx-3;
+  }
+
+  /* ---------------------------------------------------------------------------
+   * SUB-HEADER PILLS (Gold Standard)
+   * Horizontal stat pills that match button height. Use when CTAs are present.
+   * Pattern: [pill] [pill] [pill.highlight] | [icon-btn] [cta-btn]
+   * 
+   * Classes:
+   *   .subheader-pill           - Base gray pill
+   *   .subheader-pill.highlight - Primary blue for suggestions (use with .animate-attention)
+   *   .subheader-pill.amber     - Amber for warnings
+   *   .subheader-pill.rose      - Rose for errors/deletions
+   *   .subheader-pill.emerald   - Emerald for success
+   * ---------------------------------------------------------------------------
+   */
+  .subheader-pill {
+    @apply inline-flex items-center gap-1.5 px-3 py-2 
+           bg-gray-700/50 rounded-xl text-sm text-gray-400
+           border border-transparent;
+  }
+  .subheader-pill-value {
+    @apply font-medium text-gray-300;
+  }
+  .subheader-pill-label {
+    @apply text-xs text-gray-500;
+  }
+
+  /* Pill color variants */
+  .subheader-pill.amber {
+    @apply bg-amber-500/20 text-amber-400 border-amber-500/30;
+  }
+  .subheader-pill.amber .subheader-pill-value {
+    @apply text-amber-300;
+  }
+  .subheader-pill.amber svg {
+    @apply text-amber-400;
+  }
+
+  /* Highlight variant - subtle primary for suggestions/actions */
+  .subheader-pill.highlight {
+    @apply bg-primary-700/40 text-primary-300 border-primary-600/40;
+  }
+  .subheader-pill.highlight .subheader-pill-value {
+    @apply text-primary-200;
+  }
+  .subheader-pill.highlight svg {
+    @apply text-primary-400;
+  }
+  .subheader-pill.highlight .subheader-pill-label {
+    @apply text-primary-400/70;
+  }
+
+  .subheader-pill.rose {
+    @apply bg-rose-500/20 text-rose-400 border-rose-500/30;
+  }
+  .subheader-pill.rose .subheader-pill-value {
+    @apply text-rose-300;
+  }
+
+  .subheader-pill.primary {
+    @apply bg-primary-500/20 text-primary-400 border-primary-500/30;
+  }
+  .subheader-pill.primary .subheader-pill-value {
+    @apply text-primary-300;
+  }
+
+  .subheader-pill.emerald {
+    @apply bg-emerald-500/20 text-emerald-400 border-emerald-500/30;
+  }
+  .subheader-pill.emerald .subheader-pill-value {
+    @apply text-emerald-300;
   }
 
   /* ---------------------------------------------------------------------------
@@ -817,6 +918,23 @@ select::-ms-expand {
   animation: pulseRose 2s ease-in-out infinite;
 }
 
+/* Subtle attention glow - runs 3 times on mount then stops
+ * Use with .subheader-pill.highlight for suggestions/alerts
+ * Primary blue glow that draws eye without being obnoxious
+ */
+@keyframes attentionGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(14, 165, 233, 0);
+  }
+  50% {
+    box-shadow: 0 0 8px 2px rgba(14, 165, 233, 0.3);
+  }
+}
+
+.animate-attention {
+  animation: attentionGlow 1.5s ease-in-out 3;
+}
+
 /* ============================================================================
  * FLOATING ACTION BAR - Glowing focus bar for bulk actions, unsaved changes, etc.
  * Usage: Wrap content in .floating-action-bar, it provides the glow ring
@@ -1227,4 +1345,18 @@ select::-ms-expand {
 
 .animate-ticker:hover {
   animation-play-state: paused;
+}
+
+/* ============================================================================
+   SCROLLBAR UTILITIES
+   ============================================================================ */
+
+/* Hide scrollbar but keep functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;     /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;             /* Chrome, Safari, Opera */
 }

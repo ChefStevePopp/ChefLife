@@ -21,6 +21,8 @@ export interface PriceChange {
   priority_level: string;
   master_ingredient?: MasterIngredient;
   ingredient_id?: string;
+  // Canary column: 180-day record count for data integrity monitoring
+  record_count_180d?: number;
 }
 
 interface VendorPriceChangesStore {
@@ -71,7 +73,36 @@ export const useVendorPriceChangesStore = create<VendorPriceChangesStore>(
             .order(dateField, { ascending: false });
 
         if (!enrichedError && enrichedData) {
-          // Use enriched view data directly
+          // Get unique ingredient IDs for 180d count lookup
+          const ingredientIds = [...new Set(
+            enrichedData
+              .map(row => row.master_ingredient_id)
+              .filter(Boolean)
+          )];
+
+          // Fetch 180-day record counts for these ingredients (the "canary" data)
+          // This is a separate query for efficiency - avoids complex window functions in main query
+          const cutoff180d = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+          
+          let recordCounts: Map<string, number> = new Map();
+          
+          if (ingredientIds.length > 0) {
+            const { data: countData, error: countError } = await supabase
+              .from("vendor_price_history")
+              .select("master_ingredient_id")
+              .in("master_ingredient_id", ingredientIds)
+              .gte("effective_date", cutoff180d);
+
+            if (!countError && countData) {
+              // Count occurrences per ingredient
+              countData.forEach(row => {
+                const id = row.master_ingredient_id;
+                recordCounts.set(id, (recordCounts.get(id) || 0) + 1);
+              });
+            }
+          }
+
+          // Use enriched view data with 180d counts merged in
           const priceChanges = enrichedData.map((row) => ({
             id: row.id,
             organization_id: row.organization_id,
@@ -89,6 +120,8 @@ export const useVendorPriceChangesStore = create<VendorPriceChangesStore>(
             show_on_dashboard: row.show_on_dashboard || false,
             priority_level: row.priority_level || 'standard',
             ingredient_id: row.master_ingredient_id,
+            // Canary column: 180-day record count
+            record_count_180d: recordCounts.get(row.master_ingredient_id) || 0,
           }));
 
           set({ priceChanges, isLoading: false });
@@ -134,6 +167,25 @@ export const useVendorPriceChangesStore = create<VendorPriceChangesStore>(
 
         if (masterIngredientsError) throw masterIngredientsError;
 
+        // Fetch 180-day record counts (canary data) - fallback path
+        const cutoff180d = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        let recordCounts: Map<string, number> = new Map();
+        
+        if (ingredientIds.length > 0) {
+          const { data: countData, error: countError } = await supabase
+            .from("vendor_price_history")
+            .select("master_ingredient_id")
+            .in("master_ingredient_id", ingredientIds)
+            .gte("effective_date", cutoff180d);
+
+          if (!countError && countData) {
+            countData.forEach(row => {
+              const id = row.master_ingredient_id;
+              recordCounts.set(id, (recordCounts.get(id) || 0) + 1);
+            });
+          }
+        }
+
         // Create a map for quick lookup
         const masterIngredientsMap = (masterIngredientsData || []).reduce(
           (map, ingredient) => {
@@ -169,6 +221,8 @@ export const useVendorPriceChangesStore = create<VendorPriceChangesStore>(
             priority_level: ingredient?.priority_level || 'standard',
             master_ingredient: ingredient,
             ingredient_id: history.master_ingredient_id,
+            // Canary column: 180-day record count
+            record_count_180d: recordCounts.get(history.master_ingredient_id) || 0,
           };
         });
 

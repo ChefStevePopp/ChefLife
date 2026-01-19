@@ -27,6 +27,7 @@ import {
   UmbrellaIngredientWithDetails,
 } from "@/types/umbrella-ingredient";
 import { useAuth } from "@/hooks/useAuth";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import toast from "react-hot-toast";
 import { LinkMasterIngredientModal } from "./LinkMasterIngredientModal";
 import { UmbrellaItemCard } from "./UmbrellaItemCard";
@@ -45,6 +46,7 @@ export const UmbrellaIngredientManager: React.FC = () => {
 
   const { ingredients, fetchIngredients } = useMasterIngredientsStore();
   const { user } = useAuth();
+  const { showDiagnostics } = useDiagnostics();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -301,6 +303,13 @@ export const UmbrellaIngredientManager: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* L5 Diagnostic Path */}
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/admin/components/sections/VendorInvoice/components/UmbrellaIngredientManager.tsx
+        </div>
+      )}
+
       {/* L5 Sub-header - Gold Standard Pattern */}
       <div className="subheader">
         <div className="subheader-row">
@@ -315,31 +324,25 @@ export const UmbrellaIngredientManager: React.FC = () => {
             </div>
           </div>
           
-          {/* Right: Stats + Suggestions + Actions */}
+          {/* Right: Stats | Actions */}
           <div className="subheader-right">
-            {/* Stats - consistent sizing */}
-            <div className="subheader-toggle">
-              <div className="subheader-toggle-icon">
-                <span className="text-sm font-medium text-gray-400">{totalUmbrellas}</span>
-              </div>
-              <span className="subheader-toggle-label">Umbrellas</span>
-            </div>
+            {/* Stats Pills */}
+            <span className="subheader-pill">
+              <span className="subheader-pill-value">{totalUmbrellas}</span>
+              <span className="subheader-pill-label">Umbrellas</span>
+            </span>
             {withPrimary > 0 && (
-              <div className="subheader-toggle">
-                <div className="subheader-toggle-icon">
-                  <span className="text-sm font-medium text-gray-400">{withPrimary}</span>
-                </div>
-                <span className="subheader-toggle-label">With Primary</span>
-              </div>
+              <span className="subheader-pill">
+                <span className="subheader-pill-value">{withPrimary}</span>
+                <span className="subheader-pill-label">Primary</span>
+              </span>
             )}
-            <div className="subheader-toggle">
-              <div className="subheader-toggle-icon">
-                <span className="text-sm font-medium text-gray-400">{totalLinked}</span>
-              </div>
-              <span className="subheader-toggle-label">Linked</span>
-            </div>
+            <span className="subheader-pill">
+              <span className="subheader-pill-value">{totalLinked}</span>
+              <span className="subheader-pill-label">Linked</span>
+            </span>
             
-            {/* Suggestions sparkle - THE HERO when suggestions exist */}
+            {/* Suggestions pill */}
             {suggestedUmbrellas.length > 0 && (
               <button
                 onClick={() => {
@@ -347,39 +350,34 @@ export const UmbrellaIngredientManager: React.FC = () => {
                   setEditingUmbrella(null);
                   setIsCreating(true);
                 }}
-                className="subheader-toggle group relative"
+                className="subheader-pill highlight animate-attention"
                 title={`${suggestedUmbrellas.length} umbrella suggestions based on your ingredients`}
               >
-                <div className="subheader-toggle-icon bg-amber-500/15 border-amber-500/30">
-                  <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
-                </div>
-                <span className="subheader-toggle-label text-amber-400/80">
-                  {suggestedUmbrellas.length} Suggested
-                </span>
-                {/* Attention ring */}
-                <div className="absolute -inset-1 rounded-xl bg-amber-500/10 animate-ping opacity-30 pointer-events-none" />
+                <Sparkles className="w-4 h-4" />
+                <span className="subheader-pill-value">{suggestedUmbrellas.length}</span>
+                <span className="subheader-pill-label">Suggested</span>
               </button>
             )}
             
-            {/* Refresh - badge style */}
+            {/* Divider */}
+            <div className="subheader-divider" />
+            
+            {/* Action Buttons */}
             <button 
               onClick={() => fetchUmbrellaIngredients()} 
-              className="subheader-toggle" 
-              title="Refresh"
+              className="btn-ghost px-2" 
+              title="Refresh data"
             >
-              <div className="subheader-toggle-icon">
-                <RefreshCw className="w-4 h-4 text-gray-400" />
-              </div>
+              <RefreshCw className="w-4 h-4" />
             </button>
             
-            {/* CTA - ghost style */}
             <button
               onClick={() => {
                 resetForm();
                 setEditingUmbrella(null);
                 setIsCreating(true);
               }}
-              className="btn-ghost"
+              className="btn-ghost-blue ml-1"
             >
               <Plus className="w-4 h-4 mr-1" />
               New

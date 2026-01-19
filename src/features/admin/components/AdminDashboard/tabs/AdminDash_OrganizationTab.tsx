@@ -12,10 +12,13 @@ import { ActivityFeedV2 } from "../../ActivityFeedV2";
  * =============================================================================
  * NEXUS DASHBOARD - Organization Tab
  * =============================================================================
- * Vitals from the ORGANIZATION sidebar section:
+ * Business activity and who did what:
  * - Full Activity Feed (V2 triage inbox)
- * - System events and audit trail
+ * - Business events and changes
  * - Security alerts (future)
+ * 
+ * Note: Technical/system events moved to System tab.
+ * This tab focuses on business activity.
  * =============================================================================
  */
 
@@ -35,12 +38,12 @@ export const AdminDash_OrganizationTab: React.FC = () => {
       <div className="subheader">
         <div className="subheader-row">
           <div className="subheader-left">
-            <div className="subheader-icon-box rose">
+            <div className="subheader-icon-box purple">
               <Building2 className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="subheader-title">Organization Vitals</h3>
-              <p className="subheader-subtitle">Activity feed & system events</p>
+              <h3 className="subheader-title">Organization Activity</h3>
+              <p className="subheader-subtitle">Who did what & business events</p>
             </div>
           </div>
           <div className="subheader-right">

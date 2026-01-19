@@ -5,9 +5,10 @@ import {
   ChevronUp,
   RefreshCw,
   ChefHat,
-  Database,
+  Truck,
+  DollarSign,
   Building2,
-  BookOpen,
+  Settings,
 } from "lucide-react";
 import { useDiagnostics } from "@/hooks/useDiagnostics";
 import { useOrganizationSettings } from "@/features/admin/components/settings/OrganizationSettings/useOrganizationSettings";
@@ -19,8 +20,10 @@ import { PriceWatchTickerInline } from "./AdminDashboard/PriceWatchTickerInline"
 import {
   AdminDash_KitchenTab,
   AdminDash_TeamTab,
-  AdminDash_DataTab,
+  AdminDash_BOHVitalsTab,
+  AdminDash_FOHVitalsTab,
   AdminDash_OrganizationTab,
+  AdminDash_SystemTab,
   AdminDash_CraftPerfectedTab,
 } from "./AdminDashboard/tabs";
 
@@ -35,33 +38,45 @@ import {
  * 
  * Structure:
  * - Header Card with ghost watermark + Active Staff pill + Price Watch Ticker
- * - L5 Tabs matching sidebar navigation sections
+ * - L5 Tabs following color progression from index.css:
+ *   primary → green → amber → rose → purple → lime → red → cyan
+ * 
+ * Tabs:
  *   - Kitchen (primary) - temps, tasks, prep
  *   - Team (green) - schedule, attendance, coaching
- *   - Data (amber) - prices, vendors, inventory
- *   - Organization (rose) - activity feed, system events
- *   - Craft Perfected (purple) - future education platform
+ *   - BOH Vitals (amber) - vendor imports, prices, costs
+ *   - FOH Vitals (rose) - POS imports, revenue, covers
+ *   - Organization (purple) - activity feed, who did what
+ *   - System (lime) - integrations, sync status, alerts
+ *   - Craft Perfected (red) - certifications, training
  * =============================================================================
  */
 
 // ChefBot placeholder - shown when no org logo uploaded
 const CHEFBOT_PLACEHOLDER = "https://www.restaurantconsultants.ca/wp-content/uploads/2023/03/cropped-AI-CHEF-BOT.png";
 
-type TabId = "kitchen" | "team" | "data" | "organization" | "craft";
+// Craft Perfected logo - platform asset (128px for clarity on large screens)
+const CRAFT_PERFECTED_LOGO = "https://vcfigkwtsqvrvahfprya.supabase.co/storage/v1/object/public/platform-assets/craft_perfected_128.webp";
+
+type TabId = "kitchen" | "team" | "boh" | "foh" | "organization" | "system" | "craft";
 
 interface TabConfig {
   id: TabId;
   label: string;
-  icon: React.ElementType;
+  icon?: React.ElementType;
+  logo?: string;
   color: string;
 }
 
+// Color progression: primary → green → amber → rose → purple → lime → red → cyan
 const TABS: TabConfig[] = [
   { id: "kitchen", label: "Kitchen", icon: ChefHat, color: "primary" },
   { id: "team", label: "Team", icon: Users, color: "green" },
-  { id: "data", label: "Data", icon: Database, color: "amber" },
-  { id: "organization", label: "Organization", icon: Building2, color: "rose" },
-  { id: "craft", label: "Craft Perfected", icon: BookOpen, color: "purple" },
+  { id: "boh", label: "BOH Vitals", icon: Truck, color: "amber" },
+  { id: "foh", label: "FOH Vitals", icon: DollarSign, color: "rose" },
+  { id: "organization", label: "Organization", icon: Building2, color: "purple" },
+  { id: "system", label: "System", icon: Settings, color: "lime" },
+  { id: "craft", label: "Craft Perfected", logo: CRAFT_PERFECTED_LOGO, color: "red" },
 ];
 
 export function AdminDashboard() {
@@ -132,10 +147,14 @@ export function AdminDashboard() {
         return <AdminDash_KitchenTab />;
       case "team":
         return <AdminDash_TeamTab />;
-      case "data":
-        return <AdminDash_DataTab />;
+      case "boh":
+        return <AdminDash_BOHVitalsTab />;
+      case "foh":
+        return <AdminDash_FOHVitalsTab />;
       case "organization":
         return <AdminDash_OrganizationTab />;
+      case "system":
+        return <AdminDash_SystemTab />;
       case "craft":
         return <AdminDash_CraftPerfectedTab />;
       default:
@@ -238,26 +257,34 @@ export function AdminDashboard() {
                     every system's health. Like a medical chart, it shows what's working, 
                     what needs attention, and what's critical.
                   </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
-                    <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
-                      <span className="text-sm font-medium text-primary-400">Kitchen</span>
-                      <p className="text-xs text-gray-500 mt-1">Temps, tasks & prep</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+                    <div className="p-2 bg-gray-800/30 rounded-lg border border-gray-700/30">
+                      <span className="text-xs font-medium text-primary-400">Kitchen</span>
+                      <p className="text-2xs text-gray-500 mt-0.5">Temps & prep</p>
                     </div>
-                    <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
-                      <span className="text-sm font-medium text-green-400">Team</span>
-                      <p className="text-xs text-gray-500 mt-1">Schedule & attendance</p>
+                    <div className="p-2 bg-gray-800/30 rounded-lg border border-gray-700/30">
+                      <span className="text-xs font-medium text-green-400">Team</span>
+                      <p className="text-2xs text-gray-500 mt-0.5">Schedule</p>
                     </div>
-                    <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
-                      <span className="text-sm font-medium text-amber-400">Data</span>
-                      <p className="text-xs text-gray-500 mt-1">Prices & inventory</p>
+                    <div className="p-2 bg-gray-800/30 rounded-lg border border-gray-700/30">
+                      <span className="text-xs font-medium text-amber-400">BOH Vitals</span>
+                      <p className="text-2xs text-gray-500 mt-0.5">Costs & vendors</p>
                     </div>
-                    <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
-                      <span className="text-sm font-medium text-rose-400">Organization</span>
-                      <p className="text-xs text-gray-500 mt-1">Activity & events</p>
+                    <div className="p-2 bg-gray-800/30 rounded-lg border border-gray-700/30">
+                      <span className="text-xs font-medium text-rose-400">FOH Vitals</span>
+                      <p className="text-2xs text-gray-500 mt-0.5">Revenue & sales</p>
                     </div>
-                    <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
-                      <span className="text-sm font-medium text-purple-400">Craft Perfected</span>
-                      <p className="text-xs text-gray-500 mt-1">Coming soon</p>
+                    <div className="p-2 bg-gray-800/30 rounded-lg border border-gray-700/30">
+                      <span className="text-xs font-medium text-purple-400">Organization</span>
+                      <p className="text-2xs text-gray-500 mt-0.5">Activity feed</p>
+                    </div>
+                    <div className="p-2 bg-gray-800/30 rounded-lg border border-gray-700/30">
+                      <span className="text-xs font-medium text-lime-400">System</span>
+                      <p className="text-2xs text-gray-500 mt-0.5">Integrations</p>
+                    </div>
+                    <div className="p-2 bg-gray-800/30 rounded-lg border border-gray-700/30">
+                      <span className="text-xs font-medium text-red-400">Craft Perfected</span>
+                      <p className="text-2xs text-gray-500 mt-0.5">Training</p>
                     </div>
                   </div>
                 </div>
@@ -271,8 +298,7 @@ export function AdminDashboard() {
       </div>
 
       {/* ========================================================================
-       * L5 TABS - Matching sidebar navigation sections
-       * Color progression: primary → green → amber → rose → purple
+       * L5 TABS - Color progression: primary → green → amber → rose → purple → lime → red → cyan
        * ======================================================================== */}
       <div className="card p-4">
         {/* Tab Buttons */}
@@ -285,7 +311,15 @@ export function AdminDashboard() {
                 onClick={() => setActiveTab(tab.id)}
                 className={`tab ${tab.color} ${activeTab === tab.id ? "active" : ""}`}
               >
-                <Icon className="w-4 h-4" />
+                {tab.logo ? (
+                  <img 
+                    src={tab.logo} 
+                    alt="" 
+                    className="w-6 h-6 object-contain"
+                  />
+                ) : Icon ? (
+                  <Icon className="w-4 h-4" />
+                ) : null}
                 <span className="hidden sm:inline">{tab.label}</span>
               </button>
             );

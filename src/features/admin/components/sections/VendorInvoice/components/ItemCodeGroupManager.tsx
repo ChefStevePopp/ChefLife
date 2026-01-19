@@ -239,44 +239,38 @@ export const ItemCodeGroupManager: React.FC = () => {
           </div>
           
           <div className="subheader-right">
-            <div className="subheader-toggle">
-              <div className="subheader-toggle-icon">
-                <span className="text-sm font-medium text-gray-400">{totalSuggestions}</span>
-              </div>
-              <span className="subheader-toggle-label">Detected</span>
-            </div>
+            {/* Stats Pills */}
+            <span className="subheader-pill">
+              <span className="subheader-pill-value">{totalSuggestions}</span>
+              <span className="subheader-pill-label">Detected</span>
+            </span>
             
-            {/* Suggestions sparkle - THE HERO when suggestions exist */}
+            {/* Suggestions pill */}
             {suggestedCodeGroups.length > 0 && (
               <button
                 onClick={startWizard}
-                className="subheader-toggle group relative"
+                className="subheader-pill highlight animate-attention"
                 title={`${suggestedCodeGroups.length} potential code changes detected`}
               >
-                <div className="subheader-toggle-icon bg-amber-500/15 border-amber-500/30">
-                  <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
-                </div>
-                <span className="subheader-toggle-label text-amber-400/80">
-                  {suggestedCodeGroups.length} Suggested
-                </span>
-                {/* Attention ring */}
-                <div className="absolute -inset-1 rounded-xl bg-amber-500/10 animate-ping opacity-30 pointer-events-none" />
+                <Sparkles className="w-4 h-4" />
+                <span className="subheader-pill-value">{suggestedCodeGroups.length}</span>
+                <span className="subheader-pill-label">Suggested</span>
               </button>
             )}
             
-            {/* Refresh - badge style */}
+            {/* Divider */}
+            <div className="subheader-divider" />
+            
+            {/* Action Buttons */}
             <button 
               onClick={() => fetchIngredients()} 
-              className="subheader-toggle" 
-              title="Refresh"
+              className="btn-ghost px-2" 
+              title="Refresh data"
             >
-              <div className="subheader-toggle-icon">
-                <RefreshCw className="w-4 h-4 text-gray-400" />
-              </div>
+              <RefreshCw className="w-4 h-4" />
             </button>
             
-            {/* CTA - ghost style */}
-            <button onClick={startWizard} className="btn-ghost">
+            <button onClick={startWizard} className="btn-ghost-blue ml-1">
               <Plus className="w-4 h-4 mr-1" />
               Link Codes
             </button>

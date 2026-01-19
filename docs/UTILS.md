@@ -1316,3 +1316,385 @@ Wrap charts in a subtle container:
 | Amber | `#f59e0b` | Secondary data, warnings, spread |
 | Rose | `#fb7185` | Negative changes, errors |
 | Gray | `#6b7280` | Reference lines, axes, muted text |
+
+---
+
+## Image Optimization Strategy
+
+**Added:** January 19, 2026
+
+**Goal:** Minimize bandwidth at scale by compressing and converting images to WebP.
+
+### Size Guidelines
+
+| Use Case | Max Size | Format | Target |
+|----------|----------|--------|--------|
+| Tab icons | 64px | WebP | < 5 KB |
+| Avatars | 128px | WebP | < 10 KB |
+| Logos (cards) | 128-256px | WebP | < 15 KB |
+| Hero images | 800-1200px | WebP | < 100 KB |
+| Recipe photos | 800px | WebP | < 80 KB |
+
+### Optimization Approaches
+
+| Approach | When to Use | Implementation |
+|----------|-------------|----------------|
+| **Manual (one-offs)** | Logos, static assets | cwebp CLI or TinyPNG |
+| **Upload-time** | User uploads | `browser-image-compression` library |
+| **Supabase Transform** | Dynamic sizing | URL params (Pro feature) |
+| **Build-time** | /public assets | `vite-plugin-imagemin` |
+
+### Manual Optimization (CLI)
+
+For one-off assets like logos:
+
+```bash
+# Install WebP tools (Ubuntu)
+sudo apt-get install webp
+
+# Resize with ImageMagick, convert to WebP
+convert original.png -resize 128x128 resized.png
+cwebp -q 85 resized.png -o output.webp
+
+# Or use TinyPNG.com for quick compression
+```
+
+**Quality settings:**
+- `-q 85` for logos/graphics with sharp edges
+- `-q 80` for photos
+- `-q 75` for large hero images (size > quality)
+
+### Upload-Time Compression (Recommended for User Uploads)
+
+```typescript
+import imageCompression from 'browser-image-compression';
+
+const compressImage = async (file: File, maxSizeMB = 0.1, maxWidthOrHeight = 256) => {
+  const options = {
+    maxSizeMB,
+    maxWidthOrHeight,
+    useWebWorker: true,
+    fileType: 'image/webp',
+  };
+  
+  try {
+    const compressedFile = await imageCompression(file, options);
+    return compressedFile;
+  } catch (error) {
+    console.error('Compression failed:', error);
+    return file; // Fallback to original
+  }
+};
+
+// Usage in ImageUploadModal
+const handleUpload = async (file: File) => {
+  const compressed = await compressImage(file, 0.1, 256);
+  // Upload compressed file to Supabase...
+};
+```
+
+**Install:** `npm install browser-image-compression`
+
+### Supabase Image Transformation (If Available)
+
+Supabase Pro/Enterprise has URL-based transforms:
+
+```typescript
+// Original URL
+const url = 'https://xxx.supabase.co/storage/v1/object/public/logos/vendor.png';
+
+// Transformed URL (resize to 128px, WebP)
+const optimized = `${url}?width=128&format=webp`;
+```
+
+Check Supabase dashboard for availability.
+
+### Storage Bucket Strategy
+
+Organize by size/purpose:
+
+```
+Logos/
+  {org_id}/
+    vendors/
+      {vendor_id}.webp      # 128px, ~7KB
+    organization.webp       # 256px, ~15KB
+    
+Avatars/
+  {org_id}/
+    {user_id}.webp          # 128px, ~10KB
+    
+Recipes/
+  {org_id}/
+    {recipe_id}.webp        # 800px, ~60KB
+```
+
+### Reference: Craft Perfected Logo Optimization
+
+| Version | PNG | WebP | Savings |
+|---------|-----|------|--------|
+| 500px (original) | 27.7 KB | 27.2 KB | 2% |
+| 128px (retina) | 19.7 KB | 6.8 KB | **65%** |
+| 64px (tab icon) | 7.9 KB | 2.7 KB | **66%** |
+
+---
+
+## CardCarousel - Zero-Dependency Carousel Component
+
+**Location:** `src/shared/components/CardCarousel/`
+
+**Added:** January 19, 2026
+
+**Purpose:** Native CSS scroll-snap carousel for tablet-friendly card navigation. No external dependencies.
+
+### Why Native?
+
+- **Zero dependencies** - No embla, swiper, or other carousel libraries
+- **Native touch** - CSS `scroll-snap` has buttery smooth swipe built into browsers
+- **IntersectionObserver** - Efficient active slide tracking
+- **Full control** - We own the code, no breaking updates
+
+### Features
+
+| Feature | Description |
+|---------|-------------|
+| Scroll-snap | Native browser scrolling, buttery smooth |
+| Touch/Swipe | Works on tablets, no JS needed |
+| Dot indicators | Pill-style dots, active one elongates |
+| Arrow navigation | Left/right buttons for desktop |
+| Keyboard nav | ← → arrow keys when focused |
+| Responsive cards | Configure cards per view at breakpoints |
+| Auto-play | Optional timer with pause-on-hover |
+
+### Components
+
+**CardCarousel** - The carousel container
+
+```tsx
+import { CardCarousel, CarouselCard } from "@/shared/components";
+
+<CardCarousel
+  title="Data Views"
+  showDots={true}
+  showArrows={true}
+  keyboardNav={true}
+  gap={16}
+  cardsPerView={{ mobile: 1, tablet: 1, desktop: 1 }}
+  onSlideChange={(index) => console.log(index)}
+  autoPlay={0}  // 0 = disabled, or ms interval
+  pauseOnHover={true}
+>
+  {children}
+</CardCarousel>
+```
+
+**CarouselCard** - Optional styled card wrapper
+
+```tsx
+<CarouselCard
+  title="Price Watch"
+  icon={<Eye className="w-4 h-4" />}
+  headerActions={<button>...</button>}
+  fillHeight={true}
+  onClick={() => handleClick()}
+>
+  {/* Card content */}
+</CarouselCard>
+```
+
+### Props
+
+**CardCarousel Props:**
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `children` | `ReactNode` | required | Cards to display |
+| `showDots` | `boolean` | `true` | Show dot indicators |
+| `showArrows` | `boolean` | `true` | Show navigation arrows |
+| `keyboardNav` | `boolean` | `true` | Enable ← → keys |
+| `gap` | `number` | `16` | Gap between cards (px) |
+| `cardsPerView` | `object` | `{mobile:1, tablet:2, desktop:1}` | Cards visible per breakpoint |
+| `className` | `string` | `""` | Additional container class |
+| `onSlideChange` | `(index) => void` | - | Callback on slide change |
+| `title` | `string` | - | Optional title above carousel |
+| `autoPlay` | `number` | `0` | Auto-advance interval (ms) |
+| `pauseOnHover` | `boolean` | `true` | Pause auto-play on hover |
+
+**CarouselCard Props:**
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `children` | `ReactNode` | required | Card content |
+| `title` | `string` | - | Card title |
+| `icon` | `ReactNode` | - | Icon before title |
+| `headerActions` | `ReactNode` | - | Actions in header |
+| `fillHeight` | `boolean` | `true` | Fill available height |
+| `className` | `string` | `""` | Additional class |
+| `onClick` | `() => void` | - | Click handler |
+
+### Usage Example - Data Tab Carousel
+
+```tsx
+import { CardCarousel, CarouselCard } from "@/shared/components";
+import { Eye, TrendingUp, Package, Truck } from "lucide-react";
+
+<CardCarousel
+  title="Data Views"
+  cardsPerView={{ mobile: 1, tablet: 1, desktop: 1 }}
+>
+  <CarouselCard title="Price Watch" icon={<Eye />}>
+    {/* Watched ingredients grid with mini-charts */}
+  </CarouselCard>
+  
+  <CarouselCard title="Cost Trends" icon={<TrendingUp />}>
+    {/* Food cost %, margin analysis */}
+  </CarouselCard>
+  
+  <CarouselCard title="Inventory Health" icon={<Package />}>
+    {/* Stock levels, count schedules */}
+  </CarouselCard>
+  
+  <CarouselCard title="Vendor Intelligence" icon={<Truck />}>
+    {/* Vendor comparisons, spend analysis */}
+  </CarouselCard>
+</CardCarousel>
+```
+
+### CSS Requirements
+
+The carousel uses `.scrollbar-hide` utility (added to `index.css`):
+
+```css
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE/Edge */
+  scrollbar-width: none;     /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;             /* Chrome/Safari/Opera */
+}
+```
+
+### Accessibility
+
+- `role="region"` with `aria-label`
+- `role="tablist"` on dot indicators
+- `aria-selected` on active dot
+- Keyboard navigation (← → when focused)
+- Focus visible rings on all interactive elements
+
+---
+
+## PriceWatchTicker - Scrolling Price Alert Banner
+
+**Location:** `src/features/admin/components/AdminDashboard/PriceWatchTickerInline.tsx`
+
+**Data Source:** `vendorPriceChangesStore` → items with recent price changes
+
+**Purpose:** Stock ticker-style banner showing recent price changes, with expandable critical alerts.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PRICE WATCH [21] ↝-0% • FLOUR +1% • Pork Butt +1% • WHITE SUGAR -20% ...  ▼│
+├─────────────────────────────────────────────────────────────────────────────┤
+│ (EXPANDED - shows when clicked)                                            │
+│                                                                             │
+│ ┌─────────────────────────────────────────────────────────────────────────┐ │
+│ │ 🥩 PORK, SHOULDERS NY                                          +12.4% ↗│ │
+│ │    HIGHLAND PACKERS • 7/15/2025                                        │ │
+│ └─────────────────────────────────────────────────────────────────────────┘ │
+│ ┌─────────────────────────────────────────────────────────────────────────┐ │
+│ │ G BEEF, BRISKET                                                 +7.2% ↗│ │
+│ │    GFS • 6/18/2025                                                     │ │
+│ └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                             │
+│                     View All Price History →                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Features
+
+| Feature | Implementation |
+|---------|----------------|
+| **Scrolling animation** | CSS `animate-ticker` (30s linear infinite) |
+| **Pause on hover** | `animation-play-state: paused` |
+| **Responsive** | Desktop: scrolls, Mobile: cycles single items (3s interval) |
+| **Critical badge** | Count of items with `alert_price_change = true` |
+| **Expandable** | Click row → shows top 5 critical items |
+| **Navigation** | Click item → `/admin/data/vendor-invoices?tab=history&ingredient={id}` |
+
+### Data Flow
+
+```
+vendorPriceChangesStore.fetchPriceChanges(30)  // Last 30 days
+          ↓
+  allChanges = priceChanges.filter(c => c.change_percent !== 0)
+          ↓
+  ┌───────────────────────────────────────────┐
+  │ criticalItems = filter(alert_price_change) │  → Badge count, expanded list
+  │ tickerItems = sort by recency, slice(0,20) │  → Scrolling ticker
+  └───────────────────────────────────────────┘
+```
+
+### CSS Animation
+
+In `src/index.css`:
+
+```css
+@keyframes ticker {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-ticker {
+  animation: ticker 30s linear infinite;
+}
+
+.animate-ticker:hover {
+  animation-play-state: paused;
+}
+```
+
+### Ingredient Tracking Flags
+
+The ticker respects two flags in `master_ingredients`:
+
+| Flag | Column | Purpose |
+|------|--------|--------|
+| **Show on Dashboard** | `show_on_dashboard` | Item appears in dashboard price watch card |
+| **Price Change Alerts** | `alert_price_change` | Item appears in ticker badge count + expanded critical list |
+
+### Related Components
+
+| Component | Location | Purpose |
+|-----------|----------|--------|
+| `PriceWatchTickerInline` | `AdminDashboard/` | Header ticker (inline) |
+| `PriceHistoryDetailModal` | `PriceHistory/` | Full 180d history modal |
+| `vendorPriceChangesStore` | `stores/` | Data fetching + state |
+| `vendor_price_history_enriched` | Supabase view | Price changes only |
+| `vendor_price_history_all` | Supabase view | All records including stable |
+
+### Integration Points
+
+**Opening the Price History Modal from Ticker:**
+
+```tsx
+// Currently navigates to price history tab with ingredient filter
+navigate(`/admin/data/vendor-invoices?tab=history&ingredient=${ingredientId}`);
+
+// Future: Could open PriceHistoryDetailModal directly
+// Would need to lift modal state or use a global modal context
+```
+
+**Controlling What Appears:**
+
+1. **In MIL Edit Modal** → "Reporting & Tracking" section
+   - Toggle "Price Change Alerts" → appears in ticker critical list
+   - Toggle "Show on Dashboard" → appears in Price Watch dashboard card
+
+2. **Priority Level** → Could drive dashboard prominence
+   - Critical: Always visible, larger card
+   - High: Visible when recent activity
+   - Standard: In list only
+   - Low: Hidden from dashboard

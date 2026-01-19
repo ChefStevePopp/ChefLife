@@ -1826,6 +1826,22 @@ All money-related values use a single teal accent:
 
 ## Changelog
 
+**Jan 19, 2026 (Session - Price History Detail Modal):**
+- **PriceHistoryDetailModal** - L6 chart modal with Recharts:
+  - 180-day price history line chart
+  - Multi-vendor comparison (same common_name, dashed lines)
+  - Category average trend (sub_category, dotted line)
+  - Actionable insights: vs category, cheapest vendor, volatility warning, trend direction
+  - Toggle buttons for comparison layers
+  - Stats row: 180d Change, Current, Avg, Volatility
+  - Price change history list
+- **Chart Modal Pattern** documented in `docs/patterns/chartmodal.md`
+- **PriceHistory.tsx L5 Pills Pattern**:
+  - Subheader updated with stats pills (Changes count, Alerts with animate-attention)
+  - Row click → opens PriceHistoryDetailModal
+  - Phase 6 marked complete
+- **Reference Implementation**: `PriceHistory/PriceHistoryDetailModal.tsx`
+
 **Jan 18, 2026 (Session - L5 Visual Hierarchy Refinement):**
 - **Refined L5 Expandable Info Pattern** across all VIM tabs:
   - Tab identity color reserved for expandable info icon only

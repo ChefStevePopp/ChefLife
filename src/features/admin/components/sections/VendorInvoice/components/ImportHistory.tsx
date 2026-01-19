@@ -501,38 +501,35 @@ export const ImportHistory: React.FC<ImportHistoryProps> = ({ onRecall }) => {
             </div>
           </div>
           
-          {/* Right: Stats + Refresh */}
+          {/* Right: Stats | Actions */}
           <div className="subheader-right">
-            <div className="subheader-toggle">
-              <div className="subheader-toggle-icon">
-                <span className="text-sm font-medium text-gray-500">{stats.total}</span>
-              </div>
-              <span className="subheader-toggle-label">Imports</span>
-            </div>
+            {/* Stats Pills */}
+            <span className="subheader-pill">
+              <span className="subheader-pill-value">{stats.total}</span>
+              <span className="subheader-pill-label">Imports</span>
+            </span>
             {stats.completed > 0 && (
-              <div className="subheader-toggle">
-                <div className="subheader-toggle-icon">
-                  <span className="text-sm font-medium text-gray-400">{stats.completed}</span>
-                </div>
-                <span className="subheader-toggle-label">Completed</span>
-              </div>
+              <span className="subheader-pill">
+                <span className="subheader-pill-value">{stats.completed}</span>
+                <span className="subheader-pill-label">Completed</span>
+              </span>
             )}
             {stats.superseded > 0 && (
-              <div className="subheader-toggle">
-                <div className="subheader-toggle-icon">
-                  <span className="text-sm font-medium text-gray-600">{stats.superseded}</span>
-                </div>
-                <span className="subheader-toggle-label">Superseded</span>
-              </div>
+              <span className="subheader-pill">
+                <span className="subheader-pill-value">{stats.superseded}</span>
+                <span className="subheader-pill-label">Superseded</span>
+              </span>
             )}
-            <div className="subheader-toggle">
-              <div className="subheader-toggle-icon">
-                <span className="text-sm font-medium text-gray-400">{stats.totalPriceChanges}</span>
-              </div>
-              <span className="subheader-toggle-label">Price Updates</span>
-            </div>
+            <span className="subheader-pill">
+              <span className="subheader-pill-value">{stats.totalPriceChanges}</span>
+              <span className="subheader-pill-label">Price Updates</span>
+            </span>
             
-            <button onClick={handleRefresh} className="btn-ghost p-2" title="Refresh">
+            {/* Divider */}
+            <div className="subheader-divider" />
+            
+            {/* Action Buttons */}
+            <button onClick={handleRefresh} className="btn-ghost px-2" title="Refresh">
               <RefreshCw className="w-4 h-4" />
             </button>
           </div>

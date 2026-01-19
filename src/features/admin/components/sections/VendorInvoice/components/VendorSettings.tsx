@@ -27,6 +27,7 @@ import { useOrganizationId } from "@/hooks/useOrganizationId";
 import { supabase } from "@/lib/supabase";
 import { nexus } from "@/lib/nexus";
 import { useAuth } from "@/hooks/useAuth";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import toast from "react-hot-toast";
 
 // =============================================================================
@@ -62,6 +63,7 @@ type FilterOption = 'all' | 'configured' | 'unconfigured';
 export const VendorSettings: React.FC = () => {
   const { organizationId } = useOrganizationId();
   const { user } = useAuth();
+  const { showDiagnostics } = useDiagnostics();
   const { settings, fetchSettings } = useOperationsStore();
   const { configs, fetchConfigs, saveConfig } = useVendorConfigsStore();
   const { templates, fetchTemplates, saveTemplate, deleteTemplate } = useVendorTemplatesStore();
@@ -1127,6 +1129,13 @@ export const VendorSettings: React.FC = () => {
   // ---------------------------------------------------------------------------
   return (
     <div className="space-y-6">
+      {/* L5 Diagnostic Path */}
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/admin/components/sections/VendorInvoice/components/VendorSettings.tsx
+        </div>
+      )}
+
       {/* L5 Sub-header - Grey icon box (informational context, not module identity) */}
       <div className="subheader">
         <div className="subheader-row">
@@ -1141,29 +1150,24 @@ export const VendorSettings: React.FC = () => {
             </div>
           </div>
           
-          {/* Right: Stats in icon box style (matches toggle pattern) */}
+          {/* Right: Stats | Actions */}
           <div className="subheader-right">
-            <div className="subheader-toggle">
-              <div className="subheader-toggle-icon">
-                <span className="text-sm font-semibold text-gray-400">{vendorCards.length}</span>
-              </div>
-              <span className="subheader-toggle-label">Vendors</span>
-            </div>
+            {/* Stats Pills */}
+            <span className="subheader-pill">
+              <span className="subheader-pill-value">{vendorCards.length}</span>
+              <span className="subheader-pill-label">Vendors</span>
+            </span>
             {configuredCount > 0 && (
-              <div className="subheader-toggle">
-                <div className="subheader-toggle-icon">
-                  <span className="text-sm font-semibold text-gray-400">{configuredCount}</span>
-                </div>
-                <span className="subheader-toggle-label">Ready</span>
-              </div>
+              <span className="subheader-pill">
+                <span className="subheader-pill-value">{configuredCount}</span>
+                <span className="subheader-pill-label">Ready</span>
+              </span>
             )}
             {unconfiguredCount > 0 && (
-              <div className="subheader-toggle">
-                <div className="subheader-toggle-icon">
-                  <span className="text-sm font-semibold text-gray-400">{unconfiguredCount}</span>
-                </div>
-                <span className="subheader-toggle-label">Setup</span>
-              </div>
+              <span className="subheader-pill">
+                <span className="subheader-pill-value">{unconfiguredCount}</span>
+                <span className="subheader-pill-label">Setup</span>
+              </span>
             )}
           </div>
         </div>

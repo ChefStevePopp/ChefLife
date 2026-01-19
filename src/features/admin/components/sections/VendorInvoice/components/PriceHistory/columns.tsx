@@ -1,5 +1,5 @@
 import React from "react";
-import { TrendingUp, TrendingDown, Truck } from "lucide-react";
+import { TrendingUp, TrendingDown, Truck, Database } from "lucide-react";
 import type { ExcelColumn } from "@/types/excel";
 import { ImageWithFallback } from "@/shared/components/ImageWithFallback";
 
@@ -32,6 +32,13 @@ const getRelativeTime = (dateString: string | null): string => {
 // - New Price: Pill treatment based on direction
 //   - Increase (bad): Rose pill
 //   - Decrease (good): Emerald pill
+//
+// 180d Records (Canary Column):
+// - Shows how many price records exist for this ingredient in last 180 days
+// - 0 = no history (new item or data issue)
+// - 1-2 = sparse
+// - 6-12 = healthy (regular deliveries)
+// - 20+ = suspicious (too many updates?)
 // =============================================================================
 
 export const priceHistoryColumns: ExcelColumn[] = [
@@ -203,5 +210,61 @@ export const priceHistoryColumns: ExcelColumn[] = [
     filterable: true,
     align: "right",
     // Uses PriceChangeCell via ExcelDataGrid's percent handler
+  },
+
+  // --- Canary Column: 180-Day Record Count ---
+  // Shows data density for this ingredient - a health indicator
+  {
+    key: "record_count_180d",
+    name: "180d",
+    type: "custom",
+    filterType: "number",
+    width: 65,
+    sortable: true,
+    filterable: true,
+    align: "center",
+    render: (value: number | null | undefined) => {
+      const count = value ?? 0;
+      
+      // Color coding based on data density
+      // 0 = concerning (no history)
+      // 1-2 = sparse (amber warning)
+      // 3-12 = healthy (normal)
+      // 13+ = frequent (might be suspicious if very high)
+      let colorClass = "text-gray-500";
+      let bgClass = "";
+      let title = "Price records in last 180 days";
+      
+      if (count === 0) {
+        colorClass = "text-gray-600";
+        title = "No price history - new item or data gap";
+      } else if (count <= 2) {
+        colorClass = "text-amber-500/70";
+        bgClass = "bg-amber-500/10";
+        title = `${count} record${count > 1 ? 's' : ''} - sparse data`;
+      } else if (count <= 12) {
+        colorClass = "text-gray-400";
+        title = `${count} records - healthy`;
+      } else if (count <= 20) {
+        colorClass = "text-primary-400/70";
+        title = `${count} records - frequent updates`;
+      } else {
+        colorClass = "text-rose-400/70";
+        bgClass = "bg-rose-500/10";
+        title = `${count} records - unusually high, review for duplicates`;
+      }
+
+      return (
+        <div 
+          className={`flex items-center justify-center gap-1 ${bgClass} rounded px-1.5 py-0.5`}
+          title={title}
+        >
+          <Database className={`w-3 h-3 ${colorClass}`} />
+          <span className={`text-xs font-medium tabular-nums ${colorClass}`}>
+            {count}
+          </span>
+        </div>
+      );
+    },
   },
 ];

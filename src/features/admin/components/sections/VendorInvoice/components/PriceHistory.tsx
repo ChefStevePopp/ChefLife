@@ -24,6 +24,8 @@ import { useDiagnostics } from "@/hooks/useDiagnostics";
 import { ExcelDataGrid } from "@/shared/components/ExcelDataGrid";
 import { priceHistoryColumns } from "./PriceHistory/columns.tsx";
 import { PriceChangeCell } from "./PriceHistory/PriceChangeCell";
+import { PriceHistoryDetailModal } from "./PriceHistory/PriceHistoryDetailModal.tsx";
+import type { PriceChange } from "@/stores/vendorPriceChangesStore";
 
 /**
  * =============================================================================
@@ -59,9 +61,13 @@ import { PriceChangeCell } from "./PriceHistory/PriceChangeCell";
  * - [x] Change percent calculations
  * - [x] Link to MIL ingredient settings (alert_price_change)
  * 
- * Phase 6: Polish                                                   🔄 IN PROGRESS
+ * Phase 6: Polish                                                   ✅ COMPLETE
  * - [x] Filter state feedback banner
  * - [x] Refresh button
+ * - [x] Row click → detail modal with 180-day history
+ * - [x] Vendor comparison (same common_name)
+ * - [x] Category trend comparison
+ * - [x] Recharts line chart visualization
  * - [ ] Keyboard shortcuts (Esc to clear filter)
  * - [ ] Sparkline charts in stat cards
  * - [ ] Export to CSV
@@ -119,6 +125,9 @@ export const PriceHistory = () => {
 
   // Expandable info state
   const [showInfo, setShowInfo] = useState(false);
+
+  // Detail modal state
+  const [selectedPriceChange, setSelectedPriceChange] = useState<PriceChange | null>(null);
 
   useEffect(() => {
     fetchPriceChanges(daysToShow, activeFilter, sortMode);
@@ -286,7 +295,7 @@ export const PriceHistory = () => {
         </div>
       )}
 
-      {/* L5 Sub-Header */}
+      {/* L5 Sub-Header - Pills Pattern */}
       <div className="subheader">
         <div className="subheader-row">
           <div className="subheader-left">
@@ -298,17 +307,36 @@ export const PriceHistory = () => {
               <p className="subheader-subtitle">Track and analyze vendor price changes</p>
             </div>
           </div>
+          
+          {/* Right: Stats | Actions */}
           <div className="subheader-right">
+            {/* Stats Pills */}
+            <span className="subheader-pill">
+              <span className="subheader-pill-value">{priceStats.totalChanges}</span>
+              <span className="subheader-pill-label">Changes</span>
+            </span>
+            {priceStats.priceAlertCount > 0 && (
+              <span className="subheader-pill highlight animate-attention">
+                <Bell className="w-4 h-4" />
+                <span className="subheader-pill-value">{priceStats.priceAlertCount}</span>
+                <span className="subheader-pill-label">Alerts</span>
+              </span>
+            )}
+            
+            {/* Divider */}
+            <div className="subheader-divider" />
+            
+            {/* Action Buttons */}
             <button
               onClick={() => {
                 setActiveFilter({});
                 fetchPriceChanges(daysToShow, {}, sortMode);
                 fetchPriceTrends();
               }}
-              className="btn-ghost"
+              className="btn-ghost px-2"
+              title="Refresh"
             >
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Refresh
+              <RefreshCw className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -617,8 +645,19 @@ export const PriceHistory = () => {
           columns={priceHistoryColumns}
           data={filteredPriceChanges}
           onRefresh={() => fetchPriceChanges(daysToShow, activeFilter, sortMode)}
+          onRowClick={(row) => setSelectedPriceChange(row as PriceChange)}
+          rowClickIcon={LineChart}
+          rowClickTooltip="View price history chart"
         />
       </div>
+
+      {/* Price History Detail Modal */}
+      {selectedPriceChange && (
+        <PriceHistoryDetailModal
+          priceChange={selectedPriceChange}
+          onClose={() => setSelectedPriceChange(null)}
+        />
+      )}
     </div>
   );
 };

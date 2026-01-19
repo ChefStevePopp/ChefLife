@@ -15,7 +15,11 @@ import {
   Link,
   Shield,
   ChevronDown,
+  ChevronUp,
+  PackageX,
+  MessageSquare,
 } from "lucide-react";
+import { TwoStageButton } from "@/components/ui/TwoStageButton";
 import { motion, AnimatePresence } from "framer-motion";
 import { EditIngredientModal } from "@/features/admin/components/sections/recipe/MasterIngredientList/EditIngredientModal";
 import { LinkExistingIngredientModal } from "./LinkExistingIngredientModal";
@@ -49,6 +53,30 @@ interface PriceChange {
   rejected?: boolean;
 }
 
+// =============================================================================
+// DISCREPANCY HANDLING - Alpha Bug Fix
+// =============================================================================
+// Problem: $0.00 prices from shorted items were polluting price history
+// Solution: Detect and flag discrepancy items, skip price updates for them
+// =============================================================================
+
+type DiscrepancyType = 'short' | 'damaged' | 'wrong_item' | 'price_mismatch';
+
+interface DiscrepancyInfo {
+  type: DiscrepancyType;
+  notes?: string;
+}
+
+// Items with $0.00 or very low prices are suspicious
+const isSuspiciousPrice = (price: number): boolean => price <= 0;
+
+const DISCREPANCY_LABELS: Record<DiscrepancyType, string> = {
+  short: 'Short',
+  damaged: 'Damaged',
+  wrong_item: 'Wrong Item',
+  price_mismatch: 'Price Mismatch',
+};
+
 export const DataPreview: React.FC<Props> = ({
   data,
   vendorId,
@@ -76,6 +104,10 @@ export const DataPreview: React.FC<Props> = ({
   // Stage 2: Inline expansion state (replaces modal for new items)
   const [expandedItemCode, setExpandedItemCode] = useState<string | null>(null);
   const [skippedItems, setSkippedItems] = useState<string[]>([]);
+  
+  // Discrepancy handling - Alpha bug fix for $0.00 prices
+  const [discrepancyItems, setDiscrepancyItems] = useState<Map<string, DiscrepancyInfo>>(new Map());
+  const [expandedDiscrepancy, setExpandedDiscrepancy] = useState<string | null>(null);
 
   // Find price changes and existing items on component mount
   useEffect(() => {
@@ -194,8 +226,15 @@ export const DataPreview: React.FC<Props> = ({
         return;
       }
 
-      // Record approved price changes
-      const approvedChanges = priceChanges.filter((change) => change.approved);
+      // Record approved price changes - EXCLUDE DISCREPANCY ITEMS (Alpha bug fix)
+      // This is the key fix: items marked as discrepancies should NOT pollute price history
+      const approvedChanges = priceChanges.filter((change) => {
+        // Must be approved
+        if (!change.approved) return false;
+        // Must NOT be a discrepancy item
+        if (discrepancyItems.has(change.itemCode)) return false;
+        return true;
+      });
 
       // Prepare line items for audit service (excluding excluded items)
       const lineItems: InvoiceLineItem[] = uniqueItems
@@ -420,17 +459,26 @@ export const DataPreview: React.FC<Props> = ({
 
                 const isExpanded = expandedItemCode === row.item_code.toString();
                 const isSkipped = skippedItems.includes(row.item_code.toString());
+                
+                // Discrepancy detection - Alpha bug fix
+                const newPrice = parseFloat(row.unit_price);
+                const isSuspicious = isSuspiciousPrice(newPrice);
+                const discrepancy = discrepancyItems.get(row.item_code.toString());
+                const hasDiscrepancy = discrepancy !== undefined;
+                const isDiscrepancyExpanded = expandedDiscrepancy === row.item_code.toString();
 
                 return (
                   <React.Fragment key={index}>
                   <tr
                     className={`
                       ${isExisting ? "bg-gray-800/50" : ""} 
-                      ${hasChange ? "bg-amber-500/5" : ""} 
+                      ${hasChange && !hasDiscrepancy ? "bg-amber-500/5" : ""} 
                       ${nameMismatch ? "bg-blue-500/5" : ""}
                       ${isExcluded ? "bg-gray-900/80 opacity-60" : ""}
                       ${isExpanded ? "bg-emerald-500/5 border-l-2 border-l-emerald-500" : ""}
                       ${isSkipped ? "bg-amber-500/5" : ""}
+                      ${hasDiscrepancy ? "bg-rose-500/10 border-l-2 border-l-rose-500" : ""}
+                      ${isSuspicious && !hasDiscrepancy && !isExcluded ? "bg-amber-500/10 border-l-2 border-l-amber-400" : ""}
                     `}
                   >
                     <td
@@ -455,6 +503,22 @@ export const DataPreview: React.FC<Props> = ({
                       {isSkipped && !isExcluded && (
                         <div className="text-xs text-amber-400 mt-1">
                           Skipped for now
+                        </div>
+                      )}
+                      {/* Discrepancy indicator */}
+                      {hasDiscrepancy && (
+                        <div className="text-xs text-rose-400 mt-1 flex items-center gap-1">
+                          <PackageX className="w-3 h-3" />
+                          {DISCREPANCY_LABELS[discrepancy.type]}
+                          {discrepancy.notes && ` - ${discrepancy.notes}`}
+                          <span className="text-gray-500">(price update skipped)</span>
+                        </div>
+                      )}
+                      {/* Suspicious price warning */}
+                      {isSuspicious && !hasDiscrepancy && !isExcluded && (
+                        <div className="text-xs text-amber-400 mt-1 flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3" />
+                          $0.00 price - likely a short or shorted item
                         </div>
                       )}
                     </td>
@@ -520,52 +584,139 @@ export const DataPreview: React.FC<Props> = ({
                           </button>
                         ) : isExisting ? (
                           <>
-                            <button
-                              onClick={() =>
-                                setPriceChanges((prev) =>
-                                  prev.map((p) =>
-                                    p.itemCode === row.item_code
-                                      ? {
-                                          ...p,
-                                          approved: true,
-                                          rejected: false,
-                                        }
-                                      : p,
-                                  ),
-                                )
-                              }
-                              className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
-                                priceChange?.approved
-                                  ? "bg-emerald-500/20 text-emerald-400"
-                                  : "bg-gray-800/50 hover:bg-emerald-500/10 text-gray-400 hover:text-emerald-400"
-                              }`}
-                              title="Approve price change"
-                            >
-                              <Check className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() =>
-                                setPriceChanges((prev) =>
-                                  prev.map((p) =>
-                                    p.itemCode === row.item_code
-                                      ? {
-                                          ...p,
-                                          rejected: true,
-                                          approved: false,
-                                        }
-                                      : p,
-                                  ),
-                                )
-                              }
-                              className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
-                                priceChange?.rejected
-                                  ? "bg-rose-500/20 text-rose-400"
-                                  : "bg-gray-800/50 hover:bg-rose-500/10 text-gray-400 hover:text-rose-400"
-                              }`}
-                              title="Reject price change"
-                            >
-                              <Ban className="w-3.5 h-3.5" />
-                            </button>
+                            {/* Discrepancy marking for existing items */}
+                            {hasDiscrepancy ? (
+                              <>
+                                <button
+                                  onClick={() => setExpandedDiscrepancy(
+                                    isDiscrepancyExpanded ? null : row.item_code.toString()
+                                  )}
+                                  className="h-7 rounded-lg flex items-center justify-center px-2 gap-1 bg-rose-500/20 text-rose-400"
+                                  title="Edit discrepancy"
+                                >
+                                  <PackageX className="w-3.5 h-3.5" />
+                                  <span className="text-xs">{DISCREPANCY_LABELS[discrepancy.type]}</span>
+                                  {isDiscrepancyExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                </button>
+                                <TwoStageButton
+                                  onConfirm={() => {
+                                    setDiscrepancyItems((prev) => {
+                                      const next = new Map(prev);
+                                      next.delete(row.item_code.toString());
+                                      return next;
+                                    });
+                                    setExpandedDiscrepancy(null);
+                                    toast.success(`Removed discrepancy from ${row.item_code}`);
+                                  }}
+                                  icon={X}
+                                  confirmText="Clear?"
+                                  variant="neutral"
+                                  size="sm"
+                                  title="Clear discrepancy"
+                                />
+                              </>
+                            ) : isSuspicious ? (
+                              /* Prominent "Mark as Short" for $0.00 prices */
+                              <TwoStageButton
+                                onConfirm={() => {
+                                  setDiscrepancyItems((prev) => {
+                                    const next = new Map(prev);
+                                    next.set(row.item_code.toString(), { type: 'short' });
+                                    return next;
+                                  });
+                                  // Also reject the price change
+                                  setPriceChanges((prev) =>
+                                    prev.map((p) =>
+                                      p.itemCode === row.item_code
+                                        ? { ...p, rejected: true, approved: false }
+                                        : p
+                                    )
+                                  );
+                                  toast.success(`Marked ${row.item_code} as short - price update skipped`);
+                                  setExpandedDiscrepancy(row.item_code.toString());
+                                }}
+                                icon={PackageX}
+                                confirmText="Short?"
+                                variant="warning"
+                                size="sm"
+                                title="Mark as short (shorted item)"
+                              />
+                            ) : (
+                              /* Normal approve/reject for regular items */
+                              <>
+                                <button
+                                  onClick={() =>
+                                    setPriceChanges((prev) =>
+                                      prev.map((p) =>
+                                        p.itemCode === row.item_code
+                                          ? {
+                                              ...p,
+                                              approved: true,
+                                              rejected: false,
+                                            }
+                                          : p,
+                                      ),
+                                    )
+                                  }
+                                  className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+                                    priceChange?.approved
+                                      ? "bg-emerald-500/20 text-emerald-400"
+                                      : "bg-gray-800/50 hover:bg-emerald-500/10 text-gray-400 hover:text-emerald-400"
+                                  }`}
+                                  title="Approve price change"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() =>
+                                    setPriceChanges((prev) =>
+                                      prev.map((p) =>
+                                        p.itemCode === row.item_code
+                                          ? {
+                                              ...p,
+                                              rejected: true,
+                                              approved: false,
+                                            }
+                                          : p,
+                                      ),
+                                    )
+                                  }
+                                  className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+                                    priceChange?.rejected
+                                      ? "bg-rose-500/20 text-rose-400"
+                                      : "bg-gray-800/50 hover:bg-rose-500/10 text-gray-400 hover:text-rose-400"
+                                  }`}
+                                  title="Reject price change"
+                                >
+                                  <Ban className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            )}
+                            {/* Additional discrepancy button for non-suspicious items */}
+                            {!isSuspicious && !hasDiscrepancy && (
+                              <TwoStageButton
+                                onConfirm={() => {
+                                  setDiscrepancyItems((prev) => {
+                                    const next = new Map(prev);
+                                    next.set(row.item_code.toString(), { type: 'damaged' });
+                                    return next;
+                                  });
+                                  setPriceChanges((prev) =>
+                                    prev.map((p) =>
+                                      p.itemCode === row.item_code
+                                        ? { ...p, rejected: true, approved: false }
+                                        : p
+                                    )
+                                  );
+                                  setExpandedDiscrepancy(row.item_code.toString());
+                                }}
+                                icon={AlertTriangle}
+                                confirmText="Issue?"
+                                variant="warning"
+                                size="sm"
+                                title="Mark discrepancy (damaged, wrong item, etc.)"
+                              />
+                            )}
                           </>
                         ) : (
                           <div className="flex gap-2">
@@ -646,6 +797,73 @@ export const DataPreview: React.FC<Props> = ({
                       onCancel={() => setExpandedItemCode(null)}
                     />
                   )}
+                  
+                  {/* Discrepancy Expanded Row - Edit type and notes */}
+                  {isDiscrepancyExpanded && hasDiscrepancy && (
+                    <tr className="bg-rose-500/5">
+                      <td colSpan={6} className="px-4 py-3">
+                        <div className="flex items-center gap-4">
+                          <div className="flex items-center gap-2">
+                            <PackageX className="w-4 h-4 text-rose-400" />
+                            <span className="text-sm text-gray-400">Discrepancy Type:</span>
+                            <select
+                              value={discrepancy.type}
+                              onChange={(e) => {
+                                setDiscrepancyItems((prev) => {
+                                  const next = new Map(prev);
+                                  const current = next.get(row.item_code.toString());
+                                  if (current) {
+                                    next.set(row.item_code.toString(), {
+                                      ...current,
+                                      type: e.target.value as DiscrepancyType,
+                                    });
+                                  }
+                                  return next;
+                                });
+                              }}
+                              className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1 text-sm text-white"
+                            >
+                              <option value="short">Short (not delivered)</option>
+                              <option value="damaged">Damaged</option>
+                              <option value="wrong_item">Wrong Item</option>
+                              <option value="price_mismatch">Price Mismatch</option>
+                            </select>
+                          </div>
+                          <div className="flex-1 flex items-center gap-2">
+                            <MessageSquare className="w-4 h-4 text-gray-500" />
+                            <input
+                              type="text"
+                              placeholder="Notes (optional) e.g., 'Only 2 of 3 cases delivered'"
+                              value={discrepancy.notes || ''}
+                              onChange={(e) => {
+                                setDiscrepancyItems((prev) => {
+                                  const next = new Map(prev);
+                                  const current = next.get(row.item_code.toString());
+                                  if (current) {
+                                    next.set(row.item_code.toString(), {
+                                      ...current,
+                                      notes: e.target.value,
+                                    });
+                                  }
+                                  return next;
+                                });
+                              }}
+                              className="flex-1 bg-gray-800 border border-gray-700 rounded-md px-3 py-1 text-sm text-white placeholder-gray-500"
+                            />
+                          </div>
+                          <button
+                            onClick={() => setExpandedDiscrepancy(null)}
+                            className="w-7 h-7 rounded-lg flex items-center justify-center bg-gray-700/50 text-gray-400 hover:text-white transition-colors"
+                          >
+                            <ChevronUp className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-2">
+                          Items marked as discrepancies will NOT update price history. Use this for shorted items, damaged goods, or other delivery issues.
+                        </p>
+                      </td>
+                    </tr>
+                  )}
                   </React.Fragment>
                 );
               });
@@ -655,83 +873,153 @@ export const DataPreview: React.FC<Props> = ({
       </div>
 
       {/* Floating Action Bar with Summary */}
-      <div className="floating-action-bar">
-        <div className="floating-action-bar-inner">
-          <div className="floating-action-bar-content">
-            {/* Summary Stats */}
-            <div className="flex items-center gap-6 text-sm">
-              <div className="flex items-center gap-2">
-                <span className="text-gray-500">Records:</span>
-                <span className="text-white font-medium">
-                  {new Set(data.map((item) => item.item_code)).size}
-                </span>
-              </div>
-              
-              {excludedItems.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-500">Excluded:</span>
-                  <span className="text-rose-400 font-medium">{excludedItems.length}</span>
-                </div>
-              )}
-              
-              {skippedItems.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-500">Skipped:</span>
-                  <span className="text-amber-400 font-medium">{skippedItems.length}</span>
-                </div>
-              )}
-              
-              {priceChanges.filter(p => p.approved).length > 0 && (
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-500">Price Updates:</span>
-                  <span className="text-emerald-400 font-medium">
-                    {priceChanges.filter(p => p.approved).length}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <div className="w-px h-6 bg-gray-700" />
-
-            {/* Actions */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={onCancel}
-                className="btn-ghost text-sm py-1.5 px-4"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirm}
-                className="btn-primary text-sm py-1.5 px-4"
-                disabled={data.some(
-                  (row) =>
-                    !masterIngredients.find(
-                      (mi) => mi.item_code === row.item_code.toString(),
-                    ) && 
-                    !excludedItems.includes(row.item_code.toString()) &&
-                    !skippedItems.includes(row.item_code.toString()),
+      {(() => {
+        // Calculate suspicious items (unmarked $0.00 prices)
+        const uniqueItemsMap = new Map();
+        data.forEach((item) => {
+          if (!uniqueItemsMap.has(item.item_code)) {
+            uniqueItemsMap.set(item.item_code, item);
+          }
+        });
+        const uniqueItems = Array.from(uniqueItemsMap.values());
+        
+        const unmarkedSuspicious = uniqueItems.filter((row) => {
+          const price = parseFloat(row.unit_price);
+          const isExcluded = excludedItems.includes(row.item_code.toString());
+          const hasDiscrepancy = discrepancyItems.has(row.item_code.toString());
+          return isSuspiciousPrice(price) && !isExcluded && !hasDiscrepancy;
+        });
+        
+        const hasUnmarkedSuspicious = unmarkedSuspicious.length > 0;
+        
+        return (
+          <div className={`floating-action-bar ${hasUnmarkedSuspicious ? 'warning' : ''}`}>
+            <div className="floating-action-bar-inner">
+              <div className="floating-action-bar-content">
+                {/* Warning for unmarked $0.00 items */}
+                {hasUnmarkedSuspicious && (
+                  <>
+                    <div className="flex items-center gap-2 text-amber-400">
+                      <AlertTriangle className="w-4 h-4" />
+                      <span className="text-sm font-medium">
+                        {unmarkedSuspicious.length} item{unmarkedSuspicious.length > 1 ? 's have' : ' has'} $0.00 price
+                      </span>
+                    </div>
+                    <TwoStageButton
+                      onConfirm={() => {
+                        // Mark all suspicious items as shorts
+                        setDiscrepancyItems((prev) => {
+                          const next = new Map(prev);
+                          unmarkedSuspicious.forEach((row) => {
+                            next.set(row.item_code.toString(), { type: 'short' });
+                          });
+                          return next;
+                        });
+                        // Reject their price changes
+                        setPriceChanges((prev) =>
+                          prev.map((p) => {
+                            if (unmarkedSuspicious.some(r => r.item_code === p.itemCode)) {
+                              return { ...p, rejected: true, approved: false };
+                            }
+                            return p;
+                          })
+                        );
+                        toast.success(`Marked ${unmarkedSuspicious.length} item${unmarkedSuspicious.length > 1 ? 's' : ''} as shorts`);
+                      }}
+                      icon={PackageX}
+                      confirmText="Mark All Short"
+                      variant="warning"
+                      size="sm"
+                      title="Mark all $0.00 items as shorts"
+                    />
+                    <div className="w-px h-6 bg-gray-700" />
+                  </>
                 )}
-                title={
-                  data.some(
-                    (row) =>
-                      !masterIngredients.find(
-                        (mi) => mi.item_code === row.item_code.toString(),
-                      ) && 
-                      !excludedItems.includes(row.item_code.toString()) &&
-                      !skippedItems.includes(row.item_code.toString()),
-                  )
-                    ? "Handle all new items first"
-                    : ""
-                }
-              >
-                <Save className="w-4 h-4 mr-1" />
-                Confirm Import
-              </button>
+                
+                {/* Summary Stats */}
+                <div className="flex items-center gap-6 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500">Records:</span>
+                    <span className="text-white font-medium">
+                      {new Set(data.map((item) => item.item_code)).size}
+                    </span>
+                  </div>
+                  
+                  {discrepancyItems.size > 0 && (
+                    <div className="flex items-center gap-2">
+                      <PackageX className="w-4 h-4 text-rose-400" />
+                      <span className="text-gray-500">Discrepancies:</span>
+                      <span className="text-rose-400 font-medium">{discrepancyItems.size}</span>
+                    </div>
+                  )}
+                  
+                  {excludedItems.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-500">Excluded:</span>
+                      <span className="text-rose-400 font-medium">{excludedItems.length}</span>
+                    </div>
+                  )}
+                  
+                  {skippedItems.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-500">Skipped:</span>
+                      <span className="text-amber-400 font-medium">{skippedItems.length}</span>
+                    </div>
+                  )}
+                  
+                  {priceChanges.filter(p => p.approved && !discrepancyItems.has(p.itemCode)).length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-500">Price Updates:</span>
+                      <span className="text-emerald-400 font-medium">
+                        {priceChanges.filter(p => p.approved && !discrepancyItems.has(p.itemCode)).length}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="w-px h-6 bg-gray-700" />
+
+                {/* Actions */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={onCancel}
+                    className="btn-ghost text-sm py-1.5 px-4"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirm}
+                    className="btn-primary text-sm py-1.5 px-4"
+                    disabled={data.some(
+                      (row) =>
+                        !masterIngredients.find(
+                          (mi) => mi.item_code === row.item_code.toString(),
+                        ) && 
+                        !excludedItems.includes(row.item_code.toString()) &&
+                        !skippedItems.includes(row.item_code.toString()),
+                    )}
+                    title={
+                      data.some(
+                        (row) =>
+                          !masterIngredients.find(
+                            (mi) => mi.item_code === row.item_code.toString(),
+                          ) && 
+                          !excludedItems.includes(row.item_code.toString()) &&
+                          !skippedItems.includes(row.item_code.toString()),
+                      )
+                        ? "Handle all new items first"
+                        : ""
+                    }
+                  >
+                    <Save className="w-4 h-4 mr-1" />
+                    Confirm Import
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* Link Existing Modal */}
       {linkingIngredient && (

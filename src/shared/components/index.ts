@@ -11,3 +11,4 @@ export { ModuleMergeFields } from './ModuleMergeFields';
 export { StatBar, type StatItem } from './StatBar';
 export { ImageUploadModal, type ImageUploadModalProps } from './ImageUploadModal';
 export { FileDropzone, type FileDropzoneProps } from './FileDropzone';
+export { CardCarousel, CarouselCard, type CardCarouselProps, type CarouselCardProps } from './CardCarousel';
