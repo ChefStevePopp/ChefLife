@@ -12,12 +12,15 @@ import {
   Trash2,
   X,
   HelpCircle,
+  Umbrella,
+  Star,
 } from "lucide-react";
 import { MasterIngredient } from "@/types/master-ingredient";
 import { differenceInWeeks, differenceInDays } from "date-fns";
 import { BasicInformation } from "../EditIngredientModal/BasicInformation";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
+import { useUmbrellaMembership } from "./hooks";
 import toast from "react-hot-toast";
 
 // =============================================================================
@@ -358,6 +361,11 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   
   const completionStatus = getCompletionStatus(ingredient);
   const reviewStatus = !isNew ? getReviewStatus(ingredient.updated_at) : null;
+  
+  // Umbrella membership
+  const { membership: umbrellaMembership } = useUmbrellaMembership(
+    isNew ? null : ingredient.id
+  );
 
   return (
     <>
@@ -404,7 +412,8 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-xl font-bold text-white truncate">
-                  {ingredient.product || (isNew ? "New Ingredient" : "Untitled")}
+                  {/* Common name takes priority - it's how the kitchen thinks */}
+                  {ingredient.common_name || ingredient.product || (isNew ? "New Ingredient" : "Untitled")}
                 </h1>
                 
                 {/* Status Badges - Compact row */}
@@ -486,21 +495,60 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
                       Archived
                     </span>
                   )}
+
+                  {/* Umbrella Membership Badge - Read-only, managed in VIM */}
+                  {umbrellaMembership && (
+                    <div className="group relative">
+                      <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-800/50 text-gray-400 border border-gray-700">
+                        <Umbrella className="w-3 h-3" />
+                        <span>{umbrellaMembership.umbrellaName}</span>
+                        {umbrellaMembership.siblingCount > 1 && (
+                          <span className="text-gray-500">({umbrellaMembership.siblingCount})</span>
+                        )}
+                        {umbrellaMembership.isPrimary && (
+                          <Star className="w-3 h-3 text-gray-500 fill-current" />
+                        )}
+                      </div>
+                      
+                      {/* Tooltip */}
+                      <div className="absolute top-full left-0 mt-2 px-3 py-2 bg-gray-800 rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 whitespace-nowrap border border-gray-700">
+                        <div className="text-xs text-gray-300">
+                          {umbrellaMembership.isPrimary
+                            ? `Primary ingredient for "${umbrellaMembership.umbrellaName}" umbrella`
+                            : `Member of "${umbrellaMembership.umbrellaName}" umbrella`}
+                          {umbrellaMembership.siblingCount > 1 && (
+                            <div className="text-gray-500 mt-0.5">
+                              {umbrellaMembership.siblingCount} vendor{umbrellaMembership.siblingCount !== 1 ? 's' : ''} in this umbrella
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Subtitle: Vendor + Item Code */}
-              {(ingredient.vendor || ingredient.item_code) && (
-                <div className="mt-1 text-sm text-gray-500">
-                  <span>{ingredient.vendor || "No vendor"}</span>
-                  {ingredient.item_code && (
-                    <>
-                      <span className="mx-2">•</span>
-                      <span className="font-mono text-gray-600">{ingredient.item_code}</span>
-                    </>
-                  )}
-                </div>
-              )}
+              {/* Subtitle: Vendor description (if common_name exists), then vendor + item code */}
+              <div className="mt-1 space-y-0.5">
+                {/* If we have a common_name, show the full vendor description */}
+                {ingredient.common_name && ingredient.product && (
+                  <p className="text-sm text-gray-400 line-clamp-1" title={ingredient.product}>
+                    {ingredient.product}
+                  </p>
+                )}
+                {/* Vendor + Item Code line */}
+                {(ingredient.vendor || ingredient.item_code) && (
+                  <div className="text-sm text-gray-500">
+                    <span>{ingredient.vendor || "No vendor"}</span>
+                    {ingredient.item_code && (
+                      <>
+                        <span className="mx-2">•</span>
+                        <span className="font-mono text-gray-600">{ingredient.item_code}</span>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

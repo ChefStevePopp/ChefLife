@@ -4,7 +4,107 @@
 
 **Gold Standard:** `src/features/admin/components/sections/VendorInvoice/components/PriceHistory/PriceHistoryDetailModal.tsx`
 
-**Also See:** `src/features/admin/components/sections/VendorInvoice/components/UmbrellaItemCard.tsx` (PriceHistoryModal, AggregatePurchaseHistoryModal)
+**Also See:** 
+- `PriceHistoryModalById.tsx` - Wrapper that accepts just an ingredient ID
+- `UmbrellaItemCard.tsx` - PriceHistoryModal, AggregatePurchaseHistoryModal
+
+---
+
+## Data Sources
+
+### The Three-Table Architecture
+
+```
+vendor_price_history (raw table)
+        │
+        ├──► vendor_price_history_all (view)
+        │    - ALL records including stable prices
+        │    - Use for: Full history charting
+        │
+        └──► vendor_price_history_enriched (view)  
+             - Only records where price CHANGED
+             - Includes: vendor_logo_url, alert flags
+             - Use for: Alerts, ticker, comparisons
+```
+
+### When to Use Each
+
+| Source | Use Case | Why |
+|--------|----------|-----|
+| `vendor_price_history_all` | **Charting the selected item's full history** | Shows every invoice record, including when price stayed the same. Provides complete timeline. |
+| `vendor_price_history_enriched` | **Getting latest price change, vendor comparisons, category averages** | Only price changes = cleaner comparison lines, accurate change_percent. Has logo URLs and reporting flags. |
+| `master_ingredients` | **Fallback only** | For ingredients with no price history yet (new or legacy). |
+
+### Reporting & Tracking Columns
+
+These columns live in `master_ingredients` and are exposed through the views:
+
+| Column | Purpose | Where It Shows |
+|--------|---------|----------------|
+| `show_in_price_ticker` | Display toggle | Price Watch Ticker (visible or not) |
+| `alert_price_change` | Notification trigger | NEXUS broadcasts → Activity Log |
+| `alert_low_stock` | Notification trigger | NEXUS broadcasts → Activity Log |
+| `vitals_tier` | Operational criticality | BOH Vitals cards ('standard', 'elevated', 'critical') |
+
+### Data Flow in PriceHistoryDetailModal
+
+```typescript
+// 1. Selected item's FULL history (for the chart)
+const { data: historyData } = await supabase
+  .from("vendor_price_history_all")  // ◄── ALL records
+  .select("*")
+  .eq("master_ingredient_id", ingredientId)
+  .gte("effective_date", startDate)
+  .order("effective_date", { ascending: true });
+
+// 2. Sibling vendors (same common_name) - only CHANGES for cleaner lines
+const { data: siblingHistory } = await supabase
+  .from("vendor_price_history_enriched")  // ◄── Only changes
+  .select("*")
+  .in("master_ingredient_id", siblingIds)
+  .gte("effective_date", startDate);
+
+// 3. Category average - only CHANGES
+const { data: categoryData } = await supabase
+  .from("vendor_price_history_enriched")  // ◄── Only changes
+  .select("effective_date, new_price, master_ingredients!inner(sub_category)")
+  .eq("master_ingredients.sub_category", subCategoryId);
+```
+
+### Data Flow in PriceHistoryModalById (Wrapper)
+
+```typescript
+// Try enriched view first for accurate latest price change
+const { data: latestPriceChange } = await supabase
+  .from("vendor_price_history_enriched")  // ◄── Has logo, change_percent
+  .select("*")
+  .eq("master_ingredient_id", ingredientId)
+  .order("effective_date", { ascending: false })
+  .limit(1)
+  .single();
+
+// Fallback to master_ingredients if no history exists
+if (!latestPriceChange) {
+  const { data: ingredient } = await supabase
+    .from("master_ingredients")
+    .select("*")
+    .eq("id", ingredientId)
+    .single();
+}
+```
+
+### View Definitions (Reference)
+
+**vendor_price_history_all:**
+- Joins `vendor_price_history` with `master_ingredients` and `vendors`
+- Includes `is_price_change` flag (true if price differs from previous)
+- Returns ALL records
+
+**vendor_price_history_enriched:**
+- Same joins as above
+- Filters to only rows where price changed
+- Includes `vendor_logo_url`, `alert_price_change`, `show_in_price_ticker`, `vitals_tier`
+- Pre-calculates `change_percent`
 
 ---
 
@@ -531,6 +631,18 @@ This same pattern can power:
 - **Labor Cost Dashboard** — Wage/hour trends by position
 - **Revenue Trends** — Daily/weekly/monthly comparisons
 - **Inventory Valuation** — Stock value over time
+
+---
+
+## Entry Points
+
+The Price History Modal can be opened from three locations:
+
+| Location | Component | How It Works |
+|----------|-----------|-------------|
+| **Price Watch Ticker** | `PriceWatchTickerInline.tsx` | Click item → navigates to VIM history tab |
+| **BOH Vitals Tab** | `AdminDash_BOHVitalsTab.tsx` | Click watched ingredient → opens `PriceHistoryModalById` |
+| **Ingredient Detail Page** | `IngredientDetailPage/index.tsx` | "View Price History" button → opens `PriceHistoryModalById` |
 
 ---
 

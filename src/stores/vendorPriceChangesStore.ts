@@ -15,10 +15,10 @@ export interface PriceChange {
   invoice_date: string;
   previous_date: string | null;
   vendor_logo_url: string | null;
-  // Alert/Dashboard flags from MIL
-  alert_price_change: boolean;
-  show_on_dashboard: boolean;
-  priority_level: string;
+  // Reporting & Tracking flags from MIL
+  alert_price_change: boolean;       // NEXUS notification on price changes
+  show_in_price_ticker: boolean;     // Display in Price Watch Ticker
+  vitals_tier: string;               // BOH Vitals criticality: 'standard' | 'elevated' | 'critical'
   master_ingredient?: MasterIngredient;
   ingredient_id?: string;
   // Canary column: 180-day record count for data integrity monitoring
@@ -66,8 +66,8 @@ export const useVendorPriceChangesStore = create<VendorPriceChangesStore>(
               item_code,
               vendor_logo_url,
               alert_price_change,
-              show_on_dashboard,
-              priority_level
+              show_in_price_ticker,
+              vitals_tier
             `)
             .gte(dateField, cutoffDate)
             .order(dateField, { ascending: false });
@@ -117,8 +117,8 @@ export const useVendorPriceChangesStore = create<VendorPriceChangesStore>(
             previous_date: row.previous_effective_date,
             vendor_logo_url: row.vendor_logo_url,
             alert_price_change: row.alert_price_change || false,
-            show_on_dashboard: row.show_on_dashboard || false,
-            priority_level: row.priority_level || 'standard',
+            show_in_price_ticker: row.show_in_price_ticker || false,
+            vitals_tier: row.vitals_tier || 'standard',
             ingredient_id: row.master_ingredient_id,
             // Canary column: 180-day record count
             record_count_180d: recordCounts.get(row.master_ingredient_id) || 0,
@@ -217,8 +217,8 @@ export const useVendorPriceChangesStore = create<VendorPriceChangesStore>(
             previous_date: null, // Not available in fallback
             vendor_logo_url: null, // Not available in fallback
             alert_price_change: ingredient?.alert_price_change || false,
-            show_on_dashboard: ingredient?.show_on_dashboard || false,
-            priority_level: ingredient?.priority_level || 'standard',
+            show_in_price_ticker: ingredient?.show_in_price_ticker || false,
+            vitals_tier: ingredient?.vitals_tier || 'standard',
             master_ingredient: ingredient,
             ingredient_id: history.master_ingredient_id,
             // Canary column: 180-day record count

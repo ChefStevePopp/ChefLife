@@ -412,19 +412,32 @@ export const ImportWorkspace: React.FC<Props> = ({
             .eq("vendor_code", item.itemCode || 'UNKNOWN')
             .single();
 
-          await supabase
+          const priceHistoryRecord = {
+            organization_id: organizationId,
+            master_ingredient_id: item.matchedIngredientId,
+            vendor_id: vendorId,
+            price: item.unitPrice,
+            previous_price: previousPrice,
+            effective_date: invoiceDate.toISOString(),
+            source_type: importType === "pdf" ? "pdf_import" : "photo_import",
+            invoice_item_id: invoiceItem?.id || null,
+            vendor_import_id: importRecord.id,
+          };
+
+          const { error: priceHistoryError } = await supabase
             .from("vendor_price_history")
-            .insert({
-              organization_id: organizationId,
-              master_ingredient_id: item.matchedIngredientId,
-              vendor_id: vendorId,
-              price: item.unitPrice,
-              previous_price: previousPrice,
-              effective_date: invoiceDate.toISOString(),
-              source_type: importType === "pdf" ? "pdf_import" : "photo_import",
-              invoice_item_id: invoiceItem?.id,
-              vendor_import_id: importRecord.id,
+            .insert(priceHistoryRecord);
+
+          if (priceHistoryError) {
+            console.error("[VIM] Failed to create price history record:", {
+              error: priceHistoryError,
+              record: priceHistoryRecord,
+              item: { code: item.itemCode, name: item.productName },
             });
+            // Non-fatal: log but continue - we don't want to fail the whole import
+          } else {
+            console.log(`[VIM] Price history created for ${item.itemCode}: ${previousPrice} → ${item.unitPrice}`);
+          }
 
           if (Math.abs(item.unitPrice - previousPrice) > 0.001) {
             priceChanges++;

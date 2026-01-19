@@ -44,13 +44,17 @@ export interface MasterIngredient {
   
   // ---------------------------------------------------------------------------
   // REPORTING & TRACKING
-  // Dashboard visibility and inventory schedule participation
   // ---------------------------------------------------------------------------
-  priority_level?: 'critical' | 'high' | 'standard' | 'low';
+  // Ticker & Alerts (NEXUS notifications)
+  show_in_price_ticker?: boolean;      // Display in Price Watch Ticker
+  alert_price_change?: boolean;        // NEXUS notification on price changes
+  alert_low_stock?: boolean;           // NEXUS notification on low inventory
+  
+  // BOH Vitals (operational criticality)
+  vitals_tier?: 'critical' | 'elevated' | 'standard';  // How critical to monitor
+  
+  // Inventory Management
   inventory_schedule?: string[];       // ['daily', 'weekly', 'monthly', 'spot']
-  show_on_dashboard?: boolean;
-  alert_price_change?: boolean;
-  alert_low_stock?: boolean;
   par_level?: number;                  // Target stock (in inventory units)
   reorder_point?: number;              // Alert threshold (in inventory units)
   
