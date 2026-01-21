@@ -2,7 +2,7 @@
 
 > **Hook:** `src/hooks/useDiagnostics.ts`  
 > **Toggle:** localStorage `showDiagnostics`  
-> **Updated:** 2026-01-17
+> **Updated:** 2026-01-21
 
 ---
 
@@ -128,6 +128,15 @@ The hook also adds `show-diagnostics` class to `document.body` when enabled. Thi
 | ImportWorkspace | `src/features/admin/components/sections/VendorInvoice/components/ImportWorkspace.tsx` |
 | UmbrellaIngredientManager | `src/features/admin/components/sections/VendorInvoice/components/UmbrellaIngredientManager.tsx` |
 | ItemCodeGroupManager | `src/features/admin/components/sections/VendorInvoice/components/ItemCodeGroupManager.tsx` |
+| **PriceHistory Module** | |
+| PriceHistoryDetailModal | `.../PriceHistory/PriceHistoryDetailModal.tsx` |
+| StatsGrid | `.../PriceHistory/components/StatsGrid.tsx` |
+| PeriodSelector | `.../PriceHistory/components/PeriodSelector.tsx` |
+| CompareToggles | `.../PriceHistory/components/CompareToggles.tsx` |
+| ChartLegend | `.../PriceHistory/components/ChartLegend.tsx` |
+| PriceHistoryChart | `.../PriceHistory/components/PriceHistoryChart.tsx` |
+| InsightsPanel | `.../PriceHistory/components/InsightsPanel.tsx` |
+| PriceRecordList | `.../PriceHistory/components/PriceRecordList.tsx` |
 
 ---
 
