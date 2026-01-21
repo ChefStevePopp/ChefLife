@@ -60,15 +60,76 @@ export interface Recipe {
   sub_category?: string | null;
 }
 
+/**
+ * RecipeIngredient - Relational model (from recipe_ingredients table)
+ * 
+ * This is the NEW relational structure. During migration, both old JSONB
+ * and new relational fields are supported.
+ * 
+ * Triangle model: master_ingredient → recipe_ingredient → recipe costing
+ * Cascade: When master_ingredient price changes, cost_per_unit auto-updates
+ */
 export interface RecipeIngredient {
+  // Core identity
   id: string;
-  name: string;
-  quantity: string;
+  recipe_id?: string;
+  
+  // Type discriminator
+  ingredient_type: 'raw' | 'prepared';
+  
+  // Reference to source (exactly one will be set based on ingredient_type)
+  master_ingredient_id?: string;   // For 'raw' ingredients
+  prepared_recipe_id?: string;     // For 'prepared' sub-recipes
+  
+  // Quantity and measurement
+  quantity: number;                // Now a number, not string
   unit: string;
+  common_measure?: string;         // Human-friendly (e.g., "2 cups")
+  
+  // Cost tracking (denormalized, auto-updated by cascade trigger)
+  cost_per_unit: number;           // Current cost per unit from source
+  
+  // Metadata
   notes?: string;
-  cost: number;
+  sort_order?: number;
+  
+  // Timestamps
+  created_at?: string;
+  updated_at?: string;
+  
+  // =========================================
+  // Joined fields (read-only, from queries)
+  // =========================================
+  ingredient_name?: string;        // From master_ingredients.product or recipes.name
+  allergens?: string[];            // From master_ingredients.allergens
+  recipe_unit_type?: string;       // From master_ingredients.recipe_unit_type
+  
+  // =========================================
+  // DEPRECATED: Legacy JSONB fields
+  // Remove after migration complete
+  // =========================================
+  /** @deprecated Use master_ingredient_id or prepared_recipe_id instead */
+  name?: string;
+  /** @deprecated Use cost_per_unit instead */
+  cost?: number;
+  /** @deprecated Use common_measure instead */
   commonMeasure?: string;
+  /** @deprecated Use ingredient_type instead */
+  type?: 'raw' | 'prepared';
 }
+
+/**
+ * Helper type for creating new ingredients (omits read-only fields)
+ */
+export type RecipeIngredientCreate = Omit<
+  RecipeIngredient,
+  'id' | 'created_at' | 'updated_at' | 'ingredient_name' | 'allergens' | 'recipe_unit_type'
+>;
+
+/**
+ * Helper type for updating ingredients
+ */
+export type RecipeIngredientUpdate = Partial<RecipeIngredientCreate> & { id: string };
 
 export interface EquipmentItem {
   id: string;

@@ -1,6 +1,7 @@
 # Recipe Manager — Relational Foundation Handoff
 
 > **Created:** January 21, 2026  
+> **Updated:** January 21, 2026 — Database migration COMPLETE ✓
 > **Purpose:** Migrate from JSONB ingredients to relational tables with cascade triggers  
 > **Mantra:** "An accounting app masquerading as restaurant software"
 
@@ -14,239 +15,161 @@ At 1000 restaurants:
 
 ---
 
-## Current State
+## Build Progress
 
-| Component | Status | Location |
-|-----------|--------|----------|
-| Recipe Library UI | ✅ Working | `src/features/recipes/components/RecipeManager/RecipeManager.tsx` |
-| Recipe Editor | ✅ Working | `src/features/recipes/components/RecipeEditor/` |
-| Ingredients Input | ✅ Links to master_ingredients | `.../BasicInformation/IngredientsInput.tsx` |
-| Data Storage | ❌ JSONB | `recipes.ingredients` column stores JSON array |
-| Price Cascade | ❌ None | Costs are snapshots, go stale |
-| "Recipes using X" | ❌ Hard | No FK = full table scan of JSON |
+| Step | Description | Status | Notes |
+|------|-------------|--------|-------|
+| 1. Schema | Create `recipe_ingredients` table | ✅ DONE | FK constraints, indexes, RLS |
+| 2. Migration | Extract JSONB → relational rows | ✅ DONE | Orphaned refs filtered |
+| 3. Trigger | Price cascade automation | ✅ DONE | Raw + Prepared triggers |
+| 4. Types | Update TypeScript interfaces | ✅ DONE | `recipe.ts` updated |
+| 5. API | CRUD operations for relational data | ✅ DONE | `recipeIngredientsApi.ts` |
+| 6. Store | Refactor to query relational data | ⏳ Next | `recipeStore.ts` |
+| 7. UI | Update IngredientsInput component | ⏳ Pending | Keep JSONB sync during transition |
+| 8. Routes | Add `/admin/recipes/:id` pattern | ⏳ Pending | Route-based editing |
+| 9. Cleanup | Remove JSONB column | ⏳ Pending | After full verification |
 
 ---
 
-## Target State
+## Database Objects Created
 
-### Schema
-
+### Table: `recipe_ingredients`
 ```sql
--- recipe_ingredients (relational, indexed, FK-constrained)
 CREATE TABLE recipe_ingredients (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY,
   recipe_id UUID NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
   ingredient_type TEXT NOT NULL CHECK (ingredient_type IN ('raw', 'prepared')),
   master_ingredient_id UUID REFERENCES master_ingredients(id) ON DELETE RESTRICT,
   prepared_recipe_id UUID REFERENCES recipes(id) ON DELETE RESTRICT,
-  quantity DECIMAL NOT NULL,
-  unit TEXT NOT NULL,
-  cost_per_unit DECIMAL DEFAULT 0,
-  common_measure TEXT,  -- "2 cups" human-friendly
+  quantity DECIMAL NOT NULL DEFAULT 0,
+  unit TEXT NOT NULL DEFAULT '',
+  cost_per_unit DECIMAL NOT NULL DEFAULT 0,
+  common_measure TEXT,
   notes TEXT,
   sort_order INT DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now(),
-  
-  -- Ensure one type is set
-  CONSTRAINT ingredient_type_check CHECK (
-    (ingredient_type = 'raw' AND master_ingredient_id IS NOT NULL AND prepared_recipe_id IS NULL) OR
-    (ingredient_type = 'prepared' AND prepared_recipe_id IS NOT NULL AND master_ingredient_id IS NULL)
-  )
+  updated_at TIMESTAMPTZ DEFAULT now()
 );
-
--- Indexes for fast lookups
-CREATE INDEX idx_recipe_ingredients_recipe ON recipe_ingredients(recipe_id);
-CREATE INDEX idx_recipe_ingredients_master ON recipe_ingredients(master_ingredient_id);
-CREATE INDEX idx_recipe_ingredients_prepared ON recipe_ingredients(prepared_recipe_id);
 ```
 
-### Cascade Trigger
+### Indexes
+- `idx_recipe_ingredients_recipe_id` — Fast recipe lookups
+- `idx_recipe_ingredients_master_id` — "Recipes using this ingredient"
+- `idx_recipe_ingredients_prepared_id` — "Recipes using this sub-recipe"
+- `idx_recipe_ingredients_type` — Filter by raw/prepared
 
+### Triggers
+- `trigger_cascade_ingredient_price` on `master_ingredients` — When raw ingredient price changes
+- `trigger_cascade_prepared_recipe_price` on `recipes` — When prepared item cost changes
+- `trigger_recipe_ingredients_updated_at` — Auto-update timestamps
+
+### View: `v_ingredient_usage`
+For VIM "Recipes using this ingredient" feature:
 ```sql
--- When master_ingredient price changes → update all linked recipe_ingredients
-CREATE OR REPLACE FUNCTION cascade_ingredient_price_to_recipes()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Update cost_per_unit in recipe_ingredients
-  UPDATE recipe_ingredients
-  SET 
-    cost_per_unit = NEW.cost_per_recipe_unit,
-    updated_at = now()
-  WHERE master_ingredient_id = NEW.id;
-  
-  -- Recalculate total_cost for affected recipes
-  UPDATE recipes r
-  SET 
-    total_cost = (
-      SELECT COALESCE(SUM(ri.quantity * ri.cost_per_unit), 0)
-      FROM recipe_ingredients ri
-      WHERE ri.recipe_id = r.id
-    ),
-    updated_at = now()
-  WHERE r.id IN (
-    SELECT DISTINCT recipe_id 
-    FROM recipe_ingredients 
-    WHERE master_ingredient_id = NEW.id
-  );
-  
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trigger_cascade_ingredient_price
-AFTER UPDATE OF cost_per_recipe_unit ON master_ingredients
-FOR EACH ROW 
-WHEN (OLD.cost_per_recipe_unit IS DISTINCT FROM NEW.cost_per_recipe_unit)
-EXECUTE FUNCTION cascade_ingredient_price_to_recipes();
+SELECT master_ingredient_id, ingredient_name, recipe_id, recipe_name, 
+       recipe_type, quantity, unit, cost_per_unit, line_total, organization_id
+FROM v_ingredient_usage
+WHERE master_ingredient_id = '{uuid}';
 ```
 
-### Migration Script
+### RLS Policies
+- `View recipe ingredients` — SELECT if user can view the recipe
+- `Manage recipe ingredients` — ALL if user is owner/admin or dev
 
-```sql
--- Extract JSONB ingredients → relational rows
-INSERT INTO recipe_ingredients (
-  recipe_id,
-  ingredient_type,
-  master_ingredient_id,
-  prepared_recipe_id,
-  quantity,
-  unit,
-  cost_per_unit,
-  common_measure,
-  notes,
-  sort_order
-)
-SELECT 
-  r.id as recipe_id,
-  COALESCE((ing->>'type'), 'raw') as ingredient_type,
-  CASE WHEN (ing->>'type') = 'raw' THEN (ing->>'name')::uuid ELSE NULL END as master_ingredient_id,
-  CASE WHEN (ing->>'type') = 'prepared' THEN (ing->>'name')::uuid ELSE NULL END as prepared_recipe_id,
-  COALESCE((ing->>'quantity')::decimal, 0) as quantity,
-  COALESCE(ing->>'unit', '') as unit,
-  COALESCE((ing->>'cost')::decimal, 0) as cost_per_unit,
-  ing->>'commonMeasure' as common_measure,
-  ing->>'notes' as notes,
-  (row_number() OVER (PARTITION BY r.id ORDER BY ordinality))::int - 1 as sort_order
-FROM recipes r
-CROSS JOIN LATERAL jsonb_array_elements(r.ingredients) WITH ORDINALITY AS ing(value, ordinality)
-WHERE r.ingredients IS NOT NULL 
-  AND jsonb_array_length(r.ingredients) > 0;
+---
+
+## Cascade Test Results (Verified ✓)
+
+| Recipe | BEFORE cost | AFTER cost (+$1) | BEFORE total | AFTER total |
+|--------|-------------|------------------|--------------|-------------|
+| House Mayonnaise | -0.8375 | 0.1625 | 49.62 | 52.62 |
+| Roasted Garlic & Dijon | -0.8375 | 0.1625 | 35.53 | 38.53 |
+| Caramelized Onions | -0.8375 | 0.1625 | 37.19 | 45.19 |
+
+**Result:** Price change propagated automatically through triggers. ✓
+
+---
+
+## Files
+
+### Migration (Applied)
+```
+supabase/migrations/20260121000000_recipe_ingredients_relational.sql
+```
+
+### Test Scripts
+```
+supabase/tests/test_cascade_triggers.sql
+```
+
+### TypeScript
+```
+src/features/recipes/types/recipe.ts          # Updated RecipeIngredient interface
+src/features/recipes/api/recipeIngredientsApi.ts  # New CRUD API module
+```
+
+### Deprecated (Had bugs, never ran)
+```
+supabase/migrations/_deprecated_20260121000000_recipe_ingredients_relational.sql
+supabase/migrations/_deprecated_20260121000001_migrate_recipe_ingredients_data.sql
 ```
 
 ---
 
-## Route-Based Architecture
+## Current State
 
-**Current:** Modal-based editing  
-**Target:** Route-based (like IngredientDetailPage)
+### What Works
+- **Cascade triggers** — Price changes flow automatically to recipe costs
+- **v_ingredient_usage view** — Query "which recipes use ingredient X"
+- **Relational data** — FK constraints prevent orphaned references
+- **JSONB preserved** — `recipes.ingredients` still exists for current UI
 
-| Route | Purpose | Auth |
-|-------|---------|------|
-| `/admin/recipes` | Library view (tabs: Mis en Place, Final Plates, Receiving) | Required |
-| `/admin/recipes/:id` | Edit page | Required |
-| `/admin/recipes/:id/view` | Read-only view | Required |
-| `/admin/recipes/new` | Create page | Required |
-| `/r/:friendlyId` | Public recipe view (future) | Optional |
+### What's Dual-State (Transition Period)
+- `recipes.ingredients` (JSONB) — Used by current frontend
+- `recipe_ingredients` (relational) — Used by triggers, ready for frontend
 
-**Use Case:** QR code on prep label → line cook scans → sees recipe instantly
-
----
-
-## Files to Modify
-
-| File | Change |
-|------|--------|
-| `src/features/recipes/stores/recipeStore.ts` | Load from `recipe_ingredients` table, not JSONB |
-| `src/features/recipes/components/RecipeEditor/BasicInformation/IngredientsInput.tsx` | Save to relational table |
-| `src/features/recipes/api/recipeApi.ts` | Update queries to use JOINs |
-| `src/features/recipes/types/recipe.ts` | Update `RecipeIngredient` interface |
-| New: `supabase/migrations/YYYYMMDD_recipe_ingredients_relational.sql` | Schema + trigger + migration |
+### Data Note
+Some `master_ingredients.cost_per_recipe_unit` values are negative (e.g., Salt at -0.8375) due to yield percentage import issue (0.0068 instead of 0.68). The cascade works correctly — fix the source data and costs will auto-correct.
 
 ---
 
-## Type Updates
+## Next Session: Frontend Integration
 
-```typescript
-// Current (broken)
-export interface RecipeIngredient {
-  id: string;
-  name: string;        // ← Stores master_ingredient_id but named wrong
-  quantity: string;    // ← String, should be number
-  unit: string;
-  notes?: string;
-  cost: number;
-  commonMeasure?: string;
-}
+### Store Changes (`recipeStore.ts`)
+1. Add `fetchRecipeWithIngredients(id)` that queries relational table
+2. Update `updateRecipe()` to save to both JSONB and relational (transition)
+3. Eventually: Remove JSONB writes
 
-// Target (correct)
-export interface RecipeIngredient {
-  id: string;
-  recipe_id: string;
-  ingredient_type: 'raw' | 'prepared';
-  master_ingredient_id?: string;
-  prepared_recipe_id?: string;
-  quantity: number;
-  unit: string;
-  cost_per_unit: number;
-  common_measure?: string;
-  notes?: string;
-  sort_order: number;
-  // Joined fields (read-only)
-  ingredient_name?: string;  // From master_ingredients.product or recipes.name
-  allergens?: string[];      // From master_ingredients.allergens
-}
-```
+### UI Changes (`IngredientsInput.tsx`)
+1. Read from relational data (via API module)
+2. Write to relational table (via API module)
+3. Sync to JSONB during transition for backward compatibility
 
----
-
-## Build Sequence
-
-1. **Schema** — Create `recipe_ingredients` table with constraints
-2. **Migration** — Extract JSONB → relational rows
-3. **Trigger** — Price cascade automation
-4. **Types** — Update TypeScript interfaces
-5. **Store** — Refactor to query relational data
-6. **API** — Update save/load to use new table
-7. **Routes** — Add `/admin/recipes/:id` pattern
-8. **Cleanup** — Remove JSONB column after verification
+### Route Changes
+1. Add `/admin/recipes/:id` for route-based editing
+2. Match pattern used by `IngredientDetailPage`
 
 ---
 
 ## Validation Queries
 
 ```sql
--- Count recipes with ingredients
-SELECT COUNT(*) FROM recipes WHERE jsonb_array_length(ingredients) > 0;
+-- Count migrated ingredients
+SELECT COUNT(*) FROM recipe_ingredients;
 
--- After migration, should match
-SELECT COUNT(DISTINCT recipe_id) FROM recipe_ingredients;
-
--- Find orphaned ingredient references
-SELECT ri.* FROM recipe_ingredients ri
+-- Check for orphans (should be 0)
+SELECT COUNT(*) FROM recipe_ingredients ri
 LEFT JOIN master_ingredients mi ON mi.id = ri.master_ingredient_id
 WHERE ri.ingredient_type = 'raw' AND mi.id IS NULL;
 
--- Test cascade: check recipe costs update
-SELECT r.name, r.total_cost, SUM(ri.quantity * ri.cost_per_unit) as calculated
-FROM recipes r
-JOIN recipe_ingredients ri ON ri.recipe_id = r.id
-GROUP BY r.id, r.name, r.total_cost
-HAVING r.total_cost != SUM(ri.quantity * ri.cost_per_unit);
+-- Verify cascade on price change
+UPDATE master_ingredients SET cost_per_recipe_unit = cost_per_recipe_unit + 0.01 
+WHERE id = 'YOUR-UUID';
+-- Then check recipe_ingredients.cost_per_unit and recipes.total_cost updated
+
+-- Recipes using an ingredient
+SELECT * FROM v_ingredient_usage WHERE master_ingredient_id = 'YOUR-UUID';
 ```
-
----
-
-## Success Criteria
-
-- [ ] `recipe_ingredients` table created with FK constraints
-- [ ] All existing JSONB ingredients migrated to relational rows
-- [ ] Zero orphaned references
-- [ ] Cascade trigger fires on price change
-- [ ] Recipe `total_cost` auto-updates within 1 second of price change
-- [ ] "Recipes using this ingredient" query < 50ms
-- [ ] UI unchanged — IngredientsInput still works
-- [ ] Route `/admin/recipes/:id` works for edit
 
 ---
 

@@ -5,8 +5,12 @@ interface FoodCategoryGroup {
   id: string;
   name: string;
   description: string;
+  icon?: string;
+  color?: string;
   sort_order: number;
   archived?: boolean;
+  is_system?: boolean;
+  is_recipe_type?: boolean;
 }
 
 interface FoodCategory {
@@ -32,7 +36,11 @@ interface FoodRelationshipsStore {
     id: string;
     name: string;
     description?: string;
+    icon?: string;
+    color?: string;
     archived?: boolean;
+    is_system?: boolean;
+    is_recipe_type?: boolean;
   }>;
   categories: Array<{
     id: string;
@@ -70,6 +78,15 @@ interface FoodRelationshipsStore {
     id: string,
     archived: boolean,
   ) => Promise<void>;
+  
+  // Computed getter for Recipe Manager integration
+  getRecipeTypeGroups: () => Array<{
+    id: string;
+    name: string;
+    icon?: string;
+    color?: string;
+    is_system?: boolean;
+  }>;
 }
 
 export const useFoodRelationshipsStore = create<FoodRelationshipsStore>(
@@ -109,7 +126,11 @@ export const useFoodRelationshipsStore = create<FoodRelationshipsStore>(
             id: g.id,
             name: g.name,
             description: g.description,
+            icon: g.icon,
+            color: g.color,
             archived: g.archived || false,
+            is_system: g.is_system || false,
+            is_recipe_type: g.is_recipe_type || false,
           })) || [];
 
         const categories =
@@ -258,6 +279,22 @@ export const useFoodRelationshipsStore = create<FoodRelationshipsStore>(
         console.error("Error archiving item:", error);
         throw error;
       }
+    },
+
+    /**
+     * Get recipe type groups for Recipe Manager tabs.
+     * Returns non-archived groups where is_recipe_type = true.
+     * Used to dynamically generate Recipe Manager tabs.
+     */
+    getRecipeTypeGroups: () => {
+      return get().majorGroups
+        .filter((g) => g.is_recipe_type && !g.archived)
+        .sort((a, b) => {
+          // System groups first, then alphabetically
+          if (a.is_system && !b.is_system) return -1;
+          if (!a.is_system && b.is_system) return 1;
+          return a.name.localeCompare(b.name);
+        });
     },
   }),
 );
