@@ -20,6 +20,7 @@ Restaurant management system. React/TypeScript/Supabase. Desktop admin + mobile 
 | **VIM (Vendor Invoice Manager)** | 80% | Import, Triage, History, Umbrellas, Analytics tabs working |
 | **Master Ingredient List** | 90% | ExcelDataGrid, L6 navigation, route-based editing |
 | **Price History** | ✅ Modularized | 12 files, reusable components |
+| **Food Relationships** | ✅ L5 Complete | Three-column taxonomy manager with Guided Mode |
 | **Recipe Manager** | 60% | Basic CRUD, needs costing integration |
 | **Team Performance** | 70% | 7-tab interface, attendance tracking |
 | **Mobile Shell** | 30% | People/Place/Profit concept designed |
@@ -59,6 +60,8 @@ src/features/admin/components/sections/
 │       ├── PriceHistory/   # Modularized chart modal
 │       ├── UmbrellaIngredientManager.tsx
 │       └── ItemCodeGroupManager.tsx
+├── FoodRelationshipsManager/  # Taxonomy (DNA)
+│   └── index.tsx              # Three-column L5 with Guided Mode
 ├── recipe/
 │   └── MasterIngredientList/
 │       └── IngredientDetailPage/  # Route-based editing
@@ -93,13 +96,17 @@ Every visual component shows its file path when enabled.
 ---
 
 ## Current Work Queue
-1. **Recipe Manager — Relational Foundation** ⬅️ ACTIVE
+1. **Food Relationships — Final Polish** ⬅️ NEXT SESSION
+   - Sub-header info cards: titles should match icon colors (VIM Settings pattern)
+   - Pattern: `<span className="text-sm font-medium text-primary-400">Title</span>`
+   - Currently bright gray, should be: primary/emerald/amber/rose per icon
+2. **Recipe Manager — Wire Dynamic Tabs**
+   - Tabs should come from `getRecipeTypeGroups()` (Food Relationships)
+   - Currently hardcoded, needs to respect taxonomy
+3. **Recipe Manager — Relational Foundation**
    - Migrate JSONB ingredients → relational `recipe_ingredients` table
    - Add cascade triggers (price change → recipe cost auto-update)
-   - Route-based editing (`/admin/recipes/:id`)
    - Handoff: `docs/handoffs/HANDOFF-Recipe-Relational-Foundation.md`
-2. **PriceHistory** - Modularized ✅, UI improvements pending (blocked by recipes)
-3. **Diagnostics** - Adding to all modularized components ✅
 4. **Triage Panel** - Needs L5 polish
 5. **Mobile Shell** - Design complete, build pending
 
@@ -121,4 +128,4 @@ Every visual component shows its file path when enabled.
 
 ---
 
-*Last updated: January 21, 2026 — Recipe relational foundation planned*
+*Last updated: January 21, 2026 — Food Relationships L5 complete, sub-header polish pending*

@@ -22,7 +22,7 @@
  * =============================================================================
  */
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   FolderTree,
   Plus,
@@ -38,17 +38,12 @@ import {
   Lock,
   X,
   Info,
+  AlertCircle,
 } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { useFoodRelationshipsStore } from "@/stores/foodRelationshipsStore";
 import { useDiagnostics } from "@/hooks/useDiagnostics";
 import { getLucideIcon, getSuggestedIcon } from "@/utils/iconMapping";
+import { TwoStageButton } from "@/components/ui/TwoStageButton";
 import toast from "react-hot-toast";
 
 // L5 Shared Components
@@ -56,7 +51,9 @@ import {
   GuidedModeProvider,
   GuidedModeToggle,
   GuidanceTip,
+  useGuidedMode,
 } from "@/shared/components/L5";
+import { iconOptions, lucideIconMap } from "@/utils/iconMapping";
 
 // =============================================================================
 // TYPES
@@ -67,9 +64,221 @@ interface EditingItem {
   type: "group" | "category" | "sub";
   name: string;
   description: string;
+  originalDescription: string; // For detecting unsaved changes
   archived?: boolean;
   is_system?: boolean;
+  icon?: string; // For Major Groups
 }
+
+const DESCRIPTION_MAX_LENGTH = 500;
+
+// =============================================================================
+// EDIT MODAL COMPONENT (needs to be inside GuidedModeProvider)
+// =============================================================================
+
+interface EditModalProps {
+  editingItem: EditingItem;
+  setEditingItem: React.Dispatch<React.SetStateAction<EditingItem | null>>;
+  onSave: () => void;
+  onClose: () => void;
+}
+
+const EditModal: React.FC<EditModalProps> = ({
+  editingItem,
+  setEditingItem,
+  onSave,
+  onClose,
+}) => {
+  const { isEnabled: isGuidedMode } = useGuidedMode();
+  
+  // Track original icon for change detection
+  const [originalIcon] = useState(editingItem.icon);
+  
+  const hasDescriptionChanged = editingItem.description !== editingItem.originalDescription;
+  const hasIconChanged = editingItem.type === "group" && editingItem.icon !== originalIcon;
+  const hasUnsavedChanges = hasDescriptionChanged || hasIconChanged;
+  
+  const charCount = editingItem.description.length;
+  const isOverLimit = charCount > DESCRIPTION_MAX_LENGTH;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-gray-900 rounded-lg w-full max-w-md border border-gray-800 flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="p-4 border-b border-gray-800 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+              editingItem.type === "group" ? "bg-primary-500/20" :
+              editingItem.type === "category" ? "bg-emerald-500/20" : "bg-amber-500/20"
+            }`}>
+              {editingItem.type === "group" ? (
+                (() => {
+                  const Icon = getLucideIcon(editingItem.icon);
+                  return <Icon className="w-4 h-4 text-primary-400" />;
+                })()
+              ) : (
+                <FolderTree className={`w-4 h-4 ${
+                  editingItem.type === "category" ? "text-emerald-400" : "text-amber-400"
+                }`} />
+              )}
+            </div>
+            <div>
+              <h3 className="text-base font-medium text-white">
+                Edit {editingItem.type === "group" ? "Major Group" : editingItem.type === "category" ? "Category" : "Sub-Category"}
+              </h3>
+              <p className="text-xs text-gray-500">{editingItem.name}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 text-gray-500 hover:text-gray-300 rounded-lg hover:bg-gray-800"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body - scrollable */}
+        <div className="p-4 space-y-4 overflow-y-auto flex-1">
+          {/* Guided tip */}
+          {isGuidedMode && (
+            <GuidanceTip color="blue">
+              {editingItem.type === "group" ? (
+                <>Descriptions help your team understand what belongs here. Icons make groups easy to spot in dropdowns.</>
+              ) : editingItem.type === "category" ? (
+                <>Categories become filter options throughout ChefLife. Good names = faster workflows.</>
+              ) : (
+                <>Sub-categories are the finest detail level — they show up in your food cost reports.</>
+              )}
+            </GuidanceTip>
+          )}
+
+          {/* Name field (disabled) */}
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1.5">
+              Name
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                value={editingItem.name}
+                className="input w-full text-sm bg-gray-800/30 cursor-not-allowed"
+                disabled
+              />
+              {editingItem.is_system && (
+                <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 text-[10px] font-medium">
+                    <Lock className="w-3 h-3" />
+                    System
+                  </span>
+                </div>
+              )}
+            </div>
+            {editingItem.is_system && (
+              <p className="text-[11px] text-gray-500 mt-1">
+                System groups cannot be renamed or deleted
+              </p>
+            )}
+          </div>
+
+          {/* Icon picker (Major Groups only) */}
+          {editingItem.type === "group" && (
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                Icon
+              </label>
+              <div className="grid grid-cols-8 gap-1 p-2 bg-gray-800/30 rounded-lg border border-gray-700/50 max-h-32 overflow-y-auto">
+                {iconOptions.map((opt) => {
+                  const Icon = lucideIconMap[opt.value];
+                  const isSelected = editingItem.icon === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => setEditingItem({ ...editingItem, icon: opt.value })}
+                      className={`p-2 rounded-lg transition-colors ${
+                        isSelected
+                          ? "bg-primary-500/30 text-primary-400 ring-1 ring-primary-500/50"
+                          : "hover:bg-gray-700/50 text-gray-400 hover:text-gray-300"
+                      }`}
+                      title={opt.label}
+                    >
+                      <Icon className="w-4 h-4" />
+                    </button>
+                  );
+                })}
+              </div>
+              {isGuidedMode && (
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Pick an icon that represents this group. It appears in dropdowns and lists.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Description field */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-medium text-gray-400">
+                Description
+              </label>
+              <span className={`text-[11px] ${
+                isOverLimit ? "text-rose-400" : charCount > DESCRIPTION_MAX_LENGTH * 0.8 ? "text-amber-400" : "text-gray-500"
+              }`}>
+                {charCount} / {DESCRIPTION_MAX_LENGTH}
+              </span>
+            </div>
+            <textarea
+              value={editingItem.description}
+              onChange={(e) => {
+                if (e.target.value.length <= DESCRIPTION_MAX_LENGTH) {
+                  setEditingItem({ ...editingItem, description: e.target.value });
+                }
+              }}
+              className={`input w-full h-28 text-sm resize-none ${
+                isOverLimit ? "border-rose-500/50 focus:border-rose-500" : ""
+              }`}
+              placeholder="Add a description to help your team understand this category..."
+              autoFocus={editingItem.type !== "group"} // Focus description for non-groups
+            />
+          </div>
+        </div>
+
+        {/* Action Bar */}
+        <div className="p-4 border-t border-gray-800 bg-gray-900/50 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            {/* Left: Unsaved indicator */}
+            <div className="flex items-center gap-2">
+              {hasUnsavedChanges && (
+                <span className="flex items-center gap-1.5 text-xs text-amber-400">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  Unsaved changes
+                </span>
+              )}
+            </div>
+
+            {/* Right: Actions */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onClose}
+                className="btn-ghost btn-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={onSave}
+                disabled={!hasUnsavedChanges || isOverLimit}
+                className={`btn-primary btn-sm ${
+                  !hasUnsavedChanges || isOverLimit ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // =============================================================================
 // MAIN COMPONENT
@@ -102,7 +311,6 @@ export const FoodRelationshipsManager: React.FC = () => {
   const [editingItem, setEditingItem] = useState<EditingItem | null>(null);
   const [showAddModal, setShowAddModal] = useState<"group" | "category" | "sub" | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
 
   // UI state
   const [showArchivedItems, setShowArchivedItems] = useState(false);
@@ -211,9 +419,16 @@ export const FoodRelationshipsManager: React.FC = () => {
     if (!editingItem) return;
 
     try {
-      await updateItem(editingItem.type, editingItem.id, {
+      const updates: Record<string, any> = {
         description: editingItem.description,
-      });
+      };
+      
+      // Include icon for Major Groups
+      if (editingItem.type === "group" && editingItem.icon) {
+        updates.icon = editingItem.icon;
+      }
+      
+      await updateItem(editingItem.type, editingItem.id, updates);
       setShowEditModal(false);
       setEditingItem(null);
       toast.success("Item updated successfully");
@@ -223,30 +438,30 @@ export const FoodRelationshipsManager: React.FC = () => {
     }
   };
 
-  const handleArchive = async () => {
-    if (!editingItem) return;
-
+  // Direct archive handler for TwoStageButton (no modal needed)
+  const handleArchiveItem = useCallback(async (
+    type: "group" | "category" | "sub",
+    id: string,
+    currentlyArchived: boolean
+  ) => {
     try {
-      const currentStatus = editingItem.archived || false;
-      await toggleArchiveItem(editingItem.type, editingItem.id, !currentStatus);
+      await toggleArchiveItem(type, id, !currentlyArchived);
 
       // Reset selection if we archived the selected item
-      if (!currentStatus) {
-        if (editingItem.type === "group" && selectedGroup === editingItem.id) {
+      if (!currentlyArchived) {
+        if (type === "group" && selectedGroup === id) {
           setSelectedGroup(null);
-        } else if (editingItem.type === "category" && selectedCategory === editingItem.id) {
+        } else if (type === "category" && selectedCategory === id) {
           setSelectedCategory(null);
         }
       }
 
-      setShowArchiveConfirm(false);
-      setEditingItem(null);
-      toast.success(`Item ${currentStatus ? "restored" : "archived"} successfully`);
+      toast.success(`Item ${currentlyArchived ? "restored" : "archived"} successfully`);
     } catch (error) {
       console.error("Error archiving item:", error);
       toast.error("Failed to update item");
     }
-  };
+  }, [toggleArchiveItem, selectedGroup, selectedCategory]);
 
   const clearSearch = () => setSearchQuery("");
 
@@ -271,7 +486,7 @@ export const FoodRelationshipsManager: React.FC = () => {
   const showEmptyState = !majorGroups?.length || majorGroups.length === 0;
 
   return (
-    <GuidedModeProvider defaultEnabled={false}>
+    <GuidedModeProvider defaultEnabled={showEmptyState}>
       <div className="space-y-4">
         {/* Diagnostic Path */}
         {showDiagnostics && (
@@ -436,22 +651,28 @@ export const FoodRelationshipsManager: React.FC = () => {
         </div>
 
         {/* ------------------------------------------------------------------- */}
-        {/* EMPTY STATE */}
+        {/* EMPTY STATE - First time / No data */}
         {/* ------------------------------------------------------------------- */}
         {showEmptyState ? (
-          <div className="text-center py-12 bg-gray-800/50 rounded-lg">
-            <FolderTree className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-white mb-2">
-              No Categories Set Up
+          <div className="text-center py-16 bg-gray-800/30 rounded-lg border border-gray-700/30">
+            <div className="w-16 h-16 rounded-2xl bg-green-500/10 flex items-center justify-center mx-auto mb-6">
+              <FolderTree className="w-8 h-8 text-green-500" />
+            </div>
+            <h3 className="text-xl font-semibold text-white mb-2">
+              Welcome to Food Relationships
             </h3>
-            <p className="text-gray-400 max-w-md mx-auto mb-6">
-              Start by adding major groups, then create categories and
-              sub-categories to organize your ingredients.
+            <p className="text-gray-400 max-w-lg mx-auto mb-8 leading-relaxed">
+              This is where you'll organize everything in ChefLife. Create Major Groups 
+              (like FOOD, ALCOHOL), then Categories (Proteins, Produce), then Sub-Categories 
+              (Beef, Pork, Chicken). Your reports and filters will thank you.
             </p>
             <button onClick={() => setShowAddModal("group")} className="btn-primary">
               <Plus className="w-4 h-4 mr-2" />
-              Add Major Group
+              Create Your First Major Group
             </button>
+            <p className="text-xs text-gray-600 mt-4">
+              Pro tip: Start with FOOD — it's where most ingredients live.
+            </p>
           </div>
         ) : (
           /* ----------------------------------------------------------------- */
@@ -524,8 +745,10 @@ export const FoodRelationshipsManager: React.FC = () => {
                                 type: "group",
                                 name: group.name,
                                 description: group.description || "",
+                                originalDescription: group.description || "",
                                 archived: group.archived,
                                 is_system: group.is_system,
+                                icon: group.icon,
                               });
                               setShowEditModal(true);
                             }}
@@ -534,28 +757,16 @@ export const FoodRelationshipsManager: React.FC = () => {
                           >
                             <Edit className="w-3 h-3" />
                           </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingItem({
-                                id: group.id,
-                                type: "group",
-                                name: group.name,
-                                description: group.description || "",
-                                archived: group.archived,
-                                is_system: group.is_system,
-                              });
-                              setShowArchiveConfirm(true);
-                            }}
-                            className="p-1 text-gray-500 hover:text-amber-400"
-                            title={group.archived ? "Restore" : "Archive"}
-                          >
-                            {group.archived ? (
-                              <RotateCcw className="w-3 h-3" />
-                            ) : (
-                              <Archive className="w-3 h-3" />
-                            )}
-                          </button>
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <TwoStageButton
+                              onConfirm={() => handleArchiveItem("group", group.id, group.archived || false)}
+                              icon={group.archived ? RotateCcw : Archive}
+                              confirmText={group.archived ? "Restore?" : "Archive?"}
+                              variant="warning"
+                              size="xs"
+                              title={group.archived ? "Restore" : "Archive"}
+                            />
+                          </div>
                           <ChevronRight
                             className={`w-3.5 h-3.5 text-gray-500 transition-transform ${isSelected ? "rotate-90" : ""}`}
                           />
@@ -584,8 +795,22 @@ export const FoodRelationshipsManager: React.FC = () => {
                 })}
 
                 {filteredMajorGroups.length === 0 && (
-                  <div className="text-center py-6 text-gray-500 text-xs">
-                    {searchQuery ? "No groups match search" : "No major groups"}
+                  <div className="text-center py-8">
+                    <FolderTree className="w-8 h-8 text-gray-600 mx-auto mb-3" />
+                    {searchQuery ? (
+                      <p className="text-gray-500 text-xs">No groups match "{searchQuery}"</p>
+                    ) : (
+                      <>
+                        <p className="text-gray-400 text-sm mb-3">No major groups yet</p>
+                        <button 
+                          onClick={() => setShowAddModal("group")} 
+                          className="btn-ghost btn-xs text-primary-400 hover:text-primary-300"
+                        >
+                          <Plus className="w-3.5 h-3.5 mr-1" />
+                          Add your first group
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -634,7 +859,11 @@ export const FoodRelationshipsManager: React.FC = () => {
                           >
                           <div className="flex items-center gap-2 min-w-0 flex-1">
                           <GripVertical className="w-3.5 h-3.5 text-gray-600 cursor-grab flex-shrink-0" />
-                          <FolderTree className={`w-4 h-4 flex-shrink-0 ${isSelected ? "text-emerald-400" : "text-gray-400"}`} />
+                          {category.archived ? (
+                            <Archive className="w-4 h-4 flex-shrink-0 text-gray-500" />
+                          ) : (
+                            <FolderTree className={`w-4 h-4 flex-shrink-0 ${isSelected ? "text-emerald-400" : "text-gray-400"}`} />
+                          )}
                           <span className={`font-medium truncate ${
                           category.archived 
                           ? "text-gray-500 line-through" 
@@ -654,6 +883,7 @@ export const FoodRelationshipsManager: React.FC = () => {
                                     type: "category",
                                     name: category.name,
                                     description: category.description || "",
+                                    originalDescription: category.description || "",
                                     archived: category.archived,
                                   });
                                   setShowEditModal(true);
@@ -663,27 +893,16 @@ export const FoodRelationshipsManager: React.FC = () => {
                               >
                                 <Edit className="w-3 h-3" />
                               </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setEditingItem({
-                                    id: category.id,
-                                    type: "category",
-                                    name: category.name,
-                                    description: category.description || "",
-                                    archived: category.archived,
-                                  });
-                                  setShowArchiveConfirm(true);
-                                }}
-                                className="p-1 text-gray-500 hover:text-amber-400"
-                                title={category.archived ? "Restore" : "Archive"}
-                              >
-                                {category.archived ? (
-                                  <RotateCcw className="w-3 h-3" />
-                                ) : (
-                                  <Archive className="w-3 h-3" />
-                                )}
-                              </button>
+                              <div onClick={(e) => e.stopPropagation()}>
+                                <TwoStageButton
+                                  onConfirm={() => handleArchiveItem("category", category.id, category.archived || false)}
+                                  icon={category.archived ? RotateCcw : Archive}
+                                  confirmText={category.archived ? "Restore?" : "Archive?"}
+                                  variant="warning"
+                                  size="xs"
+                                  title={category.archived ? "Restore" : "Archive"}
+                                />
+                              </div>
                               <ChevronRight
                                 className={`w-3.5 h-3.5 text-gray-500 transition-transform ${isSelected ? "rotate-90" : ""}`}
                               />
@@ -711,13 +930,29 @@ export const FoodRelationshipsManager: React.FC = () => {
                       );
                     })
                   ) : (
-                    <div className="text-center py-6 text-gray-500 text-xs">
-                      {searchQuery ? "No categories match search" : "No categories in this group"}
+                    <div className="text-center py-8">
+                      <FolderTree className="w-8 h-8 text-gray-600 mx-auto mb-3" />
+                      {searchQuery ? (
+                        <p className="text-gray-500 text-xs">No categories match "{searchQuery}"</p>
+                      ) : (
+                        <>
+                          <p className="text-gray-400 text-sm mb-3">No categories in this group</p>
+                          <button 
+                            onClick={() => setShowAddModal("category")} 
+                            className="btn-ghost btn-xs text-emerald-400 hover:text-emerald-300"
+                          >
+                            <Plus className="w-3.5 h-3.5 mr-1" />
+                            Add first category
+                          </button>
+                        </>
+                      )}
                     </div>
                   )
                 ) : (
-                  <div className="text-center py-6 text-gray-500 text-xs">
-                    Select a major group
+                  <div className="text-center py-8">
+                    <ChevronRight className="w-8 h-8 text-gray-600 mx-auto mb-3" />
+                    <p className="text-gray-500 text-sm">Select a major group</p>
+                    <p className="text-gray-600 text-xs mt-1">to see its categories</p>
                   </div>
                 )}
               </div>
@@ -761,7 +996,11 @@ export const FoodRelationshipsManager: React.FC = () => {
                           >
                             <div className="flex items-center gap-2 min-w-0 flex-1">
                               <GripVertical className="w-3.5 h-3.5 text-gray-600 cursor-grab flex-shrink-0" />
-                              <FolderTree className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                              {subCategory.archived ? (
+                                <Archive className="w-4 h-4 flex-shrink-0 text-gray-500" />
+                              ) : (
+                                <FolderTree className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                              )}
                               <span className={`font-medium truncate ${
                                 subCategory.archived ? "text-gray-500 line-through" : "text-gray-300"
                               }`}>
@@ -777,6 +1016,7 @@ export const FoodRelationshipsManager: React.FC = () => {
                                     type: "sub",
                                     name: subCategory.name,
                                     description: subCategory.description || "",
+                                    originalDescription: subCategory.description || "",
                                     archived: subCategory.archived,
                                   });
                                   setShowEditModal(true);
@@ -786,27 +1026,16 @@ export const FoodRelationshipsManager: React.FC = () => {
                               >
                                 <Edit className="w-3 h-3" />
                               </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setEditingItem({
-                                    id: subCategory.id,
-                                    type: "sub",
-                                    name: subCategory.name,
-                                    description: subCategory.description || "",
-                                    archived: subCategory.archived,
-                                  });
-                                  setShowArchiveConfirm(true);
-                                }}
-                                className="p-1 text-gray-500 hover:text-amber-400"
-                                title={subCategory.archived ? "Restore" : "Archive"}
-                              >
-                                {subCategory.archived ? (
-                                  <RotateCcw className="w-3 h-3" />
-                                ) : (
-                                  <Archive className="w-3 h-3" />
-                                )}
-                              </button>
+                              <div onClick={(e) => e.stopPropagation()}>
+                                <TwoStageButton
+                                  onConfirm={() => handleArchiveItem("sub", subCategory.id, subCategory.archived || false)}
+                                  icon={subCategory.archived ? RotateCcw : Archive}
+                                  confirmText={subCategory.archived ? "Restore?" : "Archive?"}
+                                  variant="warning"
+                                  size="xs"
+                                  title={subCategory.archived ? "Restore" : "Archive"}
+                                />
+                              </div>
                               <ChevronRight
                                 className={`w-3.5 h-3.5 text-gray-500 transition-transform ${isExpanded ? "rotate-90" : ""}`}
                               />
@@ -829,13 +1058,29 @@ export const FoodRelationshipsManager: React.FC = () => {
                       );
                     })
                   ) : (
-                    <div className="text-center py-6 text-gray-500 text-xs">
-                      {searchQuery ? "No sub-categories match search" : "No sub-categories"}
+                    <div className="text-center py-8">
+                      <FolderTree className="w-8 h-8 text-gray-600 mx-auto mb-3" />
+                      {searchQuery ? (
+                        <p className="text-gray-500 text-xs">No sub-categories match "{searchQuery}"</p>
+                      ) : (
+                        <>
+                          <p className="text-gray-400 text-sm mb-3">No sub-categories yet</p>
+                          <button 
+                            onClick={() => setShowAddModal("sub")} 
+                            className="btn-ghost btn-xs text-amber-400 hover:text-amber-300"
+                          >
+                            <Plus className="w-3.5 h-3.5 mr-1" />
+                            Add first sub-category
+                          </button>
+                        </>
+                      )}
                     </div>
                   )
                 ) : (
-                  <div className="text-center py-6 text-gray-500 text-xs">
-                    Select a category
+                  <div className="text-center py-8">
+                    <ChevronRight className="w-8 h-8 text-gray-600 mx-auto mb-3" />
+                    <p className="text-gray-500 text-sm">Select a category</p>
+                    <p className="text-gray-600 text-xs mt-1">to see its sub-categories</p>
                   </div>
                 )}
               </div>
@@ -846,165 +1091,122 @@ export const FoodRelationshipsManager: React.FC = () => {
         {/* =================================================================== */}
         {/* ADD MODAL */}
         {/* =================================================================== */}
-        {showAddModal && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-gray-900 rounded-lg w-full max-w-md border border-gray-800">
-              <div className="p-4 border-b border-gray-800">
-                <h3 className="text-base font-medium text-white">
-                  Add {showAddModal === "group" ? "Major Group" : showAddModal === "category" ? "Category" : "Sub-Category"}
-                </h3>
-              </div>
-              <div className="p-4 space-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">
-                    Name
-                  </label>
-                  <input
-                    type="text"
-                    value={newItemName}
-                    onChange={(e) => setNewItemName(e.target.value)}
-                    className="input w-full text-sm"
-                    placeholder="Enter name..."
-                    autoFocus
-                  />
+        {showAddModal && (() => {
+          const descCharCount = newItemDescription.length;
+          const descIsOverLimit = descCharCount > DESCRIPTION_MAX_LENGTH;
+          const descIsNearLimit = descCharCount > DESCRIPTION_MAX_LENGTH * 0.8;
+          const canAdd = newItemName.trim() && !descIsOverLimit;
+          
+          return (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-gray-900 rounded-lg w-full max-w-md border border-gray-800">
+                <div className="p-4 border-b border-gray-800 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                      showAddModal === "group" ? "bg-primary-500/20" :
+                      showAddModal === "category" ? "bg-emerald-500/20" : "bg-amber-500/20"
+                    }`}>
+                      <FolderTree className={`w-4 h-4 ${
+                        showAddModal === "group" ? "text-primary-400" :
+                        showAddModal === "category" ? "text-emerald-400" : "text-amber-400"
+                      }`} />
+                    </div>
+                    <h3 className="text-base font-medium text-white">
+                      Add {showAddModal === "group" ? "Major Group" : showAddModal === "category" ? "Category" : "Sub-Category"}
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowAddModal(null);
+                      setNewItemName("");
+                      setNewItemDescription("");
+                    }}
+                    className="p-1.5 text-gray-500 hover:text-gray-300 rounded-lg hover:bg-gray-800"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">
-                    Description (optional)
-                  </label>
-                  <textarea
-                    value={newItemDescription}
-                    onChange={(e) => setNewItemDescription(e.target.value)}
-                    className="input w-full h-20 text-sm"
-                    placeholder="Enter description..."
-                  />
+                <div className="p-4 space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                      Name
+                    </label>
+                    <input
+                      type="text"
+                      value={newItemName}
+                      onChange={(e) => setNewItemName(e.target.value)}
+                      className="input w-full text-sm"
+                      placeholder="Enter name..."
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-medium text-gray-400">
+                        Description <span className="text-gray-600">(optional)</span>
+                      </label>
+                      <span className={`text-[11px] ${
+                        descIsOverLimit ? "text-rose-400 font-medium" : 
+                        descIsNearLimit ? "text-amber-400" : "text-gray-500"
+                      }`}>
+                        {descCharCount} / {DESCRIPTION_MAX_LENGTH}
+                      </span>
+                    </div>
+                    <textarea
+                      value={newItemDescription}
+                      onChange={(e) => setNewItemDescription(e.target.value)}
+                      className={`input w-full h-24 text-sm resize-none ${
+                        descIsOverLimit ? "border-rose-500/50 focus:border-rose-500" : ""
+                      }`}
+                      placeholder="Add a description to help your team understand this category..."
+                    />
+                    {descIsOverLimit && (
+                      <p className="flex items-center gap-1.5 text-[11px] text-rose-400 mt-1.5">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        Description exceeds {DESCRIPTION_MAX_LENGTH} characters. Please shorten it.
+                      </p>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <div className="p-4 border-t border-gray-800 flex justify-end gap-2">
-                <button
-                  onClick={() => {
-                    setShowAddModal(null);
-                    setNewItemName("");
-                    setNewItemDescription("");
-                  }}
-                  className="btn-ghost btn-sm"
-                >
-                  Cancel
-                </button>
-                <button onClick={handleAddItem} className="btn-primary btn-sm">
-                  Add
-                </button>
+                <div className="p-4 border-t border-gray-800 flex justify-end gap-2">
+                  <button
+                    onClick={() => {
+                      setShowAddModal(null);
+                      setNewItemName("");
+                      setNewItemDescription("");
+                    }}
+                    className="btn-ghost btn-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={handleAddItem} 
+                    disabled={!canAdd}
+                    className={`btn-primary btn-sm ${!canAdd ? "opacity-50 cursor-not-allowed" : ""}`}
+                  >
+                    Add {showAddModal === "group" ? "Group" : showAddModal === "category" ? "Category" : "Sub-Category"}
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* =================================================================== */}
         {/* EDIT MODAL */}
         {/* =================================================================== */}
         {showEditModal && editingItem && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-gray-900 rounded-lg w-full max-w-md border border-gray-800">
-              <div className="p-4 border-b border-gray-800">
-                <h3 className="text-base font-medium text-white">
-                  Edit {editingItem.type === "group" ? "Major Group" : editingItem.type === "category" ? "Category" : "Sub-Category"}
-                </h3>
-              </div>
-              <div className="p-4 space-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">
-                    Name
-                  </label>
-                  <input
-                    type="text"
-                    value={editingItem.name}
-                    className="input w-full text-sm opacity-60"
-                    disabled
-                  />
-                  {editingItem.is_system && (
-                    <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
-                      <Lock className="w-3 h-3" /> System group — name locked
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    value={editingItem.description}
-                    onChange={(e) => setEditingItem({ ...editingItem, description: e.target.value })}
-                    className="input w-full h-20 text-sm"
-                    placeholder="Enter description..."
-                    autoFocus
-                  />
-                </div>
-              </div>
-              <div className="p-4 border-t border-gray-800 flex justify-end gap-2">
-                <button
-                  onClick={() => {
-                    setShowEditModal(false);
-                    setEditingItem(null);
-                  }}
-                  className="btn-ghost btn-sm"
-                >
-                  Cancel
-                </button>
-                <button onClick={handleSaveEdit} className="btn-primary btn-sm">
-                  Save
-                </button>
-              </div>
-            </div>
-          </div>
+          <EditModal
+            editingItem={editingItem}
+            setEditingItem={setEditingItem}
+            onSave={handleSaveEdit}
+            onClose={() => {
+              setShowEditModal(false);
+              setEditingItem(null);
+            }}
+          />
         )}
 
-        {/* =================================================================== */}
-        {/* ARCHIVE CONFIRMATION MODAL */}
-        {/* =================================================================== */}
-        {showArchiveConfirm && editingItem && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-gray-900 rounded-lg w-full max-w-sm border border-gray-800">
-              <div className="p-4 border-b border-gray-800">
-                <h3 className="text-base font-medium text-white">
-                  {editingItem.archived ? "Restore" : "Archive"} {editingItem.name}?
-                </h3>
-              </div>
-              <div className="p-4">
-                <p className="text-sm text-gray-300">
-                  {editingItem.archived ? (
-                    <>This will restore <strong>{editingItem.name}</strong> and make it visible again.</>
-                  ) : (
-                    <>
-                      This will hide <strong>{editingItem.name}</strong> from view.
-                      {editingItem.type !== "sub" && (
-                        <span className="block mt-2 text-xs text-amber-400">
-                          All items inside will also be hidden.
-                        </span>
-                      )}
-                    </>
-                  )}
-                </p>
-              </div>
-              <div className="p-4 border-t border-gray-800 flex justify-end gap-2">
-                <button
-                  onClick={() => {
-                    setShowArchiveConfirm(false);
-                    setEditingItem(null);
-                  }}
-                  className="btn-ghost btn-sm"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleArchive}
-                  className={`btn-sm ${editingItem.archived ? "btn-primary" : "btn-warning"}`}
-                >
-                  {editingItem.archived ? "Restore" : "Archive"}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </GuidedModeProvider>
   );

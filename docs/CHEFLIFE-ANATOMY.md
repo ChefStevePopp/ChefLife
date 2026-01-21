@@ -215,6 +215,56 @@ Operations gives ChefLife its STRUCTURE - the configuration that makes everythin
 
 ---
 
+### 🌳 FOOD RELATIONSHIPS — The Taxonomy (DNA)
+**Location:** Admin → Organization → Operations → Food Relationships Tab  
+**Function:** The genetic code that classifies everything
+
+Food Relationships is the **taxonomy** — the classification system that tells ChefLife what everything IS:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        FOOD RELATIONSHIPS HIERARCHY                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  MAJOR GROUPS (Top-level buckets)                                          │
+│  ═══════════════════════════════                                           │
+│  ├── 🍖 FOOD              → Raw ingredients you cook                       │
+│  ├── 🍺 ALCOHOL           → Beverages for bar                              │
+│  ├── 🧑‍🍳 MIS EN PLACE      → Prepared items (sauces, rubs, stocks)         │
+│  ├── 📦 FINAL GOODS       → Ready-to-sell items (retail, desserts)        │
+│  └── 📋 RECEIVING         → Operational supplies (paper, chemicals)        │
+│                                                                             │
+│  CATEGORIES (Subdivisions)                                                 │
+│  ═════════════════════════                                                 │
+│  FOOD → Proteins, Produce, Dairy, Dry Goods, Frozen, Bakery                │
+│  ALCOHOL → Beer, Wine, Spirits, Mixers                                     │
+│  MIS EN PLACE → Sauces, Rubs, Marinades, Stocks                            │
+│                                                                             │
+│  SUB-CATEGORIES (Finest detail)                                            │
+│  ══════════════════════════════                                            │
+│  Proteins → Beef, Pork, Chicken, Seafood, Game                             │
+│  Produce → Vegetables, Fruits, Herbs, Lettuces                             │
+│                                                                             │
+│  WHY IT MATTERS                                                            │
+│  ═══════════════                                                           │
+│  • Recipe Manager tabs come from Major Groups (is_recipe_type flag)        │
+│  • Food cost reports break down by Sub-Category                            │
+│  • Inventory counts filter by Category                                     │
+│  • Vendor analysis groups by taxonomy                                      │
+│  • Every ingredient references this hierarchy                              │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**System Groups (🔒):** Some groups are protected — they can be archived but not deleted because other parts of ChefLife depend on them.
+
+**Recipe Type Groups:** Major Groups marked as `is_recipe_type` drive the Recipe Manager tabs dynamically. Change the taxonomy, change the tabs.
+
+Without taxonomy, there's no organization. No reports. No filters. No meaning.  
+Food Relationships is the DNA that gives everything its identity.
+
+---
+
 ## The Flows
 
 ### The Value Flow (COGS Engine)
@@ -844,9 +894,9 @@ That's the vision. That's the mission. That's ChefLife.
 
 ---
 
-**Document Version:** 1.7  
+**Document Version:** 1.8  
 **Status:** Living Document  
-**Last Update:** January 16, 2026 - Nexus Dashboard (MRI Screen) + Premium Animation System  
+**Last Update:** January 21, 2026 - Food Relationships (Taxonomy/DNA)  
 **Next Update:** As the body grows
 
 ---
@@ -863,3 +913,4 @@ That's the vision. That's the mission. That's ChefLife.
 | 1.5 | Jan 11, 2026 | Added L6 Mobile Invoice Entry example - "fast entry beats photo gymnastics" |
 | 1.6 | Jan 11, 2026 | **Mobile Paradigm** - People, Place, Profit architecture, MobileShell design, Newton's cradle dots |
 | 1.7 | Jan 16, 2026 | **Nexus Dashboard** - MRI screen for vital signs, Premium Animation System (AnimatedNumber, MorphingText) |
+| 1.8 | Jan 21, 2026 | **Food Relationships** - The Taxonomy/DNA organ. Major Groups → Categories → Sub-Categories hierarchy. L5 build with Guided Mode, character counters, empty state management. |

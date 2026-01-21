@@ -1656,6 +1656,60 @@ In `src/index.css`:
 }
 ```
 
+---
+
+## Icon Mapping Utilities
+
+**Location:** `src/utils/iconMapping.ts`  
+**Use for:** Storing icons as strings in the database, icon pickers in UI
+
+### Core Functions
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `getLucideIcon` | `(name?: string) => LucideIcon` | Get Lucide component by name. Returns FolderTree as default. |
+| `getSuggestedIcon` | `(groupName: string) => string` | Auto-suggest icon for Major Group names (e.g., "FOOD" → "Utensils") |
+
+### Exports
+
+| Export | Type | Description |
+|--------|------|-------------|
+| `lucideIconMap` | `Record<string, LucideIcon>` | Full map of 40+ icons (Food, Beverages, Prepared, Operations, Organization) |
+| `iconOptions` | `IconOption[]` | Dropdown options with labels and groups for icon picker UI |
+| `suggestedIcons` | `Record<string, string>` | Group name → suggested icon mapping |
+
+### Usage Examples
+
+```typescript
+import { getLucideIcon, iconOptions, getSuggestedIcon } from '@/utils/iconMapping';
+
+// Render icon from database string
+const Icon = getLucideIcon(group.icon); // Returns Lucide component
+return <Icon className="w-4 h-4 text-primary-400" />;
+
+// Icon picker dropdown
+{iconOptions.map(opt => (
+  <button key={opt.value} onClick={() => setIcon(opt.value)}>
+    {getLucideIcon(opt.value)}
+  </button>
+))}
+
+// Auto-suggest when creating new group
+const suggestedIcon = getSuggestedIcon("MIS EN PLACE"); // Returns "ChefHat"
+```
+
+### Why String Icons?
+
+Database stores icon names as strings (`"Utensils"`) rather than component references. This allows:
+- Easy database serialization
+- Changing icons in one place (`iconMapping.ts`)
+- Adding new icons without schema changes
+- Icon picker UI built from `iconOptions` array
+
+**Reference Implementation:** `FoodRelationshipsManager/index.tsx` (Major Group icon picker)
+
+---
+
 ### Ingredient Tracking Flags
 
 The ticker respects two flags in `master_ingredients`:
