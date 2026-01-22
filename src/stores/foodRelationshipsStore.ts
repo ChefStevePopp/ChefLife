@@ -38,6 +38,7 @@ interface FoodRelationshipsStore {
     description?: string;
     icon?: string;
     color?: string;
+    sort_order?: number;
     archived?: boolean;
     is_system?: boolean;
     is_recipe_type?: boolean;
@@ -67,7 +68,7 @@ interface FoodRelationshipsStore {
   updateItem: (
     type: "group" | "category" | "sub",
     id: string,
-    updates: { description?: string; archived?: boolean },
+    updates: { description?: string; archived?: boolean; icon?: string; is_recipe_type?: boolean },
   ) => Promise<void>;
   addItem: (
     type: "group" | "category" | "sub",
@@ -85,6 +86,7 @@ interface FoodRelationshipsStore {
     name: string;
     icon?: string;
     color?: string;
+    sort_order?: number;
     is_system?: boolean;
   }>;
 }
@@ -128,6 +130,7 @@ export const useFoodRelationshipsStore = create<FoodRelationshipsStore>(
             description: g.description,
             icon: g.icon,
             color: g.color,
+            sort_order: g.sort_order ?? 0,
             archived: g.archived || false,
             is_system: g.is_system || false,
             is_recipe_type: g.is_recipe_type || false,
@@ -234,6 +237,20 @@ export const useFoodRelationshipsStore = create<FoodRelationshipsStore>(
               ? "food_categories"
               : "food_sub_categories";
 
+        // Get organization_id from the current user's organization_roles
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("Not authenticated");
+
+        const { data: roleData, error: roleError } = await supabase
+          .from("organization_roles")
+          .select("organization_id")
+          .eq("user_id", user.id)
+          .single();
+
+        if (roleError || !roleData) {
+          throw new Error("Could not determine organization");
+        }
+
         // Clean data before insert
         const cleanData = Object.fromEntries(
           Object.entries(data).map(([key, value]) => [
@@ -242,7 +259,13 @@ export const useFoodRelationshipsStore = create<FoodRelationshipsStore>(
           ]),
         );
 
-        const { error } = await supabase.from(table).insert([cleanData]);
+        // Add organization_id to the data
+        const insertData = {
+          ...cleanData,
+          organization_id: roleData.organization_id,
+        };
+
+        const { error } = await supabase.from(table).insert([insertData]);
 
         if (error) throw error;
 
@@ -284,17 +307,13 @@ export const useFoodRelationshipsStore = create<FoodRelationshipsStore>(
     /**
      * Get recipe type groups for Recipe Manager tabs.
      * Returns non-archived groups where is_recipe_type = true.
+     * Sorted by sort_order (user-controlled in Food Relationships).
      * Used to dynamically generate Recipe Manager tabs.
      */
     getRecipeTypeGroups: () => {
       return get().majorGroups
         .filter((g) => g.is_recipe_type && !g.archived)
-        .sort((a, b) => {
-          // System groups first, then alphabetically
-          if (a.is_system && !b.is_system) return -1;
-          if (!a.is_system && b.is_system) return 1;
-          return a.name.localeCompare(b.name);
-        });
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
     },
   }),
 );

@@ -34,7 +34,7 @@ const CORE_FEATURES = [
     label: 'Recipe Manager',
     description: 'Recipe documentation, costing, and production notes',
     icon: LibraryBig, // Matches sidebar
-    configPath: '/admin/recipes/settings',
+    configPath: '/admin/modules/recipes',
   },
   {
     id: 'tasks',

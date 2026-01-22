@@ -4,16 +4,21 @@ import {
   UtensilsCrossed,
   Plus,
   Search,
-  Upload,
-  Package,
   Info,
   ChevronUp,
   X,
+  FolderTree,
+  Lightbulb,
+  FileEdit,
+  Eye,
+  CheckCircle,
+  Archive,
 } from "lucide-react";
 import { useRecipeStore } from "@/features/recipes/stores/recipeStore";
+import { useFoodRelationshipsStore } from "@/stores/foodRelationshipsStore";
+import { getLucideIcon } from "@/utils/iconMapping";
 import RecipeCard from "../RecipeCard";
 import { RecipeEditorModal } from "../RecipeEditor";
-import { RecipeImportModal } from "../RecipeImportModal";
 import type { Recipe } from "../../types/recipe";
 import { useSupabase } from "@/context/SupabaseContext";
 import { useDebounce } from "@/shared/hooks/useDebounce";
@@ -79,28 +84,27 @@ const LoadingSkeleton: React.FC = () => (
 // ============================================================================
 const ITEMS_PER_PAGE = 12;
 
-const TABS = [
-  {
-    id: "prepared" as const,
-    label: "Mis en Place",
-    icon: UtensilsCrossed,
-    color: "primary",
-  },
-  {
-    id: "final" as const,
-    label: "Final Plates",
-    icon: ChefHat,
-    color: "green",
-  },
-  {
-    id: "receiving" as const,
-    label: "Receiving Items",
-    icon: Package,
-    color: "amber",
-  },
-] as const;
+// Tab colors follow L5 Design System progression from index.css
+// Order: primary (blue) → green → amber → rose → purple → lime → red → cyan
+const TAB_COLORS = ["primary", "green", "amber", "rose", "purple", "lime", "red", "cyan"];
 
-type TabId = (typeof TABS)[number]["id"];
+// Legacy type mapping for backward compatibility
+// Maps group names to the old recipe.type field values
+const LEGACY_TYPE_MAP: Record<string, string> = {
+  "MISE EN PLACE": "prepared",
+  "FINAL GOODS": "final",
+  "FINAL PLATES": "final",
+  "RECEIVING": "receiving",
+};
+
+/**
+ * Get the legacy type value from a group name (for backward compatibility)
+ */
+function getLegacyType(groupName: string): string | null {
+  const normalized = groupName.toUpperCase();
+  return LEGACY_TYPE_MAP[normalized] || null;
+}
+
 type SortOption = "name" | "updated" | "cost" | "prep_time";
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
@@ -120,9 +124,8 @@ const RecipeManager: React.FC = () => {
   // ---------------------------------------------------------------------------
   // State
   // ---------------------------------------------------------------------------
-  const [activeTab, setActiveTab] = useState<TabId>("prepared");
+  const [activeTabId, setActiveTabId] = useState<string | null>(null); // Group ID
   const [searchTerm, setSearchTerm] = useState("");
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");
   const [organizationId, setOrganizationId] = useState<string>("");
@@ -138,8 +141,28 @@ const RecipeManager: React.FC = () => {
   // Debounced search (300ms)
   const debouncedSearch = useDebounce(searchTerm, 300);
 
-  const { recipes, fetchRecipes, filterRecipes } = useRecipeStore();
+  const { recipes, fetchRecipes } = useRecipeStore();
   const { supabase } = useSupabase();
+  
+  // Food Relationships for dynamic tabs
+  const { getRecipeTypeGroups, fetchFoodRelationships } = useFoodRelationshipsStore();
+  const recipeTypeGroups = getRecipeTypeGroups();
+  
+  // Build dynamic tabs from recipe type groups
+  const dynamicTabs = useMemo(() => {
+    return recipeTypeGroups.map((group, index) => ({
+      id: group.id,
+      label: group.name,
+      icon: getLucideIcon(group.icon),
+      color: TAB_COLORS[index % TAB_COLORS.length],
+      legacyType: getLegacyType(group.name), // For backward compatibility
+    }));
+  }, [recipeTypeGroups]);
+
+  // Get the active tab object
+  const activeTab = useMemo(() => {
+    return dynamicTabs.find(tab => tab.id === activeTabId) || dynamicTabs[0] || null;
+  }, [dynamicTabs, activeTabId]);
 
   // ---------------------------------------------------------------------------
   // Effects
@@ -165,18 +188,28 @@ const RecipeManager: React.FC = () => {
     getOrgId();
   }, [supabase]);
 
-  // Fetch recipes on mount
+  // Fetch recipes and food relationships on mount
   useEffect(() => {
-    fetchRecipes().catch((error) => {
-      console.error("Error fetching recipes:", error);
-      toast.error("Failed to load recipes");
+    Promise.all([
+      fetchRecipes(),
+      fetchFoodRelationships(),
+    ]).catch((error) => {
+      console.error("Error fetching data:", error);
+      toast.error("Failed to load data");
     });
-  }, [fetchRecipes]);
+  }, [fetchRecipes, fetchFoodRelationships]);
+
+  // Set initial active tab when dynamic tabs load
+  useEffect(() => {
+    if (dynamicTabs.length > 0 && !activeTabId) {
+      setActiveTabId(dynamicTabs[0].id);
+    }
+  }, [dynamicTabs, activeTabId]);
 
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, activeTab, statusFilter, stationFilter, sortBy]);
+  }, [debouncedSearch, activeTabId, statusFilter, stationFilter, sortBy]);
 
   // ---------------------------------------------------------------------------
   // Derived Data
@@ -194,8 +227,38 @@ const RecipeManager: React.FC = () => {
 
   // Filter, sort, and paginate recipes
   const { displayedRecipes, totalFiltered, totalPages } = useMemo(() => {
-    // Start with tab filter
-    let filtered = filterRecipes(activeTab, debouncedSearch);
+    // If no active tab, return empty
+    if (!activeTab) {
+      return { displayedRecipes: [], totalFiltered: 0, totalPages: 0 };
+    }
+
+    // Filter recipes by tab (major_group ID or legacy type)
+    let filtered = recipes.filter((recipe) => {
+      // Primary: Match by major_group ID
+      if (recipe.major_group === activeTab.id) {
+        return true;
+      }
+      
+      // Fallback: Match by legacy type field for backward compatibility
+      if (activeTab.legacyType && recipe.type === activeTab.legacyType) {
+        return true;
+      }
+      
+      return false;
+    });
+
+    // Apply search filter
+    if (debouncedSearch) {
+      const searchLower = debouncedSearch.toLowerCase();
+      filtered = filtered.filter((recipe) =>
+        recipe.name?.toLowerCase().includes(searchLower) ||
+        recipe.description?.toLowerCase().includes(searchLower) ||
+        recipe.station?.toLowerCase().includes(searchLower) ||
+        recipe.station_name?.toLowerCase().includes(searchLower) ||
+        recipe.sub_category_name?.toLowerCase().includes(searchLower) ||
+        recipe.category_name?.toLowerCase().includes(searchLower)
+      );
+    }
 
     // Apply status filter
     if (statusFilter !== "all") {
@@ -235,7 +298,7 @@ const RecipeManager: React.FC = () => {
 
     return { displayedRecipes, totalFiltered, totalPages };
   }, [
-    filterRecipes,
+    recipes,
     activeTab,
     debouncedSearch,
     statusFilter,
@@ -253,9 +316,12 @@ const RecipeManager: React.FC = () => {
   // ---------------------------------------------------------------------------
   
   const handleNewRecipe = () => {
+    if (!activeTab) return;
+    
     setModalMode("create");
     const newRecipe: Partial<Recipe> = {
-      type: activeTab,
+      type: (activeTab.legacyType || "prepared") as Recipe["type"], // Legacy field
+      major_group: activeTab.id, // Modern field - links to food_category_groups
       name: "",
       description: "",
       station: "",
@@ -314,8 +380,8 @@ const RecipeManager: React.FC = () => {
     setStationFilter("all");
   };
 
-  const handleTabChange = (tabId: TabId) => {
-    setActiveTab(tabId);
+  const handleTabChange = (tabId: string) => {
+    setActiveTabId(tabId);
     setCurrentPage(1);
   };
 
@@ -337,7 +403,7 @@ const RecipeManager: React.FC = () => {
       {/* ================================================================== */}
       <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-4">
         <div className="flex flex-col gap-4">
-          {/* Top row: Icon/Title + Actions */}
+          {/* Top row: Icon/Title + Stats + Actions */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-primary-500/20 flex items-center justify-center flex-shrink-0">
@@ -353,15 +419,45 @@ const RecipeManager: React.FC = () => {
               </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex gap-2">
-              <button
-                onClick={() => setIsImportModalOpen(true)}
-                className="btn-ghost text-sm"
-              >
-                <Upload className="w-4 h-4 mr-1.5" />
-                Import
-              </button>
+            {/* Stats Pills + Actions */}
+            <div className="flex items-center gap-2">
+              {/* Recipe Type Pills - L5 subheader-pill pattern, scales to 8 */}
+              <div className="hidden sm:flex items-center gap-1.5 flex-wrap">
+                {dynamicTabs.map((tab) => {
+                  const count = recipes.filter((r) => 
+                    r.major_group === tab.id || 
+                    (tab.legacyType && r.type === tab.legacyType)
+                  ).length;
+                  const TabIcon = tab.icon;
+                  // Color map for pill variants
+                  const colorMap: Record<string, string> = {
+                    primary: 'bg-primary-500/20 text-primary-400 border-primary-500/30',
+                    green: 'bg-green-500/20 text-green-400 border-green-500/30',
+                    amber: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+                    rose: 'bg-rose-500/20 text-rose-400 border-rose-500/30',
+                    purple: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+                    lime: 'bg-lime-500/20 text-lime-400 border-lime-500/30',
+                    red: 'bg-red-500/20 text-red-400 border-red-500/30',
+                    cyan: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+                  };
+                  const colorClasses = colorMap[tab.color] || colorMap.primary;
+                  return (
+                    <div 
+                      key={tab.id}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border ${colorClasses}`}
+                      title={tab.label}
+                    >
+                      <TabIcon className="w-3.5 h-3.5" />
+                      <span>{count}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Divider */}
+              <div className="hidden sm:block h-8 w-px bg-gray-700/50 mx-1" />
+
+              {/* Action Button */}
               <button onClick={handleNewRecipe} className="btn-primary text-sm">
                 <Plus className="w-4 h-4 mr-1.5" />
                 New Recipe
@@ -389,31 +485,75 @@ const RecipeManager: React.FC = () => {
                 }`}
               />
             </button>
-            {isInfoExpanded && (
-              <div className="expandable-info-content">
-                <div className="p-4 pt-2 space-y-3 text-sm text-gray-400">
-                  <p>
-                    <strong className="text-gray-300">Mis en Place:</strong>{" "}
-                    Prep items, sauces, stocks, and components that become
-                    building blocks for final dishes.
+            <div className="expandable-info-content">
+              <div className="p-4 pt-2 space-y-4">
+                <p className="text-sm text-gray-400">
+                  Your central repository for standardized recipes. Each recipe type serves a specific 
+                  purpose in your kitchen workflow — from prep components to guest-facing plates.
+                </p>
+                
+                {/* Feature cards - L5 pattern */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="subheader-feature-card">
+                    <ChefHat className="w-4 h-4 text-primary-400/80" />
+                    <div>
+                      <span className="subheader-feature-title text-white">Mise en Place</span>
+                      <p className="subheader-feature-desc">Prep items, sauces, stocks — building blocks for final dishes</p>
+                    </div>
+                  </div>
+                  <div className="subheader-feature-card">
+                    <UtensilsCrossed className="w-4 h-4 text-green-400/80" />
+                    <div>
+                      <span className="subheader-feature-title text-white">Final Goods</span>
+                      <p className="subheader-feature-desc">Complete dishes served to guests, assembled from prep items</p>
+                    </div>
+                  </div>
+                  <div className="subheader-feature-card">
+                    <Plus className="w-4 h-4 text-amber-400/80" />
+                    <div>
+                      <span className="subheader-feature-title text-white">Your Categories</span>
+                      <p className="subheader-feature-desc">Add custom recipe types in Food Relationships — they appear as tabs here</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Pro tip + Status Legend */}
+                <div className="flex items-center justify-between pt-2 border-t border-gray-700/50">
+                  <p className="text-xs text-gray-500 flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center">
+                      <Lightbulb className="w-3 h-3 text-amber-400" />
+                    </span>
+                    <span>Tip: Link prep items to final plates to automatically calculate costs and allergens across your menu.</span>
                   </p>
-                  <p>
-                    <strong className="text-gray-300">Final Plates:</strong>{" "}
-                    Complete dishes served to guests, assembled from your prep
-                    items and raw ingredients.
-                  </p>
-                  <p>
-                    <strong className="text-gray-300">Receiving Items:</strong>{" "}
-                    Quality standards and handling procedures for incoming
-                    ingredients — ensuring consistency from delivery to plate.
-                  </p>
-                  <p className="text-gray-500 text-xs pt-2 border-t border-gray-700/50">
-                    💡 Tip: Link prep items to final plates to automatically
-                    calculate costs and allergens.
-                  </p>
+                  <div className="flex items-center gap-3 text-xs text-gray-500">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center">
+                        <FileEdit className="w-3 h-3 text-amber-400" />
+                      </span>
+                      Draft
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-gray-500/20 flex items-center justify-center">
+                        <Eye className="w-3 h-3 text-gray-400" />
+                      </span>
+                      Review
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-green-500/20 flex items-center justify-center">
+                        <CheckCircle className="w-3 h-3 text-green-400" />
+                      </span>
+                      Approved
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-gray-500/20 flex items-center justify-center">
+                        <Archive className="w-3 h-3 text-gray-400" />
+                      </span>
+                      Archived
+                    </span>
+                  </div>
                 </div>
               </div>
-            )}
+            </div>
           </div>
         </div>
       </div>
@@ -421,103 +561,110 @@ const RecipeManager: React.FC = () => {
       {/* ================================================================== */}
       {/* TAB NAVIGATION                                                     */}
       {/* ================================================================== */}
-      <div className="flex gap-2">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => handleTabChange(tab.id)}
-            className={`tab ${tab.color} ${activeTab === tab.id ? "active" : ""}`}
-          >
-            <tab.icon className="w-4 h-4" />
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ================================================================== */}
-      {/* SEARCH & FILTERS                                                   */}
-      {/* ================================================================== */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        {/* Search */}
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" />
-          <input
-            type="text"
-            placeholder="Search recipes..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="input pl-10 w-full"
-          />
-          {searchTerm && (
-            <button
-              onClick={() => setSearchTerm("")}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-300"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-
-        {/* Status Filter */}
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="input w-full sm:w-40"
-        >
-          <option value="all">All Status</option>
-          <option value="draft">Draft</option>
-          <option value="review">In Review</option>
-          <option value="approved">Approved</option>
-          <option value="archived">Archived</option>
-        </select>
-
-        {/* Station Filter */}
-        <select
-          value={stationFilter}
-          onChange={(e) => setStationFilter(e.target.value)}
-          className="input w-full sm:w-40"
-        >
-          <option value="all">All Stations</option>
-          {uniqueStations.map((station) => (
-            <option key={station} value={station}>
-              {station}
-            </option>
-          ))}
-        </select>
-
-        {/* Sort */}
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as SortOption)}
-          className="input w-full sm:w-44"
-        >
-          {SORT_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Filter Status Bar */}
-      <div className="flex items-center justify-between text-sm">
-        <span className="text-gray-400">
-          Showing{" "}
-          <span className="text-white font-medium">
-            {displayedRecipes.length}
-          </span>{" "}
-          of <span className="text-white font-medium">{totalFiltered}</span>{" "}
-          recipes
-        </span>
-        {hasActiveFilters && (
-          <button
-            onClick={handleClearFilters}
-            className="text-primary-400 hover:text-primary-300 flex items-center gap-1"
-          >
-            <X className="w-3 h-3" />
-            Clear filters
-          </button>
+      <div className="flex gap-2 flex-wrap">
+        {dynamicTabs.length > 0 ? (
+          dynamicTabs.map((tab) => {
+            const TabIcon = tab.icon;
+            const isActive = activeTab?.id === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => handleTabChange(tab.id)}
+                className={`tab ${tab.color} ${isActive ? "active" : ""}`}
+              >
+                <TabIcon className="w-4 h-4" />
+                {tab.label}
+              </button>
+            );
+          })
+        ) : (
+          <div className="text-sm text-gray-500 py-2">
+            No recipe types configured. Enable recipe types in Food Relationships.
+          </div>
         )}
+      </div>
+
+      {/* ================================================================== */}
+      {/* SEARCH & FILTERS - L5 Micro-header Pattern                          */}
+      {/* ================================================================== */}
+      <div className="subheader">
+        <div className="subheader-row">
+          <div className="subheader-left">
+            <span className="text-sm font-medium text-gray-400 uppercase tracking-wider">Recipes</span>
+            
+            {/* Search */}
+            <div className="flex items-center gap-2 ml-4">
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" />
+                <input
+                  type="text"
+                  placeholder="Search recipes..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="input-sm bg-gray-900/50 pl-9 w-72"
+                />
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm("")}
+                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="subheader-right">
+            {/* Status Filter */}
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="input-sm bg-gray-900/50"
+            >
+              <option value="all">All Status</option>
+              <option value="draft">Draft</option>
+              <option value="review">In Review</option>
+              <option value="approved">Approved</option>
+              <option value="archived">Archived</option>
+            </select>
+
+            <select
+              value={stationFilter}
+              onChange={(e) => setStationFilter(e.target.value)}
+              className="input-sm bg-gray-900/50"
+            >
+              <option value="all">All Stations</option>
+              {uniqueStations.map((station) => (
+                <option key={station} value={station}>
+                  {station}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SortOption)}
+              className="input-sm bg-gray-900/50"
+            >
+              {SORT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+
+            {hasActiveFilters && (
+              <button
+                onClick={handleClearFilters}
+                className="btn-ghost btn-sm"
+              >
+                <X className="w-4 h-4 mr-1.5" />
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* ================================================================== */}
@@ -538,12 +685,13 @@ const RecipeManager: React.FC = () => {
         ) : (
           <div className="col-span-full flex flex-col items-center justify-center py-12 text-center">
             <div className="w-16 h-16 rounded-full bg-gray-800/50 flex items-center justify-center mb-4">
-              {activeTab === "prepared" ? (
-                <UtensilsCrossed className="w-8 h-8 text-gray-600" />
-              ) : activeTab === "final" ? (
-                <ChefHat className="w-8 h-8 text-gray-600" />
+              {activeTab ? (
+                (() => {
+                  const TabIcon = activeTab.icon;
+                  return <TabIcon className="w-8 h-8 text-gray-600" />;
+                })()
               ) : (
-                <Package className="w-8 h-8 text-gray-600" />
+                <FolderTree className="w-8 h-8 text-gray-600" />
               )}
             </div>
             <h3 className="text-lg font-medium text-white mb-2">
@@ -552,13 +700,7 @@ const RecipeManager: React.FC = () => {
             <p className="text-gray-400 max-w-md">
               {hasActiveFilters
                 ? "No recipes match your current filters. Try adjusting your search or filters."
-                : `Get started by adding your first ${
-                    activeTab === "prepared"
-                      ? "prep item"
-                      : activeTab === "final"
-                        ? "final plate"
-                        : "receiving item"
-                  }.`}
+                : `Get started by adding your first ${activeTab?.label || "recipe"}.`}
             </p>
             {hasActiveFilters ? (
               <button
@@ -617,11 +759,6 @@ const RecipeManager: React.FC = () => {
           organizationId={organizationId}
         />
       )}
-
-      <RecipeImportModal
-        isOpen={isImportModalOpen}
-        onClose={() => setIsImportModalOpen(false)}
-      />
     </div>
   );
 };

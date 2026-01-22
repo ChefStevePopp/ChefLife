@@ -39,6 +39,7 @@ import {
   X,
   Info,
   AlertCircle,
+  BookOpen,
 } from "lucide-react";
 import { useFoodRelationshipsStore } from "@/stores/foodRelationshipsStore";
 import { useDiagnostics } from "@/hooks/useDiagnostics";
@@ -67,8 +68,12 @@ interface EditingItem {
   originalDescription: string; // For detecting unsaved changes
   archived?: boolean;
   is_system?: boolean;
+  is_recipe_type?: boolean; // For Major Groups - creates Recipe Manager tab
+  originalIsRecipeType?: boolean; // For detecting unsaved changes
   icon?: string; // For Major Groups
 }
+
+const MAX_RECIPE_TYPES = 8;
 
 const DESCRIPTION_MAX_LENGTH = 500;
 
@@ -81,6 +86,7 @@ interface EditModalProps {
   setEditingItem: React.Dispatch<React.SetStateAction<EditingItem | null>>;
   onSave: () => void;
   onClose: () => void;
+  recipeTypeCount: number; // Current count of recipe types for cap validation
 }
 
 const EditModal: React.FC<EditModalProps> = ({
@@ -88,15 +94,21 @@ const EditModal: React.FC<EditModalProps> = ({
   setEditingItem,
   onSave,
   onClose,
+  recipeTypeCount,
 }) => {
   const { isEnabled: isGuidedMode } = useGuidedMode();
   
-  // Track original icon for change detection
+  // Track original values for change detection
   const [originalIcon] = useState(editingItem.icon);
+  const [originalIsRecipeType] = useState(editingItem.is_recipe_type);
   
   const hasDescriptionChanged = editingItem.description !== editingItem.originalDescription;
   const hasIconChanged = editingItem.type === "group" && editingItem.icon !== originalIcon;
-  const hasUnsavedChanges = hasDescriptionChanged || hasIconChanged;
+  const hasRecipeTypeChanged = editingItem.type === "group" && editingItem.is_recipe_type !== originalIsRecipeType;
+  const hasUnsavedChanges = hasDescriptionChanged || hasIconChanged || hasRecipeTypeChanged;
+  
+  // Check if we can enable recipe type (cap at 8)
+  const wouldExceedCap = !originalIsRecipeType && editingItem.is_recipe_type && recipeTypeCount >= MAX_RECIPE_TYPES;
   
   const charCount = editingItem.description.length;
   const isOverLimit = charCount > DESCRIPTION_MAX_LENGTH;
@@ -214,6 +226,65 @@ const EditModal: React.FC<EditModalProps> = ({
             </div>
           )}
 
+          {/* Recipe Type toggle (Major Groups only) */}
+          {editingItem.type === "group" && (
+            <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-blue-400" />
+                  <div>
+                    <span className="text-sm font-medium text-white">Recipe Type</span>
+                    <p className="text-xs text-gray-500">Creates a tab in Recipe Manager</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    // Don't allow enabling if at cap (unless it was already enabled)
+                    if (!editingItem.is_recipe_type && recipeTypeCount >= MAX_RECIPE_TYPES) {
+                      toast.error(`Maximum ${MAX_RECIPE_TYPES} recipe types. Archive one to add another.`);
+                      return;
+                    }
+                    setEditingItem({ ...editingItem, is_recipe_type: !editingItem.is_recipe_type });
+                  }}
+                  disabled={editingItem.is_system && originalIsRecipeType}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    editingItem.is_recipe_type
+                      ? "bg-blue-500"
+                      : "bg-gray-600"
+                  } ${
+                    editingItem.is_system && originalIsRecipeType
+                      ? "opacity-50 cursor-not-allowed"
+                      : "cursor-pointer"
+                  }`}
+                  title={editingItem.is_system && originalIsRecipeType ? "System recipe types cannot be changed" : undefined}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      editingItem.is_recipe_type ? "translate-x-6" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+              {editingItem.is_system && originalIsRecipeType && (
+                <p className="text-[11px] text-amber-400 mt-2 flex items-center gap-1">
+                  <Lock className="w-3 h-3" />
+                  System default — cannot be disabled
+                </p>
+              )}
+              {wouldExceedCap && (
+                <p className="text-[11px] text-rose-400 mt-2 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  Maximum {MAX_RECIPE_TYPES} recipe types reached. Archive one to add another.
+                </p>
+              )}
+              {isGuidedMode && !editingItem.is_system && (
+                <p className="text-[11px] text-gray-500 mt-2">
+                  Enable this to create a dedicated tab in Recipe Manager for recipes in this group.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Description field */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
@@ -265,9 +336,9 @@ const EditModal: React.FC<EditModalProps> = ({
               </button>
               <button
                 onClick={onSave}
-                disabled={!hasUnsavedChanges || isOverLimit}
+                disabled={!hasUnsavedChanges || isOverLimit || wouldExceedCap}
                 className={`btn-primary btn-sm ${
-                  !hasUnsavedChanges || isOverLimit ? "opacity-50 cursor-not-allowed" : ""
+                  !hasUnsavedChanges || isOverLimit || wouldExceedCap ? "opacity-50 cursor-not-allowed" : ""
                 }`}
               >
                 Save Changes
@@ -387,6 +458,7 @@ export const FoodRelationshipsManager: React.FC = () => {
           name: newItemName,
           description: newItemDescription,
           icon: getSuggestedIcon(newItemName),
+          color: "gray", // Default color - not actively used but required by DB
           sort_order: majorGroups.length,
         });
       } else if (showAddModal === "category" && selectedGroup) {
@@ -423,9 +495,15 @@ export const FoodRelationshipsManager: React.FC = () => {
         description: editingItem.description,
       };
       
-      // Include icon for Major Groups
-      if (editingItem.type === "group" && editingItem.icon) {
-        updates.icon = editingItem.icon;
+      // Include icon and is_recipe_type for Major Groups
+      if (editingItem.type === "group") {
+        if (editingItem.icon) {
+          updates.icon = editingItem.icon;
+        }
+        // Only include is_recipe_type if it's defined (changed)
+        if (editingItem.is_recipe_type !== undefined) {
+          updates.is_recipe_type = editingItem.is_recipe_type;
+        }
       }
       
       await updateItem(editingItem.type, editingItem.id, updates);
@@ -471,6 +549,9 @@ export const FoodRelationshipsManager: React.FC = () => {
   const activeGroups = majorGroups.filter(g => !g.archived).length;
   const activeCategories = categories.filter(c => !c.archived).length;
   const activeSubCategories = subCategories.filter(s => !s.archived).length;
+  
+  // Count of recipe types for the 8-cap validation
+  const recipeTypeCount = majorGroups.filter(g => g.is_recipe_type && !g.archived).length;
 
   // ---------------------------------------------------------------------------
   // RENDER
@@ -555,34 +636,42 @@ export const FoodRelationshipsManager: React.FC = () => {
                     everything in ChefLife. Think of it like folders on a computer:
                   </p>
                   
-                  {/* Hierarchy explanation */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
-                      <div className="flex items-center gap-2 mb-1">
-                        <FolderTree className="w-4 h-4 text-primary-400" />
-                        <span className="text-sm font-medium text-primary-400">Major Groups</span>
+                  {/* Feature cards - matches Price History pattern */}
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    <div className="subheader-feature-card">
+                      <FolderTree className="w-4 h-4 text-primary-400/80" />
+                      <div>
+                        <span className="subheader-feature-title text-white">Major Groups</span>
+                        <p className="subheader-feature-desc">Top-level buckets: FOOD, ALCOHOL, MIS EN PLACE, FINAL GOODS</p>
                       </div>
-                      <p className="text-xs text-gray-500">
-                        Top-level buckets: FOOD, ALCOHOL, MIS EN PLACE, FINAL GOODS
-                      </p>
                     </div>
-                    <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
-                      <div className="flex items-center gap-2 mb-1">
-                        <FolderTree className="w-4 h-4 text-emerald-400" />
-                        <span className="text-sm font-medium text-emerald-400">Categories</span>
+                    <div className="subheader-feature-card">
+                      <FolderTree className="w-4 h-4 text-emerald-400/80" />
+                      <div>
+                        <span className="subheader-feature-title text-white">Categories</span>
+                        <p className="subheader-feature-desc">Subdivisions: Proteins, Produce, Dairy, Dry Goods</p>
                       </div>
-                      <p className="text-xs text-gray-500">
-                        Subdivisions: Proteins, Produce, Dairy, Dry Goods
-                      </p>
                     </div>
-                    <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
-                      <div className="flex items-center gap-2 mb-1">
-                        <FolderTree className="w-4 h-4 text-amber-400" />
-                        <span className="text-sm font-medium text-amber-400">Sub-Categories</span>
+                    <div className="subheader-feature-card">
+                      <FolderTree className="w-4 h-4 text-amber-400/80" />
+                      <div>
+                        <span className="subheader-feature-title text-white">Sub-Categories</span>
+                        <p className="subheader-feature-desc">Finest detail: Beef, Pork, Chicken (shows in reports)</p>
                       </div>
-                      <p className="text-xs text-gray-500">
-                        Finest detail: Beef, Pork, Chicken (shows in reports)
-                      </p>
+                    </div>
+                    <div className="subheader-feature-card">
+                      <Info className="w-4 h-4 text-blue-400/80" />
+                      <div>
+                        <span className="subheader-feature-title text-white">Guided Mode</span>
+                        <p className="subheader-feature-desc">Toggle on for step-by-step tips while building your taxonomy</p>
+                      </div>
+                    </div>
+                    <div className="subheader-feature-card">
+                      <Archive className="w-4 h-4 text-purple-400/80" />
+                      <div>
+                        <span className="subheader-feature-title text-white">Archived</span>
+                        <p className="subheader-feature-desc">Hide items without deleting — restore anytime with the eye toggle</p>
+                      </div>
                     </div>
                   </div>
 
@@ -748,6 +837,8 @@ export const FoodRelationshipsManager: React.FC = () => {
                                 originalDescription: group.description || "",
                                 archived: group.archived,
                                 is_system: group.is_system,
+                                is_recipe_type: group.is_recipe_type || false,
+                                originalIsRecipeType: group.is_recipe_type || false,
                                 icon: group.icon,
                               });
                               setShowEditModal(true);
@@ -1204,6 +1295,7 @@ export const FoodRelationshipsManager: React.FC = () => {
               setShowEditModal(false);
               setEditingItem(null);
             }}
+            recipeTypeCount={recipeTypeCount}
           />
         )}
 

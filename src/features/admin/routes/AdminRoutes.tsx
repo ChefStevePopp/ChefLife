@@ -22,6 +22,7 @@ import { TeamPerformance } from "@/features/team/components/TeamPerformance";
 import { TeamPerformanceConfig } from "../components/sections/TeamPerformanceConfig";
 import { Communications, TemplateEditor, TemplatePreview } from "../components/sections/Communications";
 import { Operations } from "../components/sections/Operations";
+import { RecipeSettings } from "../components/sections/RecipeSettings";
 // Data Management - proper routes instead of hash-based
 import { MasterIngredientList } from "../components/sections/recipe/MasterIngredientList";
 import { IngredientDetailPage } from "../components/sections/recipe/MasterIngredientList/IngredientDetailPage";
@@ -55,6 +56,7 @@ export const AdminRoutes: React.FC = () => {
         <Route path="modules/communications/templates/new" element={<TemplateEditor />} />
         <Route path="modules/communications/templates/:id" element={<TemplateEditor />} />
         <Route path="modules/communications/templates/:id/preview" element={<TemplatePreview />} />
+        <Route path="modules/recipes" element={<RecipeSettings />} />
         <Route path="integrations" element={<IntegrationsManager />} />
         <Route path="activity" element={<ActivityLogList />} />
         <Route path="tasks" element={<TaskManager />} />

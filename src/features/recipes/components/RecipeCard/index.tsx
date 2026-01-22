@@ -18,8 +18,11 @@ import {
   RefreshCw, // Added for UPDATED badge
   Utensils,
   ChevronDown,
+  FolderTree,
 } from "lucide-react";
 import { AllergenBadge } from "@/features/allergens/components/AllergenBadge";
+import { useFoodRelationshipsStore } from "@/stores/foodRelationshipsStore";
+import { getLucideIcon } from "@/utils/iconMapping";
 import type { Recipe } from "../../types/recipe";
 
 interface RecipeCardProps {
@@ -39,6 +42,24 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
 }) => {
   const [imageError, setImageError] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  
+  // Get major group info from Food Relationships for consistent icon/name
+  const majorGroups = useFoodRelationshipsStore((state) => state.majorGroups);
+  const majorGroup = useMemo(() => {
+    if (!recipe.major_group) return null;
+    return majorGroups.find((g) => g.id === recipe.major_group);
+  }, [recipe.major_group, majorGroups]);
+  
+  // Dynamic icon from Food Relationships, with fallback
+  const GroupIcon = useMemo(() => {
+    if (majorGroup?.icon) {
+      return getLucideIcon(majorGroup.icon);
+    }
+    // Legacy fallback based on type
+    if (recipe.type === "prepared") return ChefHat;
+    if (recipe.type === "final") return Utensils;
+    return FolderTree; // Default
+  }, [majorGroup?.icon, recipe.type]);
 
   // Calculate if the recipe is new (less than 1 month old)
   const isNew = useMemo(() => {
@@ -199,38 +220,17 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
           </div>
         )}
 
-        {/* Recipe Type Badge */}
+        {/* Recipe Type Badge - Icon and name from Food Relationships */}
         <div className="absolute top-4 left-4 z-20">
           <div className="px-3 py-1.5 rounded-full bg-gray-900/90 border border-gray-700 flex items-center gap-2">
-            {recipe.type === "prepared" ? (
-              <ChefHat className="w-3.5 h-3.5 text-blue-400" />
-            ) : recipe.type === "final" ? (
-              <Utensils className="w-3.5 h-3.5 text-green-400" />
-            ) : (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="w-3.5 h-3.5 text-amber-400"
-              >
-                <path d="M20.91 8.84 8.56 2.23a1.93 1.93 0 0 0-1.81 0L3.1 4.13a2.12 2.12 0 0 0-.05 3.69l12.22 6.93a2 2 0 0 0 1.94 0L21 12.51a2.12 2.12 0 0 0-.09-3.67Z"></path>
-                <path d="m3.09 8.84 12.35-6.61a1.93 1.93 0 0 1 1.81 0l3.65 1.9a2.12 2.12 0 0 1 .1 3.69L8.73 14.75a2 2 0 0 1-1.94 0L3 12.51a2.12 2.12 0 0 1 .09-3.67Z"></path>
-                <line x1="12" y1="22" x2="12" y2="13"></line>
-                <path d="M20 13.5v3.37a2.06 2.06 0 0 1-1.11 1.83l-6 3.08a1.93 1.93 0 0 1-1.78 0l-6-3.08A2.06 2.06 0 0 1 4 16.87V13.5"></path>
-              </svg>
-            )}
+            <GroupIcon className="w-3.5 h-3.5 text-primary-400" />
             <span className="text-xs font-medium text-gray-300">
-              {recipe.type === "prepared"
-                ? "Prep Item"
-                : recipe.type === "final"
-                  ? "Final Plate"
-                  : "Receiving Item"}
+              {/* Use major_group name, fallback to legacy type mapping */}
+              {majorGroup?.name 
+                || recipe.major_group_name 
+                || (recipe.type === "prepared" ? "Prep Item" 
+                  : recipe.type === "final" ? "Final Plate" 
+                  : "Receiving Item")}
             </span>
           </div>
         </div>
@@ -238,7 +238,7 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
         {/* NEW Badge - Positioned below Recipe Type Badge */}
         {isNew && (
           <div className="absolute top-14 left-4 z-20">
-            <div className="px-3 py-1.5 rounded-full bg-red-500/40 text-grey-300 border border-red-700 flex items-center gap-2">
+            <div className="px-3 py-1.5 rounded-full bg-red-500/40 text-gray-300 border border-red-700 flex items-center gap-2">
               <Clock className="w-3.5 h-3.5" />
               <span className="text-xs font-medium">NEW</span>
             </div>
@@ -268,6 +268,7 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
                       ? "bg-gray-500/20 text-gray-400"
                       : "bg-gray-900/90 text-gray-300"
               } border border-gray-700`}
+              title={`Status: ${recipe.status.charAt(0).toUpperCase() + recipe.status.slice(1)}`}
             >
               {recipe.status === "approved" ? (
                 <CheckCircle size={16} />
@@ -287,15 +288,15 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
           <h3 className="text-xl font-bold text-white group-hover:text-amber-500 transition-colors">
             {recipe.name}
           </h3>
-          <div className="flex items-center gap-2 mt-1">
-            <Clock className="w-4 h-4 text-amber-500" />
-            <span className="text-xs text-gray-300">
-              {recipe.storage?.shelf_life_duration
-                ? `${recipe.storage.shelf_life_duration} ${recipe.storage.shelf_life_unit || "days"}`
-                : "No shelf life specified"}
-              <span className="text-xs text-gray-600"> SHELF LIFE</span>
-            </span>
-          </div>
+          {/* Only show shelf life row if there's a value */}
+          {recipe.storage?.shelf_life_duration && (
+            <div className="flex items-center gap-2 mt-1">
+              <Clock className="w-4 h-4 text-amber-500" />
+              <span className="text-xs text-gray-300">
+                {recipe.storage.shelf_life_duration} {recipe.storage.shelf_life_unit || "days"}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Expand indicator */}
@@ -321,7 +322,7 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
                 <ChefHat className="w-4 h-4 text-primary-400/80" /> DUTY STATION
               </div>
               <div className="flex items-center gap-2 mt-2">
-                <span className="text-sm text-gray-300">
+                <span className={`text-sm ${recipe.station_name ? 'text-gray-300' : 'text-gray-500 italic'}`}>
                   {recipe.station_name || "Unassigned"}
                 </span>
               </div>
@@ -334,7 +335,7 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
                 CLASS
               </div>
               <div className="flex items-center gap-2 mt-2">
-                <span className="text-sm text-gray-300">
+                <span className={`text-sm ${recipe.sub_category_name ? 'text-gray-300' : 'text-gray-500 italic'}`}>
                   {recipe.sub_category_name || "Uncategorized"}
                 </span>
               </div>
@@ -349,8 +350,8 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
                 <Warehouse className="w-4 h-4 text-green-400/60" /> STORAGE AREA
               </div>
               <div className="flex items-center gap-2 mt-2">
-                <span className="text-sm text-gray-300">
-                  {recipe.storage?.primary_area || "Walk-in Cooler"}
+                <span className={`text-sm ${recipe.storage?.primary_area ? 'text-gray-300' : 'text-gray-500 italic'}`}>
+                  {recipe.storage?.primary_area || "Unassigned"}
                 </span>
               </div>
             </div>
@@ -362,12 +363,14 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
                 CONTAINER
               </div>
               <div className="flex items-center gap-2 mt-2">
-                <span className="text-sm text-gray-300">
-                  {recipe.storage?.container || "Cambro"}{" "}
-                  {recipe.storage?.container_type
-                    ? `(${recipe.storage.container_type})`
-                    : "(22 Qt)"}
-                </span>
+                {recipe.storage?.container ? (
+                  <span className="text-sm text-gray-300">
+                    {recipe.storage.container}
+                    {recipe.storage.container_type && ` (${recipe.storage.container_type})`}
+                  </span>
+                ) : (
+                  <span className="text-sm text-gray-500">—</span>
+                )}
               </div>
             </div>
           </div>
@@ -412,7 +415,9 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
                 <Clock className="w-4 h-4 text-rose-500/80" /> PREP TIME
               </div>
               <div className="flex items-center gap-2 mt-2">
-                <span className="text-sm text-gray-200">{totalTime} mins</span>
+                <span className={`text-sm ${totalTime > 0 ? 'text-gray-200' : 'text-gray-500'}`}>
+                  {totalTime > 0 ? `${totalTime} mins` : "—"}
+                </span>
               </div>
             </div>
 
@@ -422,22 +427,22 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
                 <CircleUser className="w-4 h-4 text-rose-500/80" /> LABOUR COST
               </div>
               <div className="flex items-center gap-2 mt-2">
-                <span className="text-sm text-gray-200">
-                  {formatCurrency(laborCost)}
+                <span className={`text-sm ${totalTime > 0 ? 'text-gray-200' : 'text-gray-500'}`}>
+                  {totalTime > 0 ? formatCurrency(laborCost) : "—"}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Allergens */}
-          {recipe.allergenInfo?.contains?.length > 0 && (
-            <div className="pt-3 border-t border-gray-700/50">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-bold font-display text-gray-500 flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-lime-400" /> DECLARED
-                  ALLERGENS
-                </span>
-              </div>
+          {/* Allergens - Always show, with "None Declared" if empty */}
+          <div className="pt-3 border-t border-gray-700/50">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs font-bold font-display text-gray-500 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-lime-400" /> DECLARED
+                ALLERGENS
+              </span>
+            </div>
+            {recipe.allergenInfo?.contains?.length > 0 ? (
               <div className="flex flex-wrap gap-1">
                 {recipe.allergenInfo.contains.map((allergen) => {
                   // Extract allergen key without prefix if needed
@@ -464,8 +469,10 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
                   );
                 })}
               </div>
-            </div>
-          )}
+            ) : (
+              <span className="text-sm text-gray-500 italic">None Declared</span>
+            )}
+          </div>
         </div>
 
         {/* View Recipe Button - Only visible when expanded */}

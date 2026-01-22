@@ -617,6 +617,13 @@ select::-ms-expand {
            placeholder:text-gray-500;
   }
 
+  /* Input Small - for compact toolbars and subheaders */
+  .input-sm {
+    @apply bg-gray-800/50 border border-gray-700/50 rounded-lg px-3 py-1.5 text-sm
+           focus:outline-none focus:ring-2 focus:ring-primary-500/50
+           placeholder:text-gray-500;
+  }
+
   /* Select/Dropdown */
   select {
     @apply bg-gray-800/50 border border-gray-700/50 rounded-xl px-4 py-2 text-base
@@ -627,6 +634,13 @@ select::-ms-expand {
     background-repeat: no-repeat;
     background-size: 1.5em 1.5em;
     padding-right: 2.5rem;
+  }
+
+  /* Select Small - for compact toolbars and subheaders */
+  select.input-sm {
+    @apply rounded-lg px-3 py-1.5 text-sm;
+    padding-right: 2rem;
+    background-size: 1.25em 1.25em;
   }
 
   /* Stage dropdown in recipe steps */
