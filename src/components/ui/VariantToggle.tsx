@@ -7,6 +7,9 @@ import { FlaskConical } from "lucide-react";
  * Tiny, unobtrusive, powerful.
  * Shows only to dev users, lets them switch between component variants
  * in real-world context to make informed decisions.
+ * 
+ * NOTE: Has known click event conflicts when used inside clickable containers.
+ * Consider placing outside of click handlers or using a modal approach.
  */
 
 interface VariantToggleProps<T extends string> {

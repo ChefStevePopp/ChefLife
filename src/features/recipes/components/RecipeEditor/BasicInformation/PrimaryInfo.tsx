@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { Package } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { useFoodRelationshipsStore } from "@/stores/foodRelationshipsStore";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import type { Recipe } from "../../../types/recipe";
 import type { OperationsSettings } from "@/types/operations";
 
@@ -15,63 +17,69 @@ export const PrimaryInfo: React.FC<PrimaryInfoProps> = ({
   onChange,
   settings,
 }) => {
-  const [majorGroups, setMajorGroups] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
-  const [subCategories, setSubCategories] = useState<any[]>([]);
+  // Use Food Relationships store for consistent data
+  const { showDiagnostics } = useDiagnostics();
+  const {
+    majorGroups: allMajorGroups,
+    categories: allCategories,
+    subCategories: allSubCategories,
+    fetchFoodRelationships,
+  } = useFoodRelationshipsStore();
 
-  // Fetch food relationships data
+  // Fetch on mount if not already loaded
   useEffect(() => {
-    const fetchFoodRelationships = async () => {
-      // Fetch major groups
-      const { data: majorGroupsData } = await supabase
-        .from("food_category_groups")
-        .select("*");
-      if (majorGroupsData) setMajorGroups(majorGroupsData);
+    if (allMajorGroups.length === 0) {
+      fetchFoodRelationships();
+    }
+  }, [allMajorGroups.length, fetchFoodRelationships]);
 
-      // Fetch categories for selected major group
-      if (recipe.major_group) {
-        const { data: categoriesData } = await supabase
-          .from("food_categories")
-          .select("*")
-          .eq("group_id", recipe.major_group);
-        if (categoriesData) setCategories(categoriesData);
-      }
+  // Recipe Type options - major groups where is_recipe_type = true
+  const recipeTypeGroups = useMemo(() => {
+    return allMajorGroups
+      .filter((g) => g.is_recipe_type && !g.archived)
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  }, [allMajorGroups]);
 
-      // Fetch sub-categories for selected category
-      if (recipe.category) {
-        const { data: subCategoriesData } = await supabase
-          .from("food_sub_categories")
-          .select("*")
-          .eq("category_id", recipe.category);
-        if (subCategoriesData) setSubCategories(subCategoriesData);
-      }
-    };
+  // Categories filtered by selected major group
+  const categories = useMemo(() => {
+    if (!recipe.major_group) return [];
+    return allCategories.filter(
+      (c) => c.group_id === recipe.major_group && !c.archived
+    );
+  }, [allCategories, recipe.major_group]);
 
-    fetchFoodRelationships();
-  }, [recipe.major_group, recipe.category]);
+  // Sub-categories filtered by selected category
+  const subCategories = useMemo(() => {
+    if (!recipe.category) return [];
+    return allSubCategories.filter(
+      (s) => s.category_id === recipe.category && !s.archived
+    );
+  }, [allSubCategories, recipe.category]);
 
-  // Handle major group change
-  const handleMajorGroupChange = async (groupId: string) => {
+  // Handle major group (recipe type) change - resets dependent fields
+  const handleMajorGroupChange = (groupId: string) => {
     onChange({
-      major_group: groupId,
-      category: "", // Reset dependent fields
-      sub_category: "",
+      major_group: groupId || null,
+      category: null,
+      sub_category: null,
     });
-    setCategories([]);
-    setSubCategories([]);
   };
 
-  // Handle category change
-  const handleCategoryChange = async (categoryId: string) => {
+  // Handle category change - resets sub-category
+  const handleCategoryChange = (categoryId: string) => {
     onChange({
-      category: categoryId,
-      sub_category: "", // Reset dependent field
+      category: categoryId || null,
+      sub_category: null,
     });
-    setSubCategories([]);
   };
 
   return (
     <div className="space-y-4">
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/recipes/components/RecipeEditor/BasicInformation/PrimaryInfo.tsx
+        </div>
+      )}
       {/* ... Header section remains the same ... */}
 
       <div className="grid grid-cols-2 gap-4">
@@ -93,41 +101,23 @@ export const PrimaryInfo: React.FC<PrimaryInfoProps> = ({
             Recipe Type
           </label>
           <select
-            value={recipe.type}
-            onChange={(e) =>
-              onChange({
-                type: e.target.value as "prepared" | "final" | "receiving",
-              })
-            }
-            className="input w-full bg-gray-800/50"
-            required
-          >
-            <option value="prepared">Prepared Item</option>
-            <option value="final">Final Plate</option>
-            <option value="receiving">Receiving Item</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Classification Fields */}
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-400 mb-1">
-            Major Group
-          </label>
-          <select
             value={recipe.major_group || ""}
             onChange={(e) => handleMajorGroupChange(e.target.value)}
             className="input w-full bg-gray-800/50"
+            required
           >
-            <option value="">Select Major Group</option>
-            {majorGroups.map((group) => (
+            <option value="">Select Recipe Type</option>
+            {recipeTypeGroups.map((group) => (
               <option key={group.id} value={group.id}>
                 {group.name}
               </option>
             ))}
           </select>
         </div>
+      </div>
+
+      {/* Classification Fields */}
+      <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-400 mb-1">
             Category
@@ -146,16 +136,13 @@ export const PrimaryInfo: React.FC<PrimaryInfoProps> = ({
             ))}
           </select>
         </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-400 mb-1">
             Sub Category
           </label>
           <select
             value={recipe.sub_category || ""}
-            onChange={(e) => onChange({ sub_category: e.target.value })}
+            onChange={(e) => onChange({ sub_category: e.target.value || null })}
             className="input w-full bg-gray-800/50"
             disabled={!recipe.category}
           >
@@ -167,6 +154,9 @@ export const PrimaryInfo: React.FC<PrimaryInfoProps> = ({
             ))}
           </select>
         </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-400 mb-1">
             Station
@@ -183,6 +173,9 @@ export const PrimaryInfo: React.FC<PrimaryInfoProps> = ({
               </option>
             ))}
           </select>
+        </div>
+        <div>
+          {/* Placeholder for future field or leave empty */}
         </div>
       </div>
 

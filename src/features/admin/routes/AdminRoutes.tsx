@@ -8,6 +8,7 @@ import { PermissionsManager } from "../components/sections/PermissionsManager";
 import { Nexus } from "../components/sections/Nexus";
 import { HelpSupport } from "../components/sections/HelpSupport";
 import { RecipeManager } from "@/features/recipes/components/RecipeManager";
+import { RecipeDetailPage } from "@/features/recipes/components/RecipeDetailPage";
 import { DevManagement } from "../components/sections/DevManagement";
 import { OrganizationSettings } from "../components/settings/OrganizationSettings";
 import { ModulesManager } from "../components/sections/ModulesManager";
@@ -34,6 +35,8 @@ export const AdminRoutes: React.FC = () => {
       <Route element={<AdminLayout />}>
         <Route index element={<AdminDashboard />} />
         <Route path="recipes" element={<RecipeManager />} />
+        <Route path="recipes/new" element={<RecipeDetailPage />} />
+        <Route path="recipes/:id" element={<RecipeDetailPage />} />
         <Route path="team" element={<TeamManagement />} />
         <Route path="team/my-profile" element={<MyProfile />} />
         <Route path="team/performance" element={<TeamPerformance />} />

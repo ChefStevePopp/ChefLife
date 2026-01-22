@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   ChefHat,
   UtensilsCrossed,
@@ -16,9 +17,9 @@ import {
 } from "lucide-react";
 import { useRecipeStore } from "@/features/recipes/stores/recipeStore";
 import { useFoodRelationshipsStore } from "@/stores/foodRelationshipsStore";
+import { useRecipeNavigationStore } from "@/stores/recipeNavigationStore";
 import { getLucideIcon } from "@/utils/iconMapping";
 import RecipeCard from "../RecipeCard";
-import { RecipeEditorModal } from "../RecipeEditor";
 import type { Recipe } from "../../types/recipe";
 import { useSupabase } from "@/context/SupabaseContext";
 import { useDebounce } from "@/shared/hooks/useDebounce";
@@ -124,10 +125,11 @@ const RecipeManager: React.FC = () => {
   // ---------------------------------------------------------------------------
   // State
   // ---------------------------------------------------------------------------
+  const navigate = useNavigate();
+  const { setNavigationContext } = useRecipeNavigationStore();
+  
   const [activeTabId, setActiveTabId] = useState<string | null>(null); // Group ID
   const [searchTerm, setSearchTerm] = useState("");
-  const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
-  const [modalMode, setModalMode] = useState<"create" | "edit">("create");
   const [organizationId, setOrganizationId] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [isInfoExpanded, setIsInfoExpanded] = useState(false);
@@ -318,60 +320,23 @@ const RecipeManager: React.FC = () => {
   const handleNewRecipe = () => {
     if (!activeTab) return;
     
-    setModalMode("create");
-    const newRecipe: Partial<Recipe> = {
-      type: (activeTab.legacyType || "prepared") as Recipe["type"], // Legacy field
-      major_group: activeTab.id, // Modern field - links to food_category_groups
-      name: "",
-      description: "",
-      station: "",
-      storage_area: "",
-      container: "",
-      container_type: "",
-      shelf_life: "",
-      prep_time: 0,
-      cook_time: 0,
-      rest_time: 0,
-      recipe_unit_ratio: "1",
-      unit_type: "portion",
-      yield_amount: 1,
-      yield_unit: "portion",
-      ingredients: [],
-      steps: [],
-      media: [],
-      allergens: {
-        contains: [],
-        mayContain: [],
-        crossContactRisk: [],
-      },
-      quality_standards: {
-        appearance_description: "",
-        texture_points: [],
-        taste_points: [],
-        aroma_points: [],
-        temperature: {
-          value: 0,
-          unit: "F",
-          tolerance: 0,
-        },
-      },
-      training: {
-        required_skill_level: "beginner",
-        certification_required: false,
-        common_errors: [],
-        key_techniques: [],
-        safety_protocols: [],
-        quality_standards: [],
-      },
-      cost_per_unit: 0,
-      labor_cost_per_hour: 30,
-      total_cost: 0,
-      target_cost_percent: 25,
-      version: "1.0",
-      versions: [],
-      organization_id: organizationId,
-    };
-    setEditingRecipe(newRecipe as Recipe);
+    // Set navigation context for the detail page
+    const ids = displayedRecipes.map(r => r.id);
+    setNavigationContext(ids, activeTab.label, "/admin/recipes");
+    
+    // Navigate to new recipe page with type info
+    const params = new URLSearchParams({
+      type: activeTab.legacyType || "prepared",
+      major_group: activeTab.id,
+    });
+    navigate(`/admin/recipes/new?${params.toString()}`);
+  };
+  
+  const handleRecipeClick = (recipeId: string) => {
+    // Set navigation context so detail page knows the filtered list
+    const ids = displayedRecipes.map(r => r.id);
+    setNavigationContext(ids, activeTab?.label || "", "/admin/recipes");
+    navigate(`/admin/recipes/${recipeId}`);
   };
 
   const handleClearFilters = () => {
@@ -676,10 +641,7 @@ const RecipeManager: React.FC = () => {
             <RecipeCard
               key={recipe.id}
               recipe={recipe}
-              onClick={() => {
-                setModalMode("edit");
-                setEditingRecipe(recipe);
-              }}
+              onViewRecipe={() => handleRecipeClick(recipe.id)}
             />
           ))
         ) : (
@@ -747,18 +709,6 @@ const RecipeManager: React.FC = () => {
         </div>
       )}
 
-      {/* ================================================================== */}
-      {/* MODALS                                                             */}
-      {/* ================================================================== */}
-      {editingRecipe && (
-        <RecipeEditorModal
-          isOpen={true}
-          onClose={() => setEditingRecipe(null)}
-          recipe={editingRecipe}
-          mode={modalMode}
-          organizationId={organizationId}
-        />
-      )}
     </div>
   );
 };

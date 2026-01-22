@@ -3,7 +3,7 @@ export interface Recipe {
   organization_id: string;
   name: string;
   description?: string;
-  type: "prepared" | "final";
+  type: "prepared" | "final" | "receiving";
   status: "draft" | "review" | "approved" | "archived";
   station?: string;
   prep_time: number;
@@ -23,6 +23,12 @@ export interface Recipe {
   stages?: RecipeStage[];
   equipment?: EquipmentItem[];
   allergens?: {
+    contains: string[];
+    mayContain?: string[];
+    crossContactRisk?: string[];
+  };
+  // View field - allergen info from joined query
+  allergenInfo?: {
     contains: string[];
     mayContain?: string[];
     crossContactRisk?: string[];
@@ -257,3 +263,8 @@ export interface RecipeEquipment {
   id: string;
   name: string;
 }
+
+/**
+ * RecipeInput - For creating new recipes (id is optional/generated)
+ */
+export type RecipeInput = Omit<Recipe, 'id'> & { id?: string };

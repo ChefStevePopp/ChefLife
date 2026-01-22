@@ -137,6 +137,12 @@ The hook also adds `show-diagnostics` class to `document.body` when enabled. Thi
 | PriceHistoryChart | `.../PriceHistory/components/PriceHistoryChart.tsx` |
 | InsightsPanel | `.../PriceHistory/components/InsightsPanel.tsx` |
 | PriceRecordList | `.../PriceHistory/components/PriceRecordList.tsx` |
+| **Recipe Module** | |
+| RecipeManager | `src/features/recipes/components/RecipeManager/index.tsx` |
+| RecipeDetailPage | `src/features/recipes/components/RecipeDetailPage/index.tsx` |
+| PageHeader | `src/features/recipes/components/RecipeDetailPage/PageHeader.tsx` |
+| RecipeTabs | `src/features/recipes/components/RecipeDetailPage/RecipeTabs.tsx` |
+| PrimaryInfo | `src/features/recipes/components/RecipeEditor/BasicInformation/PrimaryInfo.tsx` |
 
 ---
 

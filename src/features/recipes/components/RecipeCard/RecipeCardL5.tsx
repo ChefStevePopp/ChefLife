@@ -24,29 +24,28 @@ import { getLucideIcon } from "@/utils/iconMapping";
 import type { Recipe } from "../../types/recipe";
 
 /**
- * RecipeCard - L5 Design System Compliant
+ * RecipeCardL5 - L5 Design Audit Version
  * 
- * Design decisions:
+ * Changes from original:
  * - Section headers use icon-badge pattern (rounded-lg bg-slate-700/50)
  * - All section icons → slate (subtle blue undertone, content-focused)
  * - Allergens → primary (safety callout - the ONE colored element)
  * - Status badge → L5 round badge pattern (w-8 h-8 rounded-full)
  * - Card → rounded-2xl
- * - Empty states: muted italic for missing values, em-dash for optional fields
  */
 
-interface RecipeCardProps {
+interface RecipeCardL5Props {
   recipe: Recipe;
-  onViewRecipe: () => void;
+  onClick: () => void;
   laborRate?: number;
   className?: string;
 }
 
 const LABOR_RATE_PER_HOUR = 20;
 
-export const RecipeCard: React.FC<RecipeCardProps> = ({
+export const RecipeCardL5: React.FC<RecipeCardL5Props> = ({
   recipe,
-  onViewRecipe,
+  onClick,
   laborRate = LABOR_RATE_PER_HOUR,
   className = "",
 }) => {
@@ -81,13 +80,13 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
 
   // Calculate if the recipe was recently updated
   const isUpdated = useMemo(() => {
-    if (isNew || !recipe.updated_at) return false;
+    if (isNew || !recipe.modified_at) return false;
     if (recipe.versions && recipe.versions.length > 1) return true;
-    const modifiedDate = new Date(recipe.updated_at);
+    const modifiedDate = new Date(recipe.modified_at);
     const twoMonthsAgo = new Date();
     twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
     return modifiedDate > twoMonthsAgo;
-  }, [isNew, recipe.updated_at, recipe.versions]);
+  }, [isNew, recipe.modified_at, recipe.versions]);
 
   // Find the primary image in the media array
   const primaryMedia = useMemo(
@@ -459,7 +458,7 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onViewRecipe();
+              onClick();
             }}
             className="w-full flex justify-center px-4 py-2 bg-gray-700/70 hover:bg-primary-800/80 text-gray-300 hover:text-white rounded-lg transition-colors text-sm font-medium items-center gap-2 relative z-40"
           >
@@ -469,10 +468,10 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
         </div>
       </div>
 
-      {/* Hover/Focus border effect */}
-      <div className="absolute inset-0 rounded-2xl border-2 border-primary-500/50 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity" />
+      {/* Hover border effect */}
+      <div className="absolute inset-0 rounded-2xl border-2 border-primary-500/50 opacity-0 hover:opacity-100 transition-opacity" />
     </div>
   );
 };
 
-export default RecipeCard;
+export default RecipeCardL5;
