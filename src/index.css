@@ -1374,3 +1374,33 @@ select::-ms-expand {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;             /* Chrome, Safari, Opera */
 }
+
+/* ============================================================================
+   ADMIN LAYOUT CONTAINER
+   ============================================================================
+   Responsive container for admin pages. Scales with viewport while maintaining
+   readable content widths. See docs/ADMIN-LAYOUT-STRATEGY.md
+   ============================================================================ */
+
+:root {
+  --admin-content-width: 95%;
+  --admin-max-width: 64rem; /* 1024px default */
+}
+
+@media (min-width: 1024px) {
+  :root { --admin-max-width: 72rem; } /* 1152px */
+}
+
+@media (min-width: 1280px) {
+  :root { --admin-max-width: 80rem; } /* 1280px */
+}
+
+@media (min-width: 1536px) {
+  :root { --admin-max-width: 100rem; } /* 1600px */
+}
+
+.admin-container {
+  width: var(--admin-content-width);
+  max-width: var(--admin-max-width);
+  margin-inline: auto;
+}

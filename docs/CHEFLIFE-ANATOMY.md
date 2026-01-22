@@ -133,7 +133,7 @@ The skin also senses - performance tracking, attendance, feedback loops.
 ---
 
 ### ❤️ RECIPES — Heart of the House
-**Location:** Recipe Manager  
+**Location:** Recipe Manager (`/admin/recipes`, `/admin/recipes/:id`)  
 **Function:** The purpose. The craft. Why we exist.
 
 This is the soul of the restaurant:
@@ -144,6 +144,43 @@ This is the soul of the restaurant:
 
 The heart of the house is WHY the restaurant exists.  
 Not to make money - to feed people, to create experiences, to share craft.
+
+**Architecture:**
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        RECIPE MODULE STRUCTURE                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  RecipeDetailPage (11-Tab Editor)                                          │
+│  ═══════════════════════════════                                           │
+│  ├── Recipe Info    → Name, type, category, ingredients, costing          │
+│  ├── Instructions   → Steps, stages, timing                                │
+│  ├── Production     → Prep/cook/rest times, yield, temps                  │
+│  ├── Labels         → Label requirements, printer config                   │
+│  ├── Storage        → Storage areas, shelf life, temps                     │
+│  ├── Stations       → Kitchen stations, equipment                          │
+│  ├── Quality        → Visual/texture/taste/aroma standards                │
+│  ├── Allergens      → Allergen tracking, cross-contact                     │
+│  ├── Media          → Photos, videos, plating references                   │
+│  ├── Training       → Skill levels, certifications, safety                │
+│  └── Versions       → Version history, approval workflow                   │
+│                                                                             │
+│  KEY FEATURES                                                              │
+│  ════════════                                                              │
+│  • Tab-level change tracking (amber indicators show unsaved sections)     │
+│  • Dynamic Recipe Type from Food Relationships taxonomy                   │
+│  • Floating action bar shows exactly which tabs have changes              │
+│  • Responsive layout via .admin-container                                 │
+│                                                                             │
+│  RECIPE TYPES (from Food Relationships)                                    │
+│  ══════════════════════════════════════                                    │
+│  Major Groups with is_recipe_type = true become tabs in Recipe Manager:   │
+│  • Prepared Items (mis en place, sauces, rubs)                            │
+│  • Final Goods (menu items, retail)                                       │
+│  • Custom types as configured                                             │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -894,9 +931,9 @@ That's the vision. That's the mission. That's ChefLife.
 
 ---
 
-**Document Version:** 1.8  
+**Document Version:** 1.9  
 **Status:** Living Document  
-**Last Update:** January 21, 2026 - Food Relationships (Taxonomy/DNA)  
+**Last Update:** January 22, 2026 - Recipe Module Architecture (Heart of the House)  
 **Next Update:** As the body grows
 
 ---
@@ -914,3 +951,4 @@ That's the vision. That's the mission. That's ChefLife.
 | 1.6 | Jan 11, 2026 | **Mobile Paradigm** - People, Place, Profit architecture, MobileShell design, Newton's cradle dots |
 | 1.7 | Jan 16, 2026 | **Nexus Dashboard** - MRI screen for vital signs, Premium Animation System (AnimatedNumber, MorphingText) |
 | 1.8 | Jan 21, 2026 | **Food Relationships** - The Taxonomy/DNA organ. Major Groups → Categories → Sub-Categories hierarchy. L5 build with Guided Mode, character counters, empty state management. |
+| 1.9 | Jan 22, 2026 | **Recipe Module Architecture** - 11-tab editor detail, tab-level change tracking, dynamic Recipe Type from taxonomy, admin-container responsive layout. |

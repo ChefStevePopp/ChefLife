@@ -10,6 +10,7 @@ import {
   GripVertical,
 } from "lucide-react";
 import { useOperationsStore } from "@/stores/operationsStore";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import type { Recipe } from "../../types/recipe";
 
 interface StationEquipmentProps {
@@ -27,6 +28,7 @@ export const StationEquipment: React.FC<StationEquipmentProps> = ({
   onChange,
 }) => {
   const { settings } = useOperationsStore();
+  const { showDiagnostics } = useDiagnostics();
   const kitchenStations = settings?.kitchen_stations || [];
   const [newEquipment, setNewEquipment] = useState("");
 
@@ -50,6 +52,11 @@ export const StationEquipment: React.FC<StationEquipmentProps> = ({
 
   return (
     <div className="space-y-6">
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/recipes/components/RecipeEditor/StationEquipment.tsx
+        </div>
+      )}
       {/* Header */}
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">

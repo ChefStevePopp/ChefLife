@@ -19,6 +19,7 @@ import type { Recipe } from "../../types/recipe";
 import { mediaService, ALLOWED_LABEL_FILE_TYPES } from "@/lib/media-service";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import toast from "react-hot-toast";
 
 interface LabelRequirementsProps {
@@ -31,6 +32,7 @@ export const LabelRequirements: React.FC<LabelRequirementsProps> = ({
   onChange,
 }) => {
   const { organization } = useAuth();
+  const { showDiagnostics } = useDiagnostics();
   const [isPrinterConnected, setIsPrinterConnected] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -121,6 +123,11 @@ export const LabelRequirements: React.FC<LabelRequirementsProps> = ({
 
   return (
     <div className="space-y-6">
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/recipes/components/RecipeEditor/LabelRequirements.tsx
+        </div>
+      )}
       {/* Header */}
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">

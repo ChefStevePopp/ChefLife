@@ -142,7 +142,19 @@ The hook also adds `show-diagnostics` class to `document.body` when enabled. Thi
 | RecipeDetailPage | `src/features/recipes/components/RecipeDetailPage/index.tsx` |
 | PageHeader | `src/features/recipes/components/RecipeDetailPage/PageHeader.tsx` |
 | RecipeTabs | `src/features/recipes/components/RecipeDetailPage/RecipeTabs.tsx` |
+| **Recipe Editor Tabs** | |
+| BasicInformation | `src/features/recipes/components/RecipeEditor/BasicInformation/index.tsx` |
 | PrimaryInfo | `src/features/recipes/components/RecipeEditor/BasicInformation/PrimaryInfo.tsx` |
+| InstructionEditor | `src/features/recipes/components/RecipeEditor/InstructionEditor.tsx` |
+| ProductionSpecs | `src/features/recipes/components/RecipeEditor/ProductionSpecs.tsx` |
+| LabelRequirements | `src/features/recipes/components/RecipeEditor/LabelRequirements.tsx` |
+| StorageProtocols | `src/features/recipes/components/RecipeEditor/StorageProtocols.tsx` |
+| StationEquipment | `src/features/recipes/components/RecipeEditor/StationEquipment.tsx` |
+| QualityStandards | `src/features/recipes/components/RecipeEditor/QualityStandards.tsx` |
+| AllergenControl | `src/features/recipes/components/RecipeEditor/AllergenControl.tsx` |
+| MediaManager | `src/features/recipes/components/RecipeEditor/MediaManager.tsx` |
+| TrainingModule | `src/features/recipes/components/RecipeEditor/TrainingModule.tsx` |
+| VersionHistory | `src/features/recipes/components/RecipeEditor/VersionHistory.tsx` |
 
 ---
 

@@ -12,6 +12,7 @@ import {
 import type { Recipe } from "../../types/recipe";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserNameMapping } from "@/hooks/useUserNameMapping";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import toast from "react-hot-toast";
 
 interface VersionHistoryProps {
@@ -33,6 +34,7 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
 }) => {
   const { user } = useAuth();
   const { getUserName } = useUserNameMapping();
+  const { showDiagnostics } = useDiagnostics();
   const [showStatusConfirm, setShowStatusConfirm] = useState<string | null>(
     null,
   );
@@ -158,6 +160,11 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
 
   return (
     <div className="space-y-8">
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/recipes/components/RecipeEditor/VersionHistory.tsx
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">

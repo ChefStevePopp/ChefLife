@@ -372,7 +372,7 @@ export const RecipeDetailPage: React.FC = () => {
   // ---------------------------------------------------------------------------
   if (isLoading || (!isNew && hasPermission === null) || (isNew && !organizationId)) {
     return (
-      <div className="max-w-5xl mx-auto pb-24">
+      <div className="admin-container pb-24">
         <div className="animate-pulse space-y-4">
           <div className="flex items-center justify-between">
             <div className="h-8 w-32 bg-gray-800 rounded-lg" />
@@ -422,7 +422,7 @@ export const RecipeDetailPage: React.FC = () => {
   // RENDER
   // ---------------------------------------------------------------------------
   return (
-    <div className="max-w-5xl mx-auto pb-24">
+    <div className="admin-container pb-24">
       {showDiagnostics && (
         <div className="text-xs text-gray-500 font-mono mb-2">
           src/features/recipes/components/RecipeDetailPage/index.tsx
@@ -521,6 +521,7 @@ export const RecipeDetailPage: React.FC = () => {
         hasUnsavedChanges={hasUnsavedChanges()}
         onBack={handleBack}
         onChange={handleChange}
+        onNavigateToTab={setActiveTab}
         backLabel={backLabel}
       />
 

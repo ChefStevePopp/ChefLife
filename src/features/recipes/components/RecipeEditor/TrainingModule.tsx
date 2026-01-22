@@ -12,6 +12,7 @@ import {
   BookOpen,
   ShieldAlert,
 } from "lucide-react";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import type { Recipe, RecipeTraining } from "../../types/recipe";
 
 interface TrainingModuleProps {
@@ -23,6 +24,7 @@ export const TrainingModule: React.FC<TrainingModuleProps> = ({
   recipe,
   onChange,
 }) => {
+  const { showDiagnostics } = useDiagnostics();
   const updateTraining = (updates: Partial<RecipeTraining>) => {
     onChange({
       training: { ...recipe.training, ...updates },
@@ -97,6 +99,11 @@ export const TrainingModule: React.FC<TrainingModuleProps> = ({
 
   return (
     <div className="space-y-6">
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/recipes/components/RecipeEditor/TrainingModule.tsx
+        </div>
+      )}
       {/* Header */}
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">

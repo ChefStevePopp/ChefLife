@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import type { Recipe } from "../../types/recipe";
 import { supabase } from "@/lib/supabase";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import toast from "react-hot-toast";
 
 interface QualityStandardsProps {
@@ -27,6 +28,7 @@ export const QualityStandards: React.FC<QualityStandardsProps> = ({
   recipe,
   onChange,
 }) => {
+  const { showDiagnostics } = useDiagnostics();
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
@@ -147,6 +149,11 @@ export const QualityStandards: React.FC<QualityStandardsProps> = ({
 
   return (
     <div className="space-y-6">
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/recipes/components/RecipeEditor/QualityStandards.tsx
+        </div>
+      )}
       {/* Header */}
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">

@@ -11,6 +11,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { useOperationsStore } from "@/stores/operationsStore";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import { mediaService } from "@/lib/media-service";
 import type { Recipe } from "../../types/recipe";
 import toast from "react-hot-toast";
@@ -25,6 +26,7 @@ export const StorageProtocols: React.FC<StorageProtocolsProps> = ({
   onChange,
 }) => {
   const { settings } = useOperationsStore();
+  const { showDiagnostics } = useDiagnostics();
   const storageAreas = settings?.storage_areas || [];
   const storageContainers = settings?.storage_containers || [];
   const containerTypes = settings?.container_types || [];
@@ -76,6 +78,11 @@ export const StorageProtocols: React.FC<StorageProtocolsProps> = ({
 
   return (
     <div className="space-y-6">
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/recipes/components/RecipeEditor/StorageProtocols.tsx
+        </div>
+      )}
       {/* Header */}
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">

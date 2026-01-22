@@ -1,5 +1,6 @@
 import React from "react";
 import { Clock, Thermometer, Scale, AlertCircle, Book } from "lucide-react";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import type { Recipe } from "../../types/recipe";
 
 interface ProductionSpecsProps {
@@ -11,6 +12,8 @@ export const ProductionSpecs: React.FC<ProductionSpecsProps> = ({
   recipe,
   onChange,
 }) => {
+  const { showDiagnostics } = useDiagnostics();
+
   const handleTimeChange = (
     field: "prep_time" | "cook_time" | "rest_time",
     value: number,
@@ -26,6 +29,11 @@ export const ProductionSpecs: React.FC<ProductionSpecsProps> = ({
 
   return (
     <div className="space-y-6">
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/recipes/components/RecipeEditor/ProductionSpecs.tsx
+        </div>
+      )}
       {/* Header */}
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">

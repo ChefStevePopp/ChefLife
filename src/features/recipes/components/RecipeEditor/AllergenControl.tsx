@@ -6,6 +6,7 @@ import type { Recipe } from "../../types/recipe";
 import type { AllergenType } from "@/features/allergens/types";
 import { useMasterIngredientsStore } from "@/stores/masterIngredientsStore";
 import { useRecipeStore } from "@/stores/recipeStore";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 
 interface AllergenControlProps {
   recipe: Recipe;
@@ -185,6 +186,7 @@ export const AllergenControl: React.FC<AllergenControlProps> = ({
   onChange,
   masterIngredients = [],
 }) => {
+  const { showDiagnostics } = useDiagnostics();
   // Fetch master ingredients if not provided
   const {
     ingredients,
@@ -300,6 +302,11 @@ export const AllergenControl: React.FC<AllergenControlProps> = ({
 
   return (
     <div className="space-y-6">
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/recipes/components/RecipeEditor/AllergenControl.tsx
+        </div>
+      )}
       {/* Allergen Warning Header with Warnings */}
       <div className="grid grid-cols-2 gap-6">
         {/* Left column: Header */}

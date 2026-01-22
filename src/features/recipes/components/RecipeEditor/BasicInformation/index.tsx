@@ -1,5 +1,6 @@
 import React from "react";
 import { Book } from "lucide-react";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import { PrimaryInfo } from "./PrimaryInfo";
 import { IngredientsInput } from "./IngredientsInput";
 import { CostingSummary } from "./CostingSummary";
@@ -17,8 +18,15 @@ export const BasicInformation: React.FC<BasicInformationProps> = ({
   onChange,
   settings,
 }) => {
+  const { showDiagnostics } = useDiagnostics();
+
   return (
     <div className="space-y-8 relative">
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/recipes/components/RecipeEditor/BasicInformation/index.tsx
+        </div>
+      )}
       {/* Header */}
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">

@@ -8,6 +8,7 @@ import {
   Save,
 } from "lucide-react";
 import { supabase } from "@/config/supabase";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 // Removed DnD imports
 import { arrayMove } from "@dnd-kit/sortable";
 import type { Recipe, RecipeStep, RecipeStage } from "../../types/recipe";
@@ -25,6 +26,7 @@ export const InstructionEditor: React.FC<InstructionEditorProps> = ({
   recipe,
   onChange,
 }) => {
+  const { showDiagnostics } = useDiagnostics();
   // Removed DnD sensors
 
   const handleStepChange = (index: number, updates: Partial<RecipeStep>) => {
@@ -269,6 +271,11 @@ export const InstructionEditor: React.FC<InstructionEditorProps> = ({
 
   return (
     <div className="space-y-6">
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/recipes/components/RecipeEditor/InstructionEditor.tsx
+        </div>
+      )}
       {/* Stage Management Section */}
       <StageList recipe={recipe} onChange={onChange} />
 
