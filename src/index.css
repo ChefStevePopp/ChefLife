@@ -52,6 +52,7 @@ select::-ms-expand {
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    scrollbar-gutter: stable; /* Prevent layout shift when scrollbar appears/disappears */
   }
   body {
     @apply bg-gray-900 text-gray-100 font-body text-fluid-base;
@@ -711,24 +712,30 @@ select::-ms-expand {
     &.active { @apply text-white; }
   }
 
-  /* Expandable info section */
+  /* Expandable info section - Premium morph (blur clears as it fades in) */
   .expandable-info-section {
     @apply bg-primary-800/10 rounded-lg overflow-hidden;
   }
 
-  .expandable-info-header { @apply w-full p-4 flex items-start gap-3 text-left focus:outline-none hover:bg-primary-800/20 transition-colors;
+  .expandable-info-header {
+    @apply w-full p-4 flex items-start gap-3 text-left focus:outline-none hover:bg-primary-800/20 transition-colors;
   }
 
   .expandable-info-content {
-    @apply px-0 pb-0 pt-0;
     max-height: 0;
+    opacity: 0;
+    filter: blur(4px);
     overflow: hidden;
-    transition: max-height 0.3s ease-out;
+    /* Retract: faster (0.2s), ease-in (accelerates into close), then height snaps */
+    transition: max-height 0.01s ease 0.2s, opacity 0.2s ease-in, filter 0.2s ease-in;
   }
 
   .expandable-info-section.expanded .expandable-info-content {
-    max-height: 1000px;
-    transition: max-height 0.5s ease-in;
+    max-height: 500px;
+    opacity: 1;
+    filter: blur(0);
+    /* Expand: slower (0.3s), ease-out (decelerates into view), height snaps first */
+    transition: max-height 0.01s ease, opacity 0.3s ease-out 0.05s, filter 0.3s ease-out 0.05s;
   }
 
   .expandable-info-section.expanded .lucide-chevron-up {

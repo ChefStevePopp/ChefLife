@@ -1,6 +1,6 @@
 # ChefLife L5 Design System
 
-> **Last Updated:** January 2025  
+> **Last Updated:** January 2026  
 > **Gold Standard Reference:** `VendorSettings.tsx`
 
 ---
@@ -101,6 +101,91 @@ Icon:      w-7 h-7 text-{color}-400/80
 
 ---
 
+## Premium Morph Animations
+
+ChefLife's signature animation philosophy: **"So smooth you're not sure if it moved."**
+
+### Core Principle
+
+Avoid `max-height` or `height` transitions for collapsible content — they cause layout recalculation on every frame and result in jank. Instead:
+- **Snap height instantly** (0.01s)
+- **Morph opacity + blur** for the premium feel
+
+### Expandable Info Section Animation
+
+```css
+.expandable-info-content {
+  max-height: 0;
+  opacity: 0;
+  filter: blur(4px);
+  overflow: hidden;
+  /* Retract: faster (0.2s), ease-in (accelerates into close) */
+  transition: max-height 0.01s ease 0.2s, opacity 0.2s ease-in, filter 0.2s ease-in;
+}
+
+.expandable-info-section.expanded .expandable-info-content {
+  max-height: 500px;
+  opacity: 1;
+  filter: blur(0);
+  /* Expand: slower (0.3s), ease-out (decelerates into view) */
+  transition: max-height 0.01s ease, opacity 0.3s ease-out 0.05s, filter 0.3s ease-out 0.05s;
+}
+```
+
+### Asymmetric Timing
+
+| Direction | Duration | Easing | Feel |
+|-----------|----------|--------|------|
+| **Expand** | 0.3s | ease-out | Leisurely materializes, decelerates as it settles |
+| **Retract** | 0.2s | ease-in | Snappy dismissal, accelerates into close |
+
+This asymmetry feels natural — like opening a drawer carefully but closing it with a confident push.
+
+### Morph Text (for dynamic values)
+
+```css
+.morph-text {
+  display: inline-block;
+  transition-property: opacity, filter, transform;
+  transition-timing-function: ease-in-out;
+  transition-duration: 1000ms;
+}
+
+.morph-text.transitioning {
+  opacity: 0;
+  filter: blur(2px);
+  transform: translateY(4px);
+}
+
+.morph-text.visible {
+  opacity: 1;
+  filter: blur(0);
+  transform: translateY(0);
+}
+```
+
+### Animated Numbers
+
+Use the `<AnimatedNumber>` React component for smooth numeric transitions:
+
+```tsx
+import { AnimatedNumber } from "@/shared/components/AnimatedNumber";
+
+<AnimatedNumber value={36.7} suffix="°F" decimals={1} />
+<AnimatedNumber value={12.99} prefix="$" decimals={2} />
+```
+
+### Animation Don'ts
+
+| ❌ Avoid | ✅ Instead |
+|---------|-----------|
+| `max-height: 0 → 1000px` transition | Snap height, morph opacity/blur |
+| Linear easing | ease-in (retract) / ease-out (expand) |
+| Same duration both directions | Asymmetric timing |
+| Animating layout properties | Animate transform, opacity, filter only |
+
+---
+
 ## Icon Badge Pattern
 
 Small icon containers for status indicators in tables and lists.
@@ -147,7 +232,7 @@ Blues bookend the row for visual balance.
 
 ## Expandable Info Section
 
-Collapsible help/context area with smooth animation.
+Collapsible help/context area with premium morph animation.
 
 ### CSS Classes
 
@@ -156,7 +241,7 @@ Collapsible help/context area with smooth animation.
 | `.expandable-info-section` | Container with collapsed state |
 | `.expandable-info-section.expanded` | Open state |
 | `.expandable-info-header` | Clickable header row |
-| `.expandable-info-content` | Animated content area |
+| `.expandable-info-content` | Animated content area (blur morph) |
 
 ### Feature Cards (inside expandable)
 
@@ -169,6 +254,29 @@ Collapsible help/context area with smooth animation.
   </div>
 </div>
 ```
+
+---
+
+## Responsive Breakpoints
+
+### Desktop Definition
+
+**1920px is the "real desktop" breakpoint.** 1440px monitors are legacy.
+
+```
+< 1920px:   Lean mode (compact headers, accordion filters)
+≥ 1920px:   Full desktop (everything visible inline)
+```
+
+### Grid Columns (Recipe Cards, etc.)
+
+| Breakpoint | Columns | Tailwind |
+|------------|---------|----------|
+| Mobile portrait | 1 | `grid-cols-1` |
+| Mobile landscape | 2 | `sm:grid-cols-2` |
+| Tablet portrait | Carousel | Custom (45% width cards) |
+| Desktop (lg) | 4 | `lg:grid-cols-4` |
+| 4K (1920px+) | 5 | `min-[1920px]:grid-cols-5` |
 
 ---
 
@@ -196,7 +304,7 @@ Collapsible help/context area with smooth animation.
 ### L6: Interaction
 - Touch-friendly targets (min 44px)
 - Clear affordances
-- Smooth transitions
+- Smooth transitions (premium morph)
 
 ### L7: Data Promise
 - Every change traceable
@@ -207,7 +315,8 @@ Collapsible help/context area with smooth animation.
 
 ## File References
 
-- **CSS:** `src/index.css` (search for "L5 SUB-HEADER PATTERN")
+- **CSS:** `src/index.css` (search for "L5 SUB-HEADER PATTERN", "Premium morph")
 - **Gold Standard:** `src/features/admin/components/sections/VendorInvoice/components/VendorSettings.tsx`
 - **StatBar Component:** `src/shared/components/StatBar.tsx`
-- **ExcelDataGrid:** `src/shared/components/ExcelDataGrid/index.tsx`
+- **AnimatedNumber:** `src/shared/components/AnimatedNumber.tsx`
+- **RecipeViewer (FOH L5):** `src/features/recipes/components/RecipeViewer/RecipeViewer.tsx`
