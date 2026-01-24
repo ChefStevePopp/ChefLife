@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useFoodRelationshipsStore } from "@/stores/foodRelationshipsStore";
 import { getLucideIcon } from "@/utils/iconMapping";
+import { getRecipeConfig } from "@/features/recipes/hooks/useRecipeConfig";
 import type { Recipe } from "../../types/recipe";
 
 /**
@@ -70,24 +71,27 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
     return FolderTree;
   }, [majorGroup?.icon, recipe.type]);
 
-  // Calculate if the recipe is new (less than 1 month old)
+  // Get badge duration settings from config
+  const recipeConfig = useMemo(() => getRecipeConfig(), []);
+
+  // Calculate if the recipe is new (within configured window)
   const isNew = useMemo(() => {
     if (!recipe.created_at) return false;
     const createdDate = new Date(recipe.created_at);
-    const oneMonthAgo = new Date();
-    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-    return createdDate > oneMonthAgo;
-  }, [recipe.created_at]);
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - recipeConfig.newBadgeDays);
+    return createdDate > cutoffDate;
+  }, [recipe.created_at, recipeConfig.newBadgeDays]);
 
-  // Calculate if the recipe was recently updated
+  // Calculate if the recipe was recently updated (within configured window)
   const isUpdated = useMemo(() => {
     if (isNew || !recipe.updated_at) return false;
     if (recipe.versions && recipe.versions.length > 1) return true;
     const modifiedDate = new Date(recipe.updated_at);
-    const twoMonthsAgo = new Date();
-    twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
-    return modifiedDate > twoMonthsAgo;
-  }, [isNew, recipe.updated_at, recipe.versions]);
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - recipeConfig.updatedBadgeDays);
+    return modifiedDate > cutoffDate;
+  }, [isNew, recipe.updated_at, recipe.versions, recipeConfig.updatedBadgeDays]);
 
   // Find the primary image in the media array
   const primaryMedia = useMemo(
