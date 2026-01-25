@@ -1,6 +1,7 @@
 import React from "react";
 import { AlertTriangle } from "lucide-react";
 import { AllergenBadge } from "@/features/allergens/components/AllergenBadge";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import type { Recipe } from "../../../types/recipe";
 
 interface AllergensProps {
@@ -8,6 +9,8 @@ interface AllergensProps {
 }
 
 export const Allergens: React.FC<AllergensProps> = ({ recipe }) => {
+  const { showDiagnostics } = useDiagnostics();
+  
   // Check for allergens in the allergenInfo field (case sensitive)
   const allergenData = recipe.allergenInfo || {};
 
@@ -34,6 +37,13 @@ export const Allergens: React.FC<AllergensProps> = ({ recipe }) => {
 
   return (
     <div className="space-y-6">
+      {/* L5 Diagnostic Path */}
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/recipes/components/RecipeViewer/components/Allergens.tsx
+        </div>
+      )}
+
       <div className="flex items-center gap-3 mb-4">
         <div className="w-10 h-10 rounded-lg bg-rose-500/20 flex items-center justify-center">
           <AlertTriangle className="w-5 h-5 text-rose-400" />

@@ -139,6 +139,18 @@ The hook also adds `show-diagnostics` class to `document.body` when enabled. Thi
 | PriceRecordList | `.../PriceHistory/components/PriceRecordList.tsx` |
 | **Recipe Module** | |
 | RecipeManager | `src/features/recipes/components/RecipeManager/index.tsx` |
+| **Recipe Viewer (FOH)** | |
+| FullPageViewer | `src/features/recipes/components/RecipeViewer/FullPageViewer.tsx` |
+| Overview | `src/features/recipes/components/RecipeViewer/components/Overview.tsx` |
+| Ingredients | `src/features/recipes/components/RecipeViewer/components/Ingredients.tsx` |
+| Method | `src/features/recipes/components/RecipeViewer/components/Method.tsx` |
+| Production | `src/features/recipes/components/RecipeViewer/components/Production.tsx` |
+| Storage | `src/features/recipes/components/RecipeViewer/components/Storage.tsx` |
+| Quality | `src/features/recipes/components/RecipeViewer/components/Quality.tsx` |
+| Allergens | `src/features/recipes/components/RecipeViewer/components/Allergens.tsx` |
+| Equipment | `src/features/recipes/components/RecipeViewer/components/Equipment.tsx` |
+| Training | `src/features/recipes/components/RecipeViewer/components/Training.tsx` |
+| Media | `src/features/recipes/components/RecipeViewer/components/Media.tsx` |
 | RecipeDetailPage | `src/features/recipes/components/RecipeDetailPage/index.tsx` |
 | PageHeader | `src/features/recipes/components/RecipeDetailPage/PageHeader.tsx` |
 | RecipeTabs | `src/features/recipes/components/RecipeDetailPage/RecipeTabs.tsx` |

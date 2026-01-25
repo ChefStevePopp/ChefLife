@@ -8,6 +8,7 @@
 
 | Date | Handoff File | Focus Area |
 |------|--------------|------------|
+| 2026-01-24 | `HANDOFF-2026-01-24-RecipeViewer-L5-Ingredients.md` | Recipe Viewer L5/L6, Ingredients tab, configurable sourcing |
 | 2026-01-18 | `HANDOFF-2025-01-18-Session68-Triage-Blank-Screen.md` | Fix Triage → Create Ingredient blank screen |
 | 2026-01-12 | `handoffs/HANDOFF-2026-01-12-Session46-PriceSourceTracking.md` | Price source visibility, TwoStageButton, override protection |
 | 2026-01-11 | `handoffs/HANDOFF-2026-01-11-Session44-TriagePolish.md` | L5 Icon Badge Pattern, filterType, visual hierarchy |
@@ -30,6 +31,7 @@ Transcripts are stored in `/mnt/transcripts/` and contain full conversation hist
 
 | Date | Transcript | Description |
 |------|------------|-------------|
+| 2026-01-24 | `2026-01-25-01-07-20-recipe-overview-tab-l5-refactor.txt` | Recipe Viewer L5, Ingredients tab, configurable sourcing |
 | 2026-01-17 | `2026-01-17-23-05-08-session-67-catchweight-toggle-pdf-vim.txt` | Session 67: Catch Weight Toggle for PDF import |
 | 2026-01-17 | `2026-01-17-00-24-46-vendor-analytics-guided-mode-sections.txt` | VendorAnalytics 4-section story, NEXUS analytics events, ActivityFeed audit |
 | 2026-01-12 | `2026-01-12-13-23-45-price-source-tracking-implementation.txt` | Price source tracking, TwoStageButton enhancement, override protection |
@@ -68,6 +70,9 @@ Transcripts are stored in `/mnt/transcripts/` and contain full conversation hist
 ## Quick Reference: Current Focus Areas
 
 ### Recently Completed
+- ✅ Recipe Viewer L5 Tab System (January 24, 2026)
+- ✅ Ingredients Tab Mise en Place UX (tap-to-check, scaling)
+- ✅ Configurable Sourcing Instructions (org-level settings)
 - ✅ Catch Weight Toggle for PDF Import (Session 67)
 - ✅ Company Settings (5-tab L5 interface)
 - ✅ Health Inspections (L5 with real DB)
@@ -79,6 +84,7 @@ Transcripts are stored in `/mnt/transcripts/` and contain full conversation hist
 - ✅ NEXUS analytics events (7 new event types)
 
 ### In Progress
+- 🔄 **Recipe Viewer L5/L6 Overhaul** (Ingredients tab done, 8 tabs remaining)
 - 🔄 **Triage → Create Ingredient blank screen** (Session 68 priority)
 - 🔄 ActivityFeed redesign (6-phase audit complete, needs rebuild)
 - 🔄 VIM Import Flow Enhancement (Stage 2-5 pending)
@@ -128,4 +134,4 @@ YYYY-MM-DD-HH-MM-SS-[description].txt
 
 ---
 
-*Last updated: January 17, 2026 (Session 67)*
+*Last updated: January 24, 2026 (Recipe Viewer L5 Session)*

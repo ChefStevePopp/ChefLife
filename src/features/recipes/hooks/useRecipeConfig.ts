@@ -15,6 +15,14 @@ export interface RecipeConfig {
   updatedBadgeDays: number;      // Days to show "UPDATED" badge (default: 14)
   newBadgeDays: number;          // Days to show "NEW" badge (default: 30)
   
+  // Sourcing Instructions (displayed on Ingredients tab)
+  sourcingInstructions: {
+    enabled: boolean;              // Show/hide the sourcing section
+    title: string;                 // Expandable header title
+    body: string;                  // Main instruction text
+    footer: string;                // Footer note
+  };
+  
   // Future settings (documented for architecture)
   // defaultStation: string | null;
   // defaultStatus: 'draft' | 'approved';
@@ -25,6 +33,14 @@ export interface RecipeConfig {
 const DEFAULT_CONFIG: RecipeConfig = {
   updatedBadgeDays: 14,
   newBadgeDays: 30,
+  sourcingInstructions: {
+    enabled: true,
+    title: "Source First, Then Start",
+    body: `Gather and verify all ingredients before you begin any prep work. A complete mise en place prevents waste, saves time, and lets you focus on the craft of cooking.
+
+If something is missing or looks off, flag it now \u2014 not halfway through the recipe.`,
+    footer: "Your kitchen may have specific sourcing procedures.",
+  },
 };
 
 /**

@@ -15,6 +15,9 @@ import {
   RotateCcw,
   Clock,
   Sparkles,
+  Scale,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { SECURITY_LEVELS } from "@/config/security";
@@ -85,14 +88,30 @@ const GeneralSettingsSection: React.FC = () => {
   const [localUpdatedDays, setLocalUpdatedDays] = useState(config.updatedBadgeDays);
   const [localNewDays, setLocalNewDays] = useState(config.newBadgeDays);
   
+  // Sourcing Instructions local state
+  const [sourcingEnabled, setSourcingEnabled] = useState(config.sourcingInstructions?.enabled ?? true);
+  const [sourcingTitle, setSourcingTitle] = useState(config.sourcingInstructions?.title ?? DEFAULT_CONFIG.sourcingInstructions.title);
+  const [sourcingBody, setSourcingBody] = useState(config.sourcingInstructions?.body ?? DEFAULT_CONFIG.sourcingInstructions.body);
+  const [sourcingFooter, setSourcingFooter] = useState(config.sourcingInstructions?.footer ?? DEFAULT_CONFIG.sourcingInstructions.footer);
+  
   const hasChanges = 
     localUpdatedDays !== config.updatedBadgeDays || 
-    localNewDays !== config.newBadgeDays;
+    localNewDays !== config.newBadgeDays ||
+    sourcingEnabled !== (config.sourcingInstructions?.enabled ?? true) ||
+    sourcingTitle !== (config.sourcingInstructions?.title ?? DEFAULT_CONFIG.sourcingInstructions.title) ||
+    sourcingBody !== (config.sourcingInstructions?.body ?? DEFAULT_CONFIG.sourcingInstructions.body) ||
+    sourcingFooter !== (config.sourcingInstructions?.footer ?? DEFAULT_CONFIG.sourcingInstructions.footer);
 
   const handleSave = () => {
     updateConfig({
       updatedBadgeDays: localUpdatedDays,
       newBadgeDays: localNewDays,
+      sourcingInstructions: {
+        enabled: sourcingEnabled,
+        title: sourcingTitle,
+        body: sourcingBody,
+        footer: sourcingFooter,
+      },
     });
     toast.success('Recipe settings saved');
   };
@@ -100,6 +119,10 @@ const GeneralSettingsSection: React.FC = () => {
   const handleReset = () => {
     setLocalUpdatedDays(DEFAULT_CONFIG.updatedBadgeDays);
     setLocalNewDays(DEFAULT_CONFIG.newBadgeDays);
+    setSourcingEnabled(DEFAULT_CONFIG.sourcingInstructions.enabled);
+    setSourcingTitle(DEFAULT_CONFIG.sourcingInstructions.title);
+    setSourcingBody(DEFAULT_CONFIG.sourcingInstructions.body);
+    setSourcingFooter(DEFAULT_CONFIG.sourcingInstructions.footer);
     resetConfig();
     toast.success('Settings reset to defaults');
   };
@@ -181,8 +204,122 @@ const GeneralSettingsSection: React.FC = () => {
           </div>
         </div>
 
+        {/* ================================================================
+         * SOURCING INSTRUCTIONS
+         * Configurable text shown on Recipe Viewer Ingredients tab
+         * ================================================================ */}
+        <div id="sourcing" className="pt-6 border-t border-gray-700/50">
+          <h4 className="text-sm font-medium text-white mb-4 flex items-center gap-2">
+            <Scale className="w-4 h-4 text-emerald-400" />
+            Sourcing Instructions
+          </h4>
+          <p className="text-sm text-gray-500 mb-4">
+            Customize the guidance shown to cooks on the Ingredients tab. This sets the tone for your kitchen's mise en place culture.
+          </p>
+          
+          {/* Enable/Disable Toggle */}
+          <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50 mb-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {sourcingEnabled ? (
+                  <Eye className="w-5 h-5 text-emerald-400" />
+                ) : (
+                  <EyeOff className="w-5 h-5 text-gray-500" />
+                )}
+                <div>
+                  <p className="text-sm font-medium text-white">Show Sourcing Section</p>
+                  <p className="text-xs text-gray-500">Display sourcing instructions on the Ingredients tab</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSourcingEnabled(!sourcingEnabled)}
+                className={`relative w-12 h-6 rounded-full transition-colors ${
+                  sourcingEnabled ? 'bg-emerald-500/50' : 'bg-gray-700'
+                }`}
+              >
+                <span
+                  className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                    sourcingEnabled ? 'translate-x-7' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* Sourcing Fields - Only show when enabled */}
+          {sourcingEnabled && (
+            <div className="space-y-4">
+              {/* Title */}
+              <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Section Title
+                </label>
+                <input
+                  type="text"
+                  value={sourcingTitle}
+                  onChange={(e) => setSourcingTitle(e.target.value)}
+                  placeholder="e.g., Source First, Then Start"
+                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                />
+                <p className="text-xs text-gray-600 mt-2">
+                  The headline shown in the expandable info section
+                </p>
+              </div>
+
+              {/* Body */}
+              <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Instructions
+                </label>
+                <textarea
+                  value={sourcingBody}
+                  onChange={(e) => setSourcingBody(e.target.value)}
+                  rows={4}
+                  placeholder="Your kitchen's sourcing philosophy and guidance..."
+                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-none resize-none"
+                />
+                <p className="text-xs text-gray-600 mt-2">
+                  The main body text. Use line breaks for paragraphs. This is where you communicate your kitchen's culture.
+                </p>
+              </div>
+
+              {/* Footer */}
+              <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Footer Note
+                </label>
+                <input
+                  type="text"
+                  value={sourcingFooter}
+                  onChange={(e) => setSourcingFooter(e.target.value)}
+                  placeholder="e.g., Check with your lead if unsure."
+                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                />
+                <p className="text-xs text-gray-600 mt-2">
+                  A brief note at the bottom — great for directing questions to the right person
+                </p>
+              </div>
+
+              {/* Preview */}
+              <div className="bg-gray-900/50 rounded-xl p-4 border border-emerald-500/20">
+                <div className="flex items-center gap-2 mb-3">
+                  <Info className="w-4 h-4 text-emerald-400" />
+                  <span className="text-xs font-medium text-emerald-400 uppercase tracking-wider">Preview</span>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-white">{sourcingTitle || '(No title)'}</p>
+                  <p className="text-sm text-gray-400 whitespace-pre-line">{sourcingBody || '(No instructions)'}</p>
+                  <p className="text-xs text-gray-500 pt-2 border-t border-gray-700/50">
+                    {sourcingFooter || '(No footer)'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Actions */}
-        <div className="flex items-center justify-between pt-4 border-t border-gray-700/50">
+        <div className="flex items-center justify-between pt-6 border-t border-gray-700/50">
           <button
             onClick={handleReset}
             className="btn-ghost text-sm"

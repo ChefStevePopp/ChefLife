@@ -1,280 +1,265 @@
 import React from "react";
 import {
   AlertTriangle,
-  CheckCircle2,
-  Printer,
-  Image,
-  UtensilsCrossed,
-  Calendar,
-  Clock,
-  User,
-  Hash,
-  Thermometer,
-  Soup,
   Book,
-  FileText,
-  ClipboardList,
   Shield,
   Wrench,
+  Printer,
+  Lightbulb,
+  Image,
+  CheckCircle2,
 } from "lucide-react";
 import { AllergenBadge } from "@/features/allergens/components/AllergenBadge";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import type { Recipe } from "../../../types/recipe";
+
+/**
+ * =============================================================================
+ * OVERVIEW TAB - Dashboard Card Grid (L5 Pattern)
+ * =============================================================================
+ * 
+ * Uses L5 CSS classes from index.css:
+ * - .card - Dashboard card container
+ * - .icon-badge-{color} - Icon box with color identity
+ * - .subheader - Optional subheader (not used here, cards are the content)
+ * 
+ * Tab Identity: Overview = primary (blue) - first in tab progression
+ * Card Colors: Each card gets its own identity color via icon-badge
+ * 
+ * Grid: 2 columns on tablet+, single column mobile
+ * =============================================================================
+ */
 
 interface OverviewProps {
   recipe: Recipe;
 }
 
+// ============================================================================
+// DASHBOARD CARD COMPONENT (Using .card class from index.css)
+// ============================================================================
+interface DashboardCardProps {
+  iconBadgeClass: string;  // e.g., "icon-badge-rose", "icon-badge-primary"
+  icon: React.ElementType;
+  title: string;
+  children: React.ReactNode;
+}
+
+const DashboardCard: React.FC<DashboardCardProps> = ({
+  iconBadgeClass,
+  icon: Icon,
+  title,
+  children,
+}) => {
+  return (
+    <div className="card p-4">
+      {/* Header: Icon Badge + Title */}
+      <div className="flex items-center gap-3 mb-3">
+        <div className={iconBadgeClass}>
+          <Icon />
+        </div>
+        <h3 className="text-sm font-medium text-white">{title}</h3>
+      </div>
+      {/* Content: Gray palette */}
+      <div className="text-sm text-gray-400">
+        {children}
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
+// MAIN COMPONENT
+// ============================================================================
 export const Overview: React.FC<OverviewProps> = ({ recipe }) => {
+  const { showDiagnostics } = useDiagnostics();
+
+  // Extract allergen data - SAME LOGIC AS ALLERGENS TAB
+  const allergenData = recipe.allergenInfo || {};
+  const containsAllergens = Array.isArray(allergenData.contains)
+    ? allergenData.contains
+    : [];
+  const mayContainAllergens = Array.isArray(allergenData.mayContain)
+    ? allergenData.mayContain
+    : [];
+  const crossContactAllergens = Array.isArray(allergenData.crossContactRisk)
+    ? allergenData.crossContactRisk
+    : [];
+  const hasAllergens =
+    containsAllergens.length > 0 ||
+    mayContainAllergens.length > 0 ||
+    crossContactAllergens.length > 0;
+
+  // Label requirements
   const labelRequirements = recipe.label_requirements || {};
   const useLabelPrinter = recipe.use_label_printer || false;
-
-  // Map of field IDs to their icons and colors
-  const fieldIcons = {
-    "product-name": { icon: UtensilsCrossed, color: "text-blue-400" },
-    "date-prepared": { icon: Calendar, color: "text-emerald-400" },
-    "use-by": { icon: Clock, color: "text-amber-400" },
-    "prepared-by": { icon: User, color: "text-purple-400" },
-    "batch-number": { icon: Hash, color: "text-rose-400" },
-    "storage-temp": { icon: Thermometer, color: "text-blue-400" },
-    allergens: { icon: AlertTriangle, color: "text-amber-400" },
-    ingredients: { icon: Soup, color: "text-emerald-400" },
-  };
+  const hasLabelRequirements = labelRequirements.required_fields?.length > 0 || labelRequirements.example_photo_url;
 
   return (
-    <div className="space-y-6">
-      {/* Description */}
-      {recipe.description && (
-        <div className="bg-gray-800/50 rounded-lg p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
-              <Book className="w-5 h-5 text-blue-400" />
-            </div>
-            <div>
-              <h3 className="text-lg font-medium text-white">Description</h3>
-              <p className="text-sm text-gray-400">
-                Recipe overview and details
-              </p>
-            </div>
-          </div>
-          <p className="text-gray-300">{recipe.description}</p>
+    <div>
+      {/* L5 Diagnostic Path */}
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono mb-4">
+          src/features/recipes/components/RecipeViewer/components/Overview.tsx
         </div>
       )}
 
-      {/* Recipe Stats and Required Certifications */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
-        {/* Recipe Stats */}
-        <div className="bg-gray-800/50 rounded-lg p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center">
-              <ClipboardList className="w-5 h-5 text-emerald-400" />
-            </div>
-            <div>
-              <h3 className="text-lg font-medium text-white">Recipe Stats</h3>
-              <p className="text-sm text-gray-400">
-                Key metrics and specifications
-              </p>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="bg-gray-900/50 rounded-lg p-3">
-              <div className="text-sm text-gray-400">Prep Time</div>
-              <div className="text-lg font-medium text-white">
-                {recipe.prep_time} min
-              </div>
-            </div>
-            <div className="bg-gray-900/50 rounded-lg p-3">
-              <div className="text-sm text-gray-400">Cook Time</div>
-              <div className="text-lg font-medium text-white">
-                {recipe.cook_time} min
-              </div>
-            </div>
-            <div className="bg-gray-900/50 rounded-lg p-3">
-              <div className="text-sm text-gray-400">Yield</div>
-              <div className="text-lg font-medium text-white">
-                {recipe.yield_amount} {recipe.yield_unit}
-              </div>
-            </div>
-            <div className="bg-gray-900/50 rounded-lg p-3">
-              <div className="text-sm text-gray-400">Station</div>
-              <div className="text-lg font-medium text-white">
-                {recipe.station || "Not Specified"}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Required Certifications */}
-        <div className="bg-gray-800/50 rounded-lg p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
-              <Shield className="w-5 h-5 text-amber-400" />
-            </div>
-            <div>
-              <h3 className="text-lg font-medium text-white">
-                Required Certifications
-              </h3>
-              <p className="text-sm text-gray-400">Training requirements</p>
-            </div>
-          </div>
-          <div className="space-y-2">
-            {recipe.training?.certificationRequired?.length > 0 ? (
-              recipe.training.certificationRequired.map((cert, index) => (
-                <div
-                  key={index}
-                  className="flex items-center gap-2 text-gray-300 bg-gray-900/50 rounded-lg px-3 py-2"
-                >
-                  <Shield className="w-4 h-4 text-amber-400" />
-                  {cert}
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-4 text-gray-400 bg-gray-900/50 rounded-lg">
-                No certifications required
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Production Notes and Required Equipment */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
-        {/* Production Notes */}
-        {recipe.production_notes && (
-          <div className="bg-gray-800/50 rounded-lg p-6">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                <FileText className="w-5 h-5 text-purple-400" />
-              </div>
-              <div>
-                <h3 className="text-lg font-medium text-white">
-                  Production Notes
-                </h3>
-                <p className="text-sm text-gray-400">
-                  Additional production information
-                </p>
-              </div>
-            </div>
-            <p className="text-gray-300">{recipe.production_notes}</p>
-          </div>
-        )}
-
-        {/* Required Equipment */}
-        <div className="bg-gray-800/50 rounded-lg p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center">
-              <Wrench className="w-5 h-5 text-emerald-400" />
-            </div>
-            <div>
-              <h3 className="text-lg font-medium text-white">
-                Required Equipment
-              </h3>
-              <p className="text-sm text-gray-400">
-                Tools and equipment needed
-              </p>
-            </div>
-          </div>
-          <div className="space-y-2">
-            {recipe.equipment?.length > 0 ? (
-              recipe.equipment.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center gap-2 text-gray-300 bg-gray-900/50 rounded-lg px-3 py-2"
-                >
-                  <Wrench className="w-4 h-4 text-emerald-400" />
-                  {item.name}
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-4 text-gray-400 bg-gray-900/50 rounded-lg">
-                No equipment specified
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Label Requirements */}
-      <div className="bg-gray-800/50 rounded-lg p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
-            <Printer className="w-5 h-5 text-blue-400" />
-          </div>
-          <div>
-            <h3 className="text-lg font-medium text-white">
-              Label Requirements
-            </h3>
-            <p className="text-sm text-gray-400">
-              Label specifications and printing
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
-          {/* Left Column - Example Photo */}
-          <div>
-            <div className="text-sm font-medium text-gray-300 mb-3">
-              Label Example
-            </div>
-            {labelRequirements.example_photo_url ? (
-              <div className="relative aspect-video bg-gray-900/50 rounded-lg overflow-hidden">
-                <img
-                  src={labelRequirements.example_photo_url}
-                  alt="Label example"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            ) : (
-              <div className="aspect-video bg-gray-900/50 rounded-lg flex items-center justify-center">
-                <div className="text-center text-gray-400">
-                  <Image className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p>No label example available</p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Right Column - Required Fields */}
-          <div>
-            <div className="text-sm font-medium text-gray-300 mb-3">
-              Required Fields
-            </div>
-            <div className="space-y-2">
-              {labelRequirements.required_fields?.map((field) => {
-                const IconConfig = fieldIcons[field] || {
-                  icon: CheckCircle2,
-                  color: "text-gray-400",
-                };
-                const Icon = IconConfig.icon;
-                return (
-                  <div
-                    key={field}
-                    className="flex items-center gap-2 text-gray-300 bg-gray-900/50 rounded-lg px-3 py-2"
-                  >
-                    <Icon className={`w-4 h-4 ${IconConfig.color}`} />
-                    {field
-                      .split("-")
-                      .map(
-                        (word) => word.charAt(0).toUpperCase() + word.slice(1),
-                      )
-                      .join(" ")}
+      {/* ================================================================
+       * DASHBOARD CARD GRID
+       * Mobile: 1 col | Tablet+: 2 cols
+       * Tab identity comes from the tab bar - no subheader needed here
+       * ================================================================ */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        
+        {/* ALLERGENS - Rose identity */}
+        <DashboardCard 
+          iconBadgeClass="icon-badge-rose" 
+          icon={AlertTriangle} 
+          title="Allergens"
+        >
+          {hasAllergens ? (
+            <div className="space-y-3">
+              {containsAllergens.length > 0 && (
+                <div>
+                  <div className="text-xs text-gray-500 uppercase tracking-wider mb-1.5 font-medium">Contains</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {containsAllergens.map((allergen) => (
+                      <AllergenBadge key={allergen} type={allergen} showLabel />
+                    ))}
                   </div>
-                );
-              })}
-              {(!labelRequirements.required_fields ||
-                labelRequirements.required_fields.length === 0) && (
-                <div className="text-center py-4 text-gray-400 bg-gray-900/50 rounded-lg">
-                  No required fields specified
+                </div>
+              )}
+              {mayContainAllergens.length > 0 && (
+                <div>
+                  <div className="text-xs text-gray-500 uppercase tracking-wider mb-1.5 font-medium">May Contain</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {mayContainAllergens.map((allergen) => (
+                      <AllergenBadge key={allergen} type={allergen} showLabel />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {crossContactAllergens.length > 0 && (
+                <div>
+                  <div className="text-xs text-gray-500 uppercase tracking-wider mb-1.5 font-medium">Cross-Contact</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {crossContactAllergens.map((allergen) => (
+                      <AllergenBadge key={allergen} type={allergen} showLabel />
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
-            {useLabelPrinter && (
-              <button className="btn-primary w-full mt-4">
-                <Printer className="w-4 h-4 mr-2" />
-                Print Label
-              </button>
-            )}
-          </div>
-        </div>
+          ) : (
+            <span className="text-gray-500">No allergens flagged</span>
+          )}
+        </DashboardCard>
+
+        {/* DESCRIPTION - Primary (tab identity) */}
+        {recipe.description && (
+          <DashboardCard 
+            iconBadgeClass="icon-badge-primary" 
+            icon={Book} 
+            title="Description"
+          >
+            <p className="leading-relaxed">{recipe.description}</p>
+          </DashboardCard>
+        )}
+
+        {/* CHEF'S NOTES - Amber */}
+        {recipe.production_notes && (
+          <DashboardCard 
+            iconBadgeClass="icon-badge-amber" 
+            icon={Lightbulb} 
+            title="Chef's Notes"
+          >
+            <p className="leading-relaxed italic">"{recipe.production_notes}"</p>
+          </DashboardCard>
+        )}
+
+        {/* EQUIPMENT - Emerald */}
+        <DashboardCard 
+          iconBadgeClass="icon-badge-emerald" 
+          icon={Wrench} 
+          title="Required Equipment"
+        >
+          {recipe.equipment?.length > 0 ? (
+            <ul className="space-y-1.5">
+              {recipe.equipment.map((item) => (
+                <li key={item.id} className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-600" />
+                  <span>{item.name}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span className="text-gray-500">No equipment specified</span>
+          )}
+        </DashboardCard>
+
+        {/* CERTIFICATIONS - Purple */}
+        <DashboardCard 
+          iconBadgeClass="icon-badge-purple" 
+          icon={Shield} 
+          title="Required Certifications"
+        >
+          {recipe.training?.certificationRequired?.length > 0 ? (
+            <ul className="space-y-1.5">
+              {recipe.training.certificationRequired.map((cert, index) => (
+                <li key={index} className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-600" />
+                  <span>{cert}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span className="text-gray-500">No certifications required</span>
+          )}
+        </DashboardCard>
+
+        {/* LABELING - Gray (neutral utility) */}
+        {(hasLabelRequirements || useLabelPrinter) && (
+          <DashboardCard 
+            iconBadgeClass="icon-badge-gray" 
+            icon={Printer} 
+            title="Label Requirements"
+          >
+            <div className="space-y-3">
+              {/* Example Photo */}
+              {labelRequirements.example_photo_url && (
+                <div className="aspect-video bg-gray-900/50 rounded-lg overflow-hidden">
+                  <img
+                    src={labelRequirements.example_photo_url}
+                    alt="Label example"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
+              
+              {/* Required Fields */}
+              {labelRequirements.required_fields?.length > 0 && (
+                <div>
+                  <div className="text-xs text-gray-500 uppercase tracking-wider mb-1.5 font-medium">Required Fields</div>
+                  <ul className="space-y-1">
+                    {labelRequirements.required_fields.map((field: string) => (
+                      <li key={field} className="flex items-center gap-2">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-gray-500" />
+                        <span>{field.split("-").map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ")}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              {/* Print Button */}
+              {useLabelPrinter && (
+                <button className="btn-primary w-full text-sm mt-2">
+                  <Printer className="w-4 h-4 mr-2" />
+                  Print Label
+                </button>
+              )}
+            </div>
+          </DashboardCard>
+        )}
       </div>
     </div>
   );
