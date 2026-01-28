@@ -105,10 +105,10 @@ export const Overview: React.FC<OverviewProps> = ({ recipe }) => {
 
       {/* ================================================================
        * DASHBOARD CARD GRID
-       * Mobile: 1 col | Tablet+: 2 cols
+       * Mobile: 1 col | Tablet: 2 cols | Desktop: 3 cols
        * Tab identity comes from the tab bar - no subheader needed here
        * ================================================================ */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         
         {/* ALLERGENS - Rose identity */}
         <DashboardCard 

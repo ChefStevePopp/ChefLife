@@ -45,19 +45,29 @@ import type { Recipe } from "../../types/recipe";
  * =============================================================================
  * 
  * DESIGN PHILOSOPHY:
- * - Tablet portrait is PRIMARY target (iPad on recipe stand)
+ * - iPad landscape in folio is PRIMARY target (line cooks, prep cooks)
  * - Large touch targets for greasy/floury hands (min 44px)
  * - High contrast for busy kitchen lighting
  * - Quick-glance information hierarchy
+ * 
+ * L5 RESPONSIVE CONTAINER STRATEGY (apply to all user screens):
+ * ┌─────────────────────────────────────────────────────────────────────┐
+ * │ Content Type          │ Max Width      │ Why                       │
+ * ├───────────────────────┼────────────────┼───────────────────────────┤
+ * │ Visual grids          │ 1600px         │ Flip cards, galleries     │
+ * │ (ingredients, media)  │                │ need room for 4-5 cols    │
+ * ├───────────────────────┼────────────────┼───────────────────────────┤
+ * │ Dashboard cards       │ max-w-7xl      │ Overview, settings        │
+ * │ (overview, etc)       │ (1280px)       │ 2-3 column grids          │
+ * ├───────────────────────┼────────────────┼───────────────────────────┤
+ * │ Text-heavy            │ max-w-4xl      │ Method steps, procedures  │
+ * │ (method, training)    │ (896px)        │ Readable line lengths     │
+ * └─────────────────────────────────────────────────────────────────────┘
  * 
  * L5 STRUCTURE:
  * 1. Hero Header (image, back button, recipe name, quick stats)
  * 2. Horizontal Tab Pills (scrollable on mobile/tablet)
  * 3. Tab Content with premium morph transitions
- * 
- * BREAKPOINTS:
- * - Mobile/Tablet: Horizontal tabs, full-width content
- * - Desktop 1920px+: Could add sidebar navigation (future)
  * 
  * Routes: /kitchen/recipes/:id
  * =============================================================================
@@ -163,13 +173,13 @@ const HeroHeader: React.FC<HeroHeaderProps> = ({ recipe, onBack, onPrint }) => {
   const [imageError, setImageError] = useState(false);
   
   // Get major group info from Food Relationships
-  const { majorGroups, fetchMajorGroups } = useFoodRelationshipsStore();
+  const { majorGroups, fetchFoodRelationships } = useFoodRelationshipsStore();
 
   useEffect(() => {
     if (majorGroups.length === 0) {
-      fetchMajorGroups();
+      fetchFoodRelationships();
     }
-  }, [majorGroups.length, fetchMajorGroups]);
+  }, [majorGroups.length, fetchFoodRelationships]);
 
   const majorGroup = useMemo(() => {
     if (!recipe.major_group) return null;
@@ -409,6 +419,22 @@ const TabContent: React.FC<TabContentProps> = ({ activeTab, recipe }) => {
     }
   }, [activeTab, displayedTab]);
 
+  // L5 Container Strategy:
+  // - Visual grids (ingredients, media): Extra wide for card layouts
+  // - Dashboard cards (overview): Wide for 2-3 column grids
+  // - Text-heavy (method): Narrower for readable line lengths
+  const getContainerClass = () => {
+    switch (displayedTab) {
+      case 'ingredients':
+      case 'media':
+        return 'max-w-[1600px]'; // Wide - flip cards, galleries
+      case 'method':
+        return 'max-w-4xl'; // Narrow - readable steps
+      default:
+        return 'max-w-7xl'; // Medium - dashboard cards
+    }
+  };
+
   const renderTabContent = () => {
     switch (displayedTab) {
       case "overview":
@@ -446,7 +472,7 @@ const TabContent: React.FC<TabContentProps> = ({ activeTab, recipe }) => {
         transitionTimingFunction: isTransitioning ? "ease-in" : "ease-out",
       }}
     >
-      <div className="max-w-4xl mx-auto">
+      <div className={`${getContainerClass()} mx-auto`}>
         {renderTabContent()}
       </div>
     </div>
