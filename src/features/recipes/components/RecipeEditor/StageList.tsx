@@ -1,15 +1,14 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
-  Book,
   Plus,
   Trash2,
   GripVertical,
   CheckCircle,
   PenLine,
-  ClipboardList,
   ChevronDown,
   ChevronRight,
-  FileDigit,
+  Layers,
+  Clock,
 } from "lucide-react";
 import {
   DndContext,
@@ -31,19 +30,29 @@ import { CSS } from "@dnd-kit/utilities";
 import type { Recipe, RecipeStage } from "../../types/recipe";
 import { supabase } from "@/config/supabase";
 
+/**
+ * =============================================================================
+ * STAGE LIST - L5 Design
+ * =============================================================================
+ * 
+ * PRODUCTION PLANNING:
+ * - Stages = production phases (Day 1 Brine, Day 2 Smoke, etc.)
+ * - Stages marked as "Prep List Task" can be scheduled in prep lists
+ * - When building prep lists, entire stages drag as units
+ * - Total time auto-calculated from all steps in that stage
+ * 
+ * Amber color scheme (Method tab identity)
+ * =============================================================================
+ */
+
 interface StageListProps {
   recipe: Recipe;
   onChange: (updates: Partial<Recipe>) => void;
 }
 
-const stageColors = [
-  "bg-blue-500/20 text-blue-400",
-  "bg-green-500/20 text-green-400",
-  "bg-purple-500/20 text-purple-400",
-  "bg-amber-500/20 text-amber-400",
-  "bg-rose-500/20 text-rose-400",
-  "bg-teal-500/20 text-teal-400",
-];
+// ============================================================================
+// SORTABLE STAGE ITEM
+// ============================================================================
 
 const SortableStage: React.FC<{
   stage: RecipeStage;
@@ -51,97 +60,122 @@ const SortableStage: React.FC<{
   onUpdate: (index: number, updates: Partial<RecipeStage>) => void;
   onDelete: (index: number) => void;
 }> = ({ stage, index, onUpdate, onDelete }) => {
-  const { attributes, listeners, setNodeRef, transform, transition } =
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: stage.id });
 
   const [isEditing, setIsEditing] = useState(false);
   const [stageName, setStageName] = useState(stage.name);
 
   const handleSaveName = () => {
-    onUpdate(index, { name: stageName });
+    if (stageName.trim()) {
+      onUpdate(index, { name: stageName.trim() });
+    } else {
+      setStageName(stage.name); // Reset if empty
+    }
     setIsEditing(false);
   };
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
+    opacity: isDragging ? 0.5 : 1,
   };
-
-  const colorClass = stageColors[index % stageColors.length];
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className="bg-gray-800/50 rounded-lg p-3 mb-2 flex items-center justify-between"
+      className={`bg-gray-800/50 rounded-lg p-3 flex items-center gap-3 border transition-colors ${
+        isDragging ? 'border-amber-500/50' : 'border-gray-700/50 hover:border-gray-600'
+      }`}
     >
-      <div className="flex items-center gap-3">
-        <div {...attributes} {...listeners} className="cursor-grab">
-          <GripVertical className="w-5 h-5 text-gray-500 hover:text-gray-400" />
-        </div>
+      {/* Drag Handle */}
+      <div 
+        {...attributes} 
+        {...listeners} 
+        className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-gray-700/50 transition-colors"
+      >
+        <GripVertical className="w-4 h-4 text-gray-500" />
+      </div>
 
-        <div className={`w-3 h-3 rounded-full ${colorClass.split(" ")[0]}`} />
+      {/* Stage Number Badge */}
+      <div className="w-7 h-7 rounded-lg bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+        <span className="text-xs font-bold text-amber-400">{index + 1}</span>
+      </div>
 
+      {/* Stage Name */}
+      <div className="flex-1 min-w-0">
         {isEditing ? (
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             <input
               type="text"
               value={stageName}
               onChange={(e) => setStageName(e.target.value)}
-              className="input py-1 px-2 text-sm bg-gray-800 border-gray-700 w-40"
+              className="input py-1.5 px-2 text-sm flex-1"
               placeholder="Stage name..."
               autoFocus
               onBlur={handleSaveName}
-              onKeyDown={(e) => e.key === "Enter" && handleSaveName()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSaveName();
+                if (e.key === "Escape") {
+                  setStageName(stage.name);
+                  setIsEditing(false);
+                }
+              }}
             />
             <button
               onClick={handleSaveName}
-              className="text-emerald-400 hover:text-emerald-300 transition-colors"
+              className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors"
             >
               <CheckCircle className="w-4 h-4" />
             </button>
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-white">{stage.name}</span>
-            {stage.total_time > 0 && (
-              <span className="text-xs text-gray-400 ml-2">
-                {stage.total_time} min
-              </span>
-            )}
+            <span className="text-sm font-medium text-white truncate">{stage.name}</span>
             <button
               onClick={() => setIsEditing(true)}
-              className="text-blue-400 hover:text-blue-300 transition-colors"
+              className="p-1 rounded hover:bg-gray-700/50 text-gray-500 hover:text-gray-300 transition-colors"
             >
-              <PenLine className="w-3 h-3" />
+              <PenLine className="w-3.5 h-3.5" />
             </button>
           </div>
         )}
       </div>
 
-      <div className="flex items-center gap-3">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={stage.is_prep_list_task}
-            onChange={(e) =>
-              onUpdate(index, { is_prep_list_task: e.target.checked })
-            }
-            className="checkbox"
-          />
-          <span className="text-xs text-gray-300">Prep List Task</span>
-        </label>
+      {/* Total Time Badge */}
+      {stage.total_time > 0 && (
+        <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-700/50 text-xs text-gray-400">
+          <Clock className="w-3 h-3" />
+          <span>{stage.total_time} min</span>
+        </div>
+      )}
 
-        <button
-          onClick={() => onDelete(index)}
-          className="text-gray-400 hover:text-rose-400 transition-colors"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
-      </div>
+      {/* Prep List Toggle */}
+      <label className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-700/30 hover:bg-gray-700/50 cursor-pointer transition-colors">
+        <input
+          type="checkbox"
+          checked={stage.is_prep_list_task}
+          onChange={(e) => onUpdate(index, { is_prep_list_task: e.target.checked })}
+          className="checkbox"
+        />
+        <span className="text-xs text-gray-300 whitespace-nowrap">Prep List</span>
+      </label>
+
+      {/* Delete Button */}
+      <button
+        onClick={() => onDelete(index)}
+        className="p-2 rounded-lg text-gray-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+      >
+        <Trash2 className="w-4 h-4" />
+      </button>
     </div>
   );
 };
+
+// ============================================================================
+// STAGE LIST COMPONENT
+// ============================================================================
 
 export const StageList: React.FC<StageListProps> = ({ recipe, onChange }) => {
   const sensors = useSensors(
@@ -153,43 +187,31 @@ export const StageList: React.FC<StageListProps> = ({ recipe, onChange }) => {
 
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const handleStageChange = async (
-    index: number,
-    updates: Partial<RecipeStage>,
-  ) => {
+  // ============================================================================
+  // STAGE CRUD
+  // ============================================================================
+
+  const handleStageChange = async (index: number, updates: Partial<RecipeStage>) => {
     const updatedStages = [...(recipe.stages || [])];
     updatedStages[index] = { ...updatedStages[index], ...updates };
     onChange({ stages: updatedStages });
 
-    // Update the stage in the database if it has an ID
+    // Persist to database
     const stage = updatedStages[index];
     if (stage.id && recipe.id) {
       try {
-        // Create a clean update object without any circular references
-        const updateData = {};
-
-        // Only include primitive values and safe objects
+        const updateData: Record<string, any> = {};
         if (updates.name !== undefined) updateData.name = updates.name;
-        if (updates.is_prep_list_task !== undefined)
-          updateData.is_prep_list_task = updates.is_prep_list_task;
-        if (updates.sort_order !== undefined)
-          updateData.sort_order = updates.sort_order;
-        if (updates.total_time !== undefined)
-          updateData.total_time = updates.total_time;
-        if (updates.color !== undefined) updateData.color = updates.color;
-        if (updates.description !== undefined)
-          updateData.description = updates.description;
+        if (updates.is_prep_list_task !== undefined) updateData.is_prep_list_task = updates.is_prep_list_task;
+        if (updates.sort_order !== undefined) updateData.sort_order = updates.sort_order;
+        if (updates.total_time !== undefined) updateData.total_time = updates.total_time;
 
-        const { error } = await supabase
+        await supabase
           .from("recipe_stages")
           .update(updateData)
           .eq("id", stage.id);
-
-        if (error) {
-          console.error("Error updating stage in database:", error);
-        }
       } catch (error) {
-        console.error("Failed to update stage in database:", error);
+        console.error("Failed to update stage:", error);
       }
     }
   };
@@ -203,15 +225,13 @@ export const StageList: React.FC<StageListProps> = ({ recipe, onChange }) => {
       total_time: 0,
     };
 
-    onChange({
-      stages: [...(recipe.stages || []), newStage],
-    });
-    setIsExpanded(true); // Auto-expand when adding a new stage
+    onChange({ stages: [...(recipe.stages || []), newStage] });
+    setIsExpanded(true);
 
-    // Add the new stage to the database if recipe has an ID
+    // Persist to database
     if (recipe.id) {
       try {
-        const { error } = await supabase.from("recipe_stages").insert({
+        await supabase.from("recipe_stages").insert({
           id: newStage.id,
           name: newStage.name,
           is_prep_list_task: newStage.is_prep_list_task,
@@ -219,21 +239,16 @@ export const StageList: React.FC<StageListProps> = ({ recipe, onChange }) => {
           total_time: 0,
           recipe_id: recipe.id,
         });
-
-        if (error) {
-          console.error("Error adding stage to database:", error);
-        }
       } catch (error) {
-        console.error("Failed to add stage to database:", error);
+        console.error("Failed to add stage:", error);
       }
     }
   };
 
   const removeStage = async (index: number) => {
-    // Get the stage ID that's being removed
-    const stageId = recipe.stages[index].id;
-
-    // Update any steps that reference this stage to remove the reference
+    const stageId = recipe.stages?.[index]?.id;
+    
+    // Unassign any steps from this stage
     const updatedSteps = (recipe.steps || []).map((step) => {
       if (step.stage_id === stageId) {
         return { ...step, stage_id: undefined };
@@ -242,162 +257,155 @@ export const StageList: React.FC<StageListProps> = ({ recipe, onChange }) => {
     });
 
     const updatedStages = (recipe.stages || []).filter((_, i) => i !== index);
-    onChange({
-      stages: updatedStages,
-      steps: updatedSteps,
-    });
+    onChange({ stages: updatedStages, steps: updatedSteps });
 
-    // Remove the stage from the database
+    // Persist to database
     if (recipe.id && stageId) {
       try {
-        // First update any steps that reference this stage
-        const { error: stepError } = await supabase
+        await supabase
           .from("recipe_steps")
           .update({ stage_id: null })
           .eq("stage_id", stageId);
 
-        if (stepError) {
-          console.error("Error updating steps:", stepError);
-        }
-
-        // Then delete the stage
-        const { error: deleteError } = await supabase
+        await supabase
           .from("recipe_stages")
           .delete()
           .eq("id", stageId);
-
-        if (deleteError) {
-          console.error("Error deleting stage:", deleteError);
-        }
       } catch (error) {
-        console.error("Failed to remove stage from database:", error);
+        console.error("Failed to remove stage:", error);
       }
     }
   };
+
+  // ============================================================================
+  // DRAG AND DROP
+  // ============================================================================
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
-    if (over && active.id !== over.id) {
-      const oldIndex = recipe.stages?.findIndex(
-        (stage) => stage.id === active.id,
-      );
-      const newIndex = recipe.stages?.findIndex(
-        (stage) => stage.id === over.id,
-      );
-      if (oldIndex !== undefined && newIndex !== undefined) {
-        const newStages = arrayMove(recipe.stages || [], oldIndex, newIndex);
+    if (!over || active.id === over.id) return;
 
-        // Update sort_order values
-        const updatedStages = newStages.map((stage, index) => ({
-          ...stage,
-          sort_order: index,
-        }));
+    const oldIndex = recipe.stages?.findIndex((stage) => stage.id === active.id);
+    const newIndex = recipe.stages?.findIndex((stage) => stage.id === over.id);
+    
+    if (oldIndex === undefined || newIndex === undefined || oldIndex === -1 || newIndex === -1) return;
 
-        onChange({ stages: updatedStages });
+    const newStages = arrayMove(recipe.stages || [], oldIndex, newIndex).map((stage, i) => ({
+      ...stage,
+      sort_order: i,
+    }));
 
-        // Update stages in the database
-        if (recipe.id) {
-          try {
-            // Update each stage in the database with its new sort_order and total_time
-            const updates = updatedStages.map((stage) => {
-              if (stage.id) {
-                // Create a clean update object with only the necessary fields
-                return supabase
-                  .from("recipe_stages")
-                  .update({
-                    sort_order: stage.sort_order,
-                    total_time:
-                      typeof stage.total_time === "number"
-                        ? stage.total_time
-                        : 0,
-                  })
-                  .eq("id", stage.id);
-              }
-              return Promise.resolve();
-            });
+    onChange({ stages: newStages });
 
-            await Promise.all(updates);
-          } catch (error) {
-            console.error("Failed to update stages in database:", error);
-          }
-        }
+    // Persist to database
+    if (recipe.id) {
+      try {
+        await Promise.all(
+          newStages.map((stage) =>
+            supabase
+              .from("recipe_stages")
+              .update({ sort_order: stage.sort_order })
+              .eq("id", stage.id)
+          )
+        );
+      } catch (error) {
+        console.error("Failed to reorder stages:", error);
       }
     }
   };
 
-  const toggleExpanded = () => setIsExpanded(!isExpanded);
+  const stageCount = recipe.stages?.length || 0;
+  const prepListCount = recipe.stages?.filter((s) => s.is_prep_list_task).length || 0;
 
   return (
-    <div className="space-y-4 mb-6 expandable-info-section">
+    <div className={`expandable-info-section ${isExpanded ? 'expanded' : ''}`}>
       <button
-        onClick={toggleExpanded}
+        onClick={() => setIsExpanded(!isExpanded)}
         className="expandable-info-header w-full"
       >
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
-              <FileDigit className="w-5 h-5 text-purple-400" />
+            <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
+              <Layers className="w-5 h-5 text-amber-400" />
             </div>
-            <div>
-              <h2 className="text-lg font-medium text-white">Recipe Stages</h2>
+            <div className="text-left">
+              <h2 className="text-base font-medium text-white">Recipe Stages</h2>
               <p className="text-sm text-gray-400">
-                Group your steps into logical stages
+                Group steps into production phases
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-400">
-              {recipe.stages?.length || 0} stages
-            </span>
+          <div className="flex items-center gap-3">
+            {stageCount > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-1 rounded-lg bg-gray-700/50 text-xs text-gray-300">
+                  {stageCount} stage{stageCount !== 1 ? 's' : ''}
+                </span>
+                {prepListCount > 0 && (
+                  <span className="px-2 py-1 rounded-lg bg-emerald-500/20 text-xs text-emerald-400">
+                    {prepListCount} prep
+                  </span>
+                )}
+              </div>
+            )}
             {isExpanded ? (
-              <ChevronDown className="w-5 h-5 text-gray-400" />
+              <ChevronDown className="w-5 h-5 text-gray-500" />
             ) : (
-              <ChevronRight className="w-5 h-5 text-gray-400" />
+              <ChevronRight className="w-5 h-5 text-gray-500" />
             )}
           </div>
         </div>
       </button>
 
-      {isExpanded && (
-        <div className="expandable-info-content">
-          <div className="flex justify-end mb-4">
-            <button onClick={addStage} className="btn-primary">
-              <Plus className="w-4 h-4 mr-2" />
+      <div className="expandable-info-content p-4 space-y-3">
+          {/* Info Text */}
+          <p className="text-xs text-gray-500 mb-4">
+            Stages help organize multi-day recipes (Day 1: Brine, Day 2: Smoke). 
+            Mark stages as "Prep List" to schedule them when building prep lists.
+          </p>
+
+          {/* Add Stage Button */}
+          <div className="flex justify-end mb-3">
+            <button onClick={addStage} className="btn-primary text-sm">
+              <Plus className="w-4 h-4 mr-1.5" />
               Add Stage
             </button>
           </div>
 
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext
-              items={(recipe.stages || []).map((stage) => stage.id)}
-              strategy={verticalListSortingStrategy}
+          {/* Stage List */}
+          {stageCount > 0 ? (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
             >
-              <div>
-                {(recipe.stages || []).map((stage, index) => (
-                  <SortableStage
-                    key={stage.id}
-                    stage={stage}
-                    index={index}
-                    onUpdate={handleStageChange}
-                    onDelete={removeStage}
-                  />
-                ))}
-              </div>
-            </SortableContext>
-          </DndContext>
-
-          {(!recipe.stages || recipe.stages.length === 0) && (
-            <div className="text-center py-4 text-gray-400 bg-gray-800/30 rounded-lg">
-              No stages added yet. Click "Add Stage" to begin organizing your
-              recipe steps.
+              <SortableContext
+                items={(recipe.stages || []).map((stage) => stage.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="space-y-2">
+                  {(recipe.stages || []).map((stage, index) => (
+                    <SortableStage
+                      key={stage.id}
+                      stage={stage}
+                      index={index}
+                      onUpdate={handleStageChange}
+                      onDelete={removeStage}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+          ) : (
+            <div className="text-center py-8 bg-gray-800/30 rounded-lg border border-dashed border-gray-700">
+              <Layers className="w-8 h-8 text-gray-600 mx-auto mb-2" />
+              <p className="text-sm text-gray-500">No stages yet</p>
+              <p className="text-xs text-gray-600 mt-1">
+                Add stages to organize multi-step production
+              </p>
             </div>
           )}
-        </div>
-      )}
+      </div>
     </div>
   );
 };

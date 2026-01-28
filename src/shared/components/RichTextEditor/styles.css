@@ -1,0 +1,492 @@
+/**
+ * =============================================================================
+ * RICH TEXT EDITOR STYLES - L6 Premium "Holy Crap" Edition
+ * =============================================================================
+ * 
+ * Dark theme styles for Tiptap editor matching ChefLife L6 design system.
+ * Amber accent for Method tab identity.
+ * Premium animations and hover states throughout.
+ * =============================================================================
+ */
+
+/* ============================================================================
+ * EDITOR CONTENT AREA
+ * ============================================================================ */
+
+.rich-text-editor-content {
+  color: #e5e7eb; /* gray-200 */
+  font-size: 1rem;
+  line-height: 1.8;
+  font-weight: 400;
+}
+
+.rich-text-editor-content:focus {
+  outline: none;
+}
+
+/* Placeholder text */
+.rich-text-editor-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #6b7280; /* gray-500 */
+  pointer-events: none;
+  height: 0;
+  font-style: italic;
+}
+
+/* ============================================================================
+ * TYPOGRAPHY - Premium text styling
+ * ============================================================================ */
+
+.rich-text-editor-content h2 {
+  font-size: 1.375rem;
+  font-weight: 600;
+  color: #f9fafb; /* gray-50 */
+  margin-top: 1.75rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid rgba(245, 158, 11, 0.2); /* amber-500/20 */
+  letter-spacing: -0.01em;
+}
+
+.rich-text-editor-content h2:first-child {
+  margin-top: 0;
+}
+
+.rich-text-editor-content h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #e5e7eb; /* gray-200 */
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.01em;
+}
+
+.rich-text-editor-content h3:first-child {
+  margin-top: 0;
+}
+
+.rich-text-editor-content p {
+  margin-bottom: 0.875rem;
+}
+
+.rich-text-editor-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* ============================================================================
+ * TEXT FORMATTING
+ * ============================================================================ */
+
+.rich-text-editor-content strong {
+  font-weight: 600;
+  color: #f9fafb; /* gray-50 */
+}
+
+.rich-text-editor-content em {
+  font-style: italic;
+  color: #d1d5db; /* gray-300 */
+}
+
+.rich-text-editor-content u {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 2px;
+  text-decoration-color: rgba(245, 158, 11, 0.5); /* amber-500/50 */
+}
+
+.rich-text-editor-content s {
+  text-decoration: line-through;
+  color: #6b7280; /* gray-500 */
+}
+
+/* Highlight - amber background */
+.rich-text-editor-content mark {
+  background: linear-gradient(120deg, rgba(245, 158, 11, 0.3) 0%, rgba(245, 158, 11, 0.2) 100%);
+  color: #fef3c7; /* amber-100 */
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  box-decoration-break: clone;
+}
+
+/* ============================================================================
+ * LISTS - Clean, professional
+ * ============================================================================ */
+
+.rich-text-editor-content ul,
+.rich-text-editor-content ol {
+  margin: 1rem 0;
+  padding-left: 1.75rem;
+}
+
+.rich-text-editor-content ul {
+  list-style-type: none;
+}
+
+.rich-text-editor-content ul > li {
+  position: relative;
+}
+
+.rich-text-editor-content ul > li::before {
+  content: '';
+  position: absolute;
+  left: -1.25rem;
+  top: 0.7em;
+  width: 6px;
+  height: 6px;
+  background: #f59e0b; /* amber-500 */
+  border-radius: 50%;
+}
+
+.rich-text-editor-content ol {
+  list-style-type: decimal;
+}
+
+.rich-text-editor-content ol > li::marker {
+  color: #f59e0b; /* amber-500 */
+  font-weight: 600;
+}
+
+.rich-text-editor-content li {
+  margin-bottom: 0.375rem;
+  padding-left: 0.25rem;
+}
+
+.rich-text-editor-content li p {
+  margin-bottom: 0;
+}
+
+/* Nested lists */
+.rich-text-editor-content ul ul,
+.rich-text-editor-content ol ol,
+.rich-text-editor-content ul ol,
+.rich-text-editor-content ol ul {
+  margin-top: 0.375rem;
+  margin-bottom: 0.375rem;
+}
+
+.rich-text-editor-content ul ul > li::before {
+  width: 5px;
+  height: 5px;
+  background: transparent;
+  border: 1.5px solid #f59e0b;
+}
+
+/* ============================================================================
+ * TASK LISTS (Checkboxes) - Premium styling
+ * ============================================================================ */
+
+.rich-text-editor-content ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+}
+
+.rich-text-editor-content ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding-left: 0;
+  margin-bottom: 0.5rem;
+}
+
+.rich-text-editor-content ul[data-type="taskList"] li::before {
+  display: none;
+}
+
+.rich-text-editor-content ul[data-type="taskList"] li > label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  cursor: pointer;
+  flex: 1;
+}
+
+.rich-text-editor-content ul[data-type="taskList"] li input[type="checkbox"] {
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: 0.375rem;
+  border: 2px solid #4b5563; /* gray-600 */
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+  flex-shrink: 0;
+  margin-top: 0.2rem;
+  transition: all 0.2s ease;
+}
+
+.rich-text-editor-content ul[data-type="taskList"] li input[type="checkbox"]:hover {
+  border-color: #f59e0b; /* amber-500 */
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+}
+
+.rich-text-editor-content ul[data-type="taskList"] li input[type="checkbox"]:checked {
+  background: linear-gradient(135deg, #f59e0b, #d97706); /* amber gradient */
+  border-color: #f59e0b;
+  background-image: url("data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z'/%3e%3c/svg%3e");
+}
+
+.rich-text-editor-content ul[data-type="taskList"] li[data-checked="true"] > label > div {
+  text-decoration: line-through;
+  color: #6b7280; /* gray-500 */
+}
+
+/* ============================================================================
+ * CALLOUT BLOCKS - The star of the show
+ * ============================================================================ */
+
+.callout-wrapper {
+  margin: 1.25rem 0;
+}
+
+.callout-content {
+  min-height: 1.5rem;
+}
+
+.callout-content p {
+  margin-bottom: 0.5rem;
+}
+
+.callout-content p:last-child {
+  margin-bottom: 0;
+}
+
+.callout-content:focus {
+  outline: none;
+}
+
+/* Callout content inherits list styles */
+.callout-content ul,
+.callout-content ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.callout-content li {
+  margin-bottom: 0.25rem;
+}
+
+/* ============================================================================
+ * BLOCKQUOTE - Elegant styling
+ * ============================================================================ */
+
+.rich-text-editor-content blockquote {
+  position: relative;
+  border-left: 4px solid #f59e0b; /* amber-500 */
+  padding: 1rem 1.25rem;
+  margin: 1.25rem 0;
+  background: rgba(245, 158, 11, 0.05);
+  border-radius: 0 0.5rem 0.5rem 0;
+  color: #d1d5db; /* gray-300 */
+  font-style: italic;
+}
+
+.rich-text-editor-content blockquote p {
+  margin-bottom: 0;
+}
+
+/* ============================================================================
+ * HORIZONTAL RULE - Premium divider
+ * ============================================================================ */
+
+.rich-text-editor-content hr {
+  border: none;
+  height: 2px;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(245, 158, 11, 0.3) 20%, 
+    rgba(245, 158, 11, 0.3) 80%, 
+    transparent 100%
+  );
+  margin: 2rem 0;
+}
+
+/* ============================================================================
+ * SELECTION & CURSOR
+ * ============================================================================ */
+
+.rich-text-editor-content ::selection {
+  background: rgba(245, 158, 11, 0.35); /* amber-500/35 */
+}
+
+.ProseMirror-gapcursor:after {
+  border-color: #f59e0b; /* amber-500 */
+  border-width: 2px;
+}
+
+/* Caret color */
+.rich-text-editor-content {
+  caret-color: #f59e0b; /* amber-500 */
+}
+
+/* ============================================================================
+ * BUBBLE MENU - Premium floating toolbar
+ * ============================================================================ */
+
+.bubble-menu {
+  animation: bubbleIn 0.15s ease-out;
+}
+
+@keyframes bubbleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* ============================================================================
+ * SLASH MENU - Beautiful command palette
+ * ============================================================================ */
+
+.slash-menu {
+  animation: slashMenuIn 0.2s ease-out;
+}
+
+@keyframes slashMenuIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Custom scrollbar for slash menu */
+.slash-menu::-webkit-scrollbar {
+  width: 6px;
+}
+
+.slash-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.slash-menu::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 3px;
+}
+
+.slash-menu::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+/* ============================================================================
+ * CODE BLOCKS (for technical notes)
+ * ============================================================================ */
+
+.rich-text-editor-content code {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.875em;
+  background: rgba(17, 24, 39, 0.8); /* gray-900/80 */
+  padding: 0.2rem 0.4rem;
+  border-radius: 0.375rem;
+  color: #fbbf24; /* amber-400 */
+  border: 1px solid rgba(55, 65, 81, 0.5);
+}
+
+.rich-text-editor-content pre {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  background: rgba(17, 24, 39, 0.9); /* gray-900/90 */
+  padding: 1.25rem;
+  border-radius: 0.75rem;
+  overflow-x: auto;
+  margin: 1.25rem 0;
+  border: 1px solid rgba(55, 65, 81, 0.5);
+}
+
+.rich-text-editor-content pre code {
+  background: transparent;
+  padding: 0;
+  color: #e5e7eb; /* gray-200 */
+  border: none;
+}
+
+/* ============================================================================
+ * FOCUS STATES
+ * ============================================================================ */
+
+.rich-text-editor:focus-within {
+  border-color: rgba(245, 158, 11, 0.5); /* amber-500/50 */
+  box-shadow: 
+    0 0 0 3px rgba(245, 158, 11, 0.1),
+    0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* ============================================================================
+ * PLACEHOLDER STYLING
+ * ============================================================================ */
+
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: #6b7280;
+  float: left;
+  height: 0;
+  pointer-events: none;
+  font-style: italic;
+}
+
+/* ============================================================================
+ * RESPONSIVE ADJUSTMENTS
+ * ============================================================================ */
+
+@media (max-width: 640px) {
+  .rich-text-editor-content {
+    font-size: 0.9375rem;
+    line-height: 1.7;
+  }
+  
+  .rich-text-editor-content h2 {
+    font-size: 1.25rem;
+  }
+  
+  .rich-text-editor-content h3 {
+    font-size: 1.0625rem;
+  }
+
+  .callout-wrapper {
+    margin: 1rem 0;
+  }
+}
+
+/* ============================================================================
+ * PRINT STYLES
+ * ============================================================================ */
+
+@media print {
+  .rich-text-editor {
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  .rich-text-editor-content {
+    color: #000;
+  }
+
+  .rich-text-editor-content h2,
+  .rich-text-editor-content h3,
+  .rich-text-editor-content strong {
+    color: #000;
+  }
+
+  .callout-wrapper > div {
+    border: 1px solid #ccc !important;
+    background: #f9f9f9 !important;
+  }
+}
+
+/* ============================================================================
+ * ANIMATION UTILITIES
+ * ============================================================================ */
+
+.rich-text-editor-content * {
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+/* Smooth cursor movement */
+.ProseMirror-focused {
+  outline: none;
+}

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   LibraryBig,
@@ -18,6 +18,23 @@ import {
   Scale,
   Eye,
   EyeOff,
+  Type,
+  Plus,
+  Trash2,
+  GripVertical,
+  Lock,
+  Lightbulb,
+  AlertOctagon,
+  Thermometer,
+  RotateCcw as FifoIcon,
+  ShieldAlert,
+  Timer,
+  Utensils,
+  Flame,
+  Snowflake,
+  CheckCircle,
+  X,
+  ChevronDown,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { SECURITY_LEVELS } from "@/config/security";
@@ -25,13 +42,13 @@ import { useRecipeConfig } from "@/features/recipes/hooks/useRecipeConfig";
 import toast from "react-hot-toast";
 
 // =============================================================================
-// RECIPE SETTINGS - L3/L4 Shell
+// RECIPE SETTINGS - L5 Module Configuration
 // =============================================================================
 // Module configuration for Recipe Manager. This is the "set it once, revisit
 // when needed" screen — separate from daily recipe workflow.
 // =============================================================================
 
-type TabId = "general" | "import" | "print" | "embed" | "allergens";
+type TabId = "general" | "editor" | "import" | "print" | "embed" | "allergens";
 
 interface Tab {
   id: TabId;
@@ -50,6 +67,13 @@ const TABS: Tab[] = [
     description: "Default values and workflow rules",
   },
   {
+    id: "editor",
+    label: "Editor",
+    icon: Type,
+    color: "amber",
+    description: "Instruction blocks and rich text settings",
+  },
+  {
     id: "import",
     label: "Import",
     icon: FileSpreadsheet,
@@ -60,7 +84,7 @@ const TABS: Tab[] = [
     id: "print",
     label: "Print Templates",
     icon: Printer,
-    color: "amber",
+    color: "purple",
     description: "Recipe card layouts for kitchen and training",
   },
   {
@@ -78,6 +102,675 @@ const TABS: Tab[] = [
     description: "Customer-facing allergen information",
   },
 ];
+
+// =============================================================================
+// INSTRUCTION BLOCK TYPES & DEFAULTS
+// =============================================================================
+
+interface InstructionBlockTemplate {
+  id: string;
+  type: string;
+  label: string;
+  description: string;
+  icon: string;
+  color: string;
+  isSystem: boolean;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+// Lucide icon mapping for the selector
+const AVAILABLE_ICONS: { name: string; icon: React.ElementType }[] = [
+  { name: "Lightbulb", icon: Lightbulb },
+  { name: "AlertTriangle", icon: AlertTriangle },
+  { name: "AlertOctagon", icon: AlertOctagon },
+  { name: "Info", icon: Info },
+  { name: "RotateCcw", icon: FifoIcon },
+  { name: "Thermometer", icon: Thermometer },
+  { name: "ShieldAlert", icon: ShieldAlert },
+  { name: "Timer", icon: Timer },
+  { name: "Utensils", icon: Utensils },
+  { name: "Flame", icon: Flame },
+  { name: "Snowflake", icon: Snowflake },
+  { name: "CheckCircle", icon: CheckCircle },
+  { name: "Eye", icon: Eye },
+  { name: "Clock", icon: Clock },
+];
+
+const AVAILABLE_COLORS = [
+  { name: "emerald", label: "Emerald", class: "bg-emerald-500", text: "text-emerald-400" },
+  { name: "amber", label: "Amber", class: "bg-amber-500", text: "text-amber-400" },
+  { name: "rose", label: "Rose", class: "bg-rose-500", text: "text-rose-400" },
+  { name: "blue", label: "Blue", class: "bg-blue-500", text: "text-blue-400" },
+  { name: "primary", label: "Primary", class: "bg-primary-500", text: "text-primary-400" },
+  { name: "cyan", label: "Cyan", class: "bg-cyan-500", text: "text-cyan-400" },
+  { name: "orange", label: "Orange", class: "bg-orange-500", text: "text-orange-400" },
+  { name: "purple", label: "Purple", class: "bg-purple-500", text: "text-purple-400" },
+  { name: "lime", label: "Lime", class: "bg-lime-500", text: "text-lime-400" },
+  { name: "pink", label: "Pink", class: "bg-pink-500", text: "text-pink-400" },
+  { name: "teal", label: "Teal", class: "bg-teal-500", text: "text-teal-400" },
+];
+
+// ChefLife sensible defaults - these are system blocks
+const DEFAULT_INSTRUCTION_BLOCKS: InstructionBlockTemplate[] = [
+  {
+    id: "tip",
+    type: "tip",
+    label: "Pro Tip",
+    description: "Best practices, shortcuts, chef knowledge",
+    icon: "Lightbulb",
+    color: "emerald",
+    isSystem: true,
+    isActive: true,
+    sortOrder: 0,
+  },
+  {
+    id: "caution",
+    type: "caution",
+    label: "Caution",
+    description: "Warnings, things to watch for",
+    icon: "AlertTriangle",
+    color: "amber",
+    isSystem: true,
+    isActive: true,
+    sortOrder: 1,
+  },
+  {
+    id: "critical",
+    type: "critical",
+    label: "Critical",
+    description: "Safety critical, must-do items",
+    icon: "AlertOctagon",
+    color: "rose",
+    isSystem: true,
+    isActive: true,
+    sortOrder: 2,
+  },
+  {
+    id: "info",
+    type: "info",
+    label: "Info",
+    description: "Additional context, FYI notes",
+    icon: "Info",
+    color: "blue",
+    isSystem: true,
+    isActive: true,
+    sortOrder: 3,
+  },
+  {
+    id: "fifo",
+    type: "fifo",
+    label: "FIFO Reminder",
+    description: "First In, First Out stock rotation",
+    icon: "RotateCcw",
+    color: "cyan",
+    isSystem: false,
+    isActive: true,
+    sortOrder: 4,
+  },
+  {
+    id: "temperature",
+    type: "temperature",
+    label: "Temperature",
+    description: "Temperature-specific notes and targets",
+    icon: "Thermometer",
+    color: "orange",
+    isSystem: false,
+    isActive: true,
+    sortOrder: 5,
+  },
+];
+
+// =============================================================================
+// ICON COMPONENT HELPER
+// =============================================================================
+
+const IconDisplay: React.FC<{ iconName: string; className?: string }> = ({ iconName, className }) => {
+  const iconConfig = AVAILABLE_ICONS.find(i => i.name === iconName);
+  if (!iconConfig) return <Info className={className} />;
+  const IconComponent = iconConfig.icon;
+  return <IconComponent className={className} />;
+};
+
+// =============================================================================
+// INSTRUCTION BLOCK EDITOR MODAL
+// =============================================================================
+
+interface BlockEditorModalProps {
+  block: InstructionBlockTemplate | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: (block: InstructionBlockTemplate) => void;
+  existingTypes: string[];
+}
+
+const BlockEditorModal: React.FC<BlockEditorModalProps> = ({
+  block,
+  isOpen,
+  onClose,
+  onSave,
+  existingTypes,
+}) => {
+  const [formData, setFormData] = useState<Partial<InstructionBlockTemplate>>({
+    type: "",
+    label: "",
+    description: "",
+    icon: "Lightbulb",
+    color: "emerald",
+    isActive: true,
+  });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (block) {
+      setFormData({ ...block });
+    } else {
+      setFormData({
+        type: "",
+        label: "",
+        description: "",
+        icon: "Lightbulb",
+        color: "emerald",
+        isActive: true,
+      });
+    }
+    setErrors({});
+  }, [block, isOpen]);
+
+  const validate = () => {
+    const newErrors: Record<string, string> = {};
+    
+    if (!formData.label?.trim()) {
+      newErrors.label = "Label is required";
+    }
+    
+    if (!formData.type?.trim()) {
+      newErrors.type = "Type key is required";
+    } else if (!/^[a-z_]+$/.test(formData.type)) {
+      newErrors.type = "Type must be lowercase letters and underscores only";
+    } else if (!block && existingTypes.includes(formData.type)) {
+      newErrors.type = "This type already exists";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSave = () => {
+    if (!validate()) return;
+
+    onSave({
+      id: block?.id || formData.type || "",
+      type: formData.type || "",
+      label: formData.label || "",
+      description: formData.description || "",
+      icon: formData.icon || "Lightbulb",
+      color: formData.color || "emerald",
+      isSystem: block?.isSystem || false,
+      isActive: formData.isActive ?? true,
+      sortOrder: block?.sortOrder ?? 999,
+    });
+    onClose();
+  };
+
+  if (!isOpen) return null;
+
+  const colorConfig = AVAILABLE_COLORS.find(c => c.name === formData.color) || AVAILABLE_COLORS[0];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      
+      {/* Modal */}
+      <div className="relative bg-[#1a1f2b] rounded-xl shadow-2xl w-full max-w-lg mx-4 border border-gray-700/50">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700/50">
+          <h3 className="text-lg font-semibold text-white">
+            {block ? "Edit Instruction Block" : "Add Instruction Block"}
+          </h3>
+          <button onClick={onClose} className="p-2 hover:bg-gray-700/50 rounded-lg transition-colors">
+            <X className="w-5 h-5 text-gray-400" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-5 space-y-4">
+          {/* Preview Card */}
+          <div className={`rounded-lg border-l-4 p-4 bg-${formData.color}-950/40 border-l-${formData.color}-500`}
+            style={{
+              backgroundColor: `rgb(var(--color-${formData.color}-950) / 0.4)`,
+              borderLeftColor: `rgb(var(--color-${formData.color}-500))`,
+            }}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <div className={`w-6 h-6 rounded flex items-center justify-center ${colorConfig.text}`}
+                style={{ backgroundColor: `rgb(var(--color-${formData.color}-500) / 0.2)` }}
+              >
+                <IconDisplay iconName={formData.icon || "Lightbulb"} className="w-3.5 h-3.5" />
+              </div>
+              <span className={`text-xs font-bold uppercase tracking-wider ${colorConfig.text}`}>
+                {formData.label || "Block Label"}
+              </span>
+            </div>
+            <p className="text-sm text-gray-300">
+              {formData.description || "Block description will appear here..."}
+            </p>
+          </div>
+
+          {/* Label */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1.5">
+              Label <span className="text-rose-400">*</span>
+            </label>
+            <input
+              type="text"
+              value={formData.label || ""}
+              onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+              placeholder="e.g., Pro Tip, Safety Alert"
+              className="input w-full"
+              disabled={block?.isSystem}
+            />
+            {errors.label && <p className="text-xs text-rose-400 mt-1">{errors.label}</p>}
+          </div>
+
+          {/* Type Key */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1.5">
+              Type Key <span className="text-rose-400">*</span>
+              <span className="text-gray-500 font-normal ml-2">(internal identifier)</span>
+            </label>
+            <input
+              type="text"
+              value={formData.type || ""}
+              onChange={(e) => setFormData({ ...formData, type: e.target.value.toLowerCase().replace(/[^a-z_]/g, '') })}
+              placeholder="e.g., pro_tip, safety_alert"
+              className="input w-full font-mono"
+              disabled={!!block}
+            />
+            {errors.type && <p className="text-xs text-rose-400 mt-1">{errors.type}</p>}
+            {!block && (
+              <p className="text-xs text-gray-500 mt-1">
+                Lowercase letters and underscores only. Cannot be changed after creation.
+              </p>
+            )}
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1.5">
+              Description
+            </label>
+            <input
+              type="text"
+              value={formData.description || ""}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="Brief description shown in slash menu"
+              className="input w-full"
+            />
+          </div>
+
+          {/* Icon & Color Row */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* Icon Selector */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">Icon</label>
+              <div className="grid grid-cols-7 gap-1 p-2 bg-gray-800/50 rounded-lg border border-gray-700/50">
+                {AVAILABLE_ICONS.map((iconOption) => {
+                  const IconComp = iconOption.icon;
+                  const isSelected = formData.icon === iconOption.name;
+                  return (
+                    <button
+                      key={iconOption.name}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, icon: iconOption.name })}
+                      className={`p-2 rounded transition-all ${
+                        isSelected
+                          ? `bg-${formData.color}-500/30 ${colorConfig.text} ring-1 ring-${formData.color}-500/50`
+                          : "text-gray-400 hover:bg-gray-700/50 hover:text-white"
+                      }`}
+                      title={iconOption.name}
+                    >
+                      <IconComp className="w-4 h-4" />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Color Selector */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">Color</label>
+              <div className="grid grid-cols-5 gap-1 p-2 bg-gray-800/50 rounded-lg border border-gray-700/50">
+                {AVAILABLE_COLORS.map((colorOption) => {
+                  const isSelected = formData.color === colorOption.name;
+                  return (
+                    <button
+                      key={colorOption.name}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, color: colorOption.name })}
+                      className={`w-8 h-8 rounded-lg transition-all ${colorOption.class} ${
+                        isSelected ? "ring-2 ring-white ring-offset-2 ring-offset-gray-800" : "opacity-60 hover:opacity-100"
+                      }`}
+                      title={colorOption.label}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Active Toggle */}
+          <div className="flex items-center justify-between p-3 bg-gray-800/30 rounded-lg">
+            <div className="flex items-center gap-3">
+              {formData.isActive ? (
+                <Eye className="w-5 h-5 text-emerald-400" />
+              ) : (
+                <EyeOff className="w-5 h-5 text-gray-500" />
+              )}
+              <div>
+                <p className="text-sm font-medium text-white">Active</p>
+                <p className="text-xs text-gray-500">Show this block in the editor toolbar</p>
+              </div>
+            </div>
+            <label className="toggle-switch emerald">
+              <input
+                type="checkbox"
+                checked={formData.isActive ?? true}
+                onChange={() => setFormData({ ...formData, isActive: !formData.isActive })}
+              />
+              <span className="toggle-switch-track" />
+            </label>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-700/50">
+          <button onClick={onClose} className="btn-ghost">
+            Cancel
+          </button>
+          <button onClick={handleSave} className="btn-primary">
+            <Save className="w-4 h-4 mr-1.5" />
+            {block ? "Save Changes" : "Add Block"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// =============================================================================
+// INSTRUCTION BLOCKS SECTION (EDITOR TAB)
+// =============================================================================
+
+const InstructionBlocksSection: React.FC = () => {
+  const { config, updateConfig } = useRecipeConfig();
+  const [blocks, setBlocks] = useState<InstructionBlockTemplate[]>([]);
+  const [editingBlock, setEditingBlock] = useState<InstructionBlockTemplate | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+
+  // Initialize from config or defaults
+  useEffect(() => {
+    const savedBlocks = config.instructionBlocks as InstructionBlockTemplate[] | undefined;
+    if (savedBlocks && savedBlocks.length > 0) {
+      setBlocks(savedBlocks);
+    } else {
+      setBlocks(DEFAULT_INSTRUCTION_BLOCKS);
+    }
+  }, [config.instructionBlocks]);
+
+  const handleToggleActive = (blockId: string) => {
+    setBlocks(prev => prev.map(b => 
+      b.id === blockId ? { ...b, isActive: !b.isActive } : b
+    ));
+    setHasChanges(true);
+  };
+
+  const handleEditBlock = (block: InstructionBlockTemplate) => {
+    setEditingBlock(block);
+    setIsModalOpen(true);
+  };
+
+  const handleAddBlock = () => {
+    setEditingBlock(null);
+    setIsModalOpen(true);
+  };
+
+  const handleSaveBlock = (block: InstructionBlockTemplate) => {
+    setBlocks(prev => {
+      const existingIndex = prev.findIndex(b => b.id === block.id);
+      if (existingIndex >= 0) {
+        // Update existing
+        const updated = [...prev];
+        updated[existingIndex] = block;
+        return updated;
+      } else {
+        // Add new
+        return [...prev, { ...block, sortOrder: prev.length }];
+      }
+    });
+    setHasChanges(true);
+  };
+
+  const handleDeleteBlock = (blockId: string) => {
+    const block = blocks.find(b => b.id === blockId);
+    if (block?.isSystem) {
+      toast.error("System blocks cannot be deleted");
+      return;
+    }
+    if (confirm(`Delete "${block?.label}" block? This cannot be undone.`)) {
+      setBlocks(prev => prev.filter(b => b.id !== blockId));
+      setHasChanges(true);
+      toast.success("Block deleted");
+    }
+  };
+
+  const handleSave = () => {
+    updateConfig({ instructionBlocks: blocks });
+    setHasChanges(false);
+    toast.success("Instruction blocks saved");
+  };
+
+  const handleReset = () => {
+    if (confirm("Reset all instruction blocks to ChefLife defaults? Custom blocks will be removed.")) {
+      setBlocks(DEFAULT_INSTRUCTION_BLOCKS);
+      setHasChanges(true);
+      toast.success("Reset to defaults - click Save to apply");
+    }
+  };
+
+  const systemBlocks = blocks.filter(b => b.isSystem);
+  const customBlocks = blocks.filter(b => !b.isSystem);
+  const existingTypes = blocks.map(b => b.type);
+
+  return (
+    <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-5">
+      {/* Section Header */}
+      <div className="flex items-center gap-3 mb-6 pb-3 border-b border-gray-700/50">
+        <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+          <Type className="w-5 h-5 text-amber-400" />
+        </div>
+        <div className="flex-1">
+          <h3 className="text-base font-semibold text-white">Instruction Blocks</h3>
+          <p className="text-sm text-gray-400">
+            Customize the callout blocks available in the recipe instruction editor
+          </p>
+        </div>
+        <button onClick={handleAddBlock} className="btn-primary text-sm">
+          <Plus className="w-4 h-4 mr-1.5" />
+          Add Block
+        </button>
+      </div>
+
+      {/* System Blocks */}
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Lock className="w-4 h-4 text-gray-500" />
+          <h4 className="text-sm font-medium text-gray-400">System Blocks</h4>
+          <span className="text-xs text-gray-600">(labels locked, can toggle visibility)</span>
+        </div>
+        <div className="space-y-2">
+          {systemBlocks.map((block) => {
+            const colorConfig = AVAILABLE_COLORS.find(c => c.name === block.color) || AVAILABLE_COLORS[0];
+            return (
+              <div
+                key={block.id}
+                className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                  block.isActive
+                    ? "bg-gray-800/50 border-gray-700/50"
+                    : "bg-gray-900/30 border-gray-800/30 opacity-50"
+                }`}
+              >
+                {/* Icon & Label */}
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${colorConfig.text}`}
+                  style={{ backgroundColor: `color-mix(in srgb, currentColor 15%, transparent)` }}
+                >
+                  <IconDisplay iconName={block.icon} className="w-4 h-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-white">{block.label}</span>
+                    <span className={`w-2 h-2 rounded-full ${colorConfig.class}`} />
+                  </div>
+                  <p className="text-xs text-gray-500 truncate">{block.description}</p>
+                </div>
+
+                {/* Toggle */}
+                <label 
+                  className="toggle-switch emerald" 
+                  title={block.isActive ? "Visible in editor" : "Hidden from editor"}
+                >
+                  <input
+                    type="checkbox"
+                    checked={block.isActive}
+                    onChange={() => handleToggleActive(block.id)}
+                  />
+                  <span className="toggle-switch-track" />
+                </label>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Custom Blocks */}
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Sparkles className="w-4 h-4 text-amber-400" />
+          <h4 className="text-sm font-medium text-gray-400">Custom Blocks</h4>
+          <span className="text-xs text-gray-600">(fully customizable)</span>
+        </div>
+        
+        {customBlocks.length === 0 ? (
+          <div className="text-center py-8 bg-gray-800/30 rounded-lg border-2 border-dashed border-gray-700/50">
+            <Plus className="w-8 h-8 text-gray-600 mx-auto mb-2" />
+            <p className="text-sm text-gray-500">No custom blocks yet</p>
+            <p className="text-xs text-gray-600 mt-1">
+              Add blocks specific to your kitchen's needs
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {customBlocks.map((block) => {
+              const colorConfig = AVAILABLE_COLORS.find(c => c.name === block.color) || AVAILABLE_COLORS[0];
+              return (
+                <div
+                  key={block.id}
+                  className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                    block.isActive
+                      ? "bg-gray-800/50 border-gray-700/50"
+                      : "bg-gray-900/30 border-gray-800/30 opacity-50"
+                  }`}
+                >
+                  {/* Drag Handle (future) */}
+                  <GripVertical className="w-4 h-4 text-gray-600 cursor-grab" />
+
+                  {/* Icon & Label */}
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${colorConfig.text}`}
+                    style={{ backgroundColor: `color-mix(in srgb, currentColor 15%, transparent)` }}
+                  >
+                    <IconDisplay iconName={block.icon} className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-white">{block.label}</span>
+                      <span className={`w-2 h-2 rounded-full ${colorConfig.class}`} />
+                    </div>
+                    <p className="text-xs text-gray-500 truncate">{block.description}</p>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleEditBlock(block)}
+                      className="p-2 hover:bg-gray-700/50 rounded-lg text-gray-400 hover:text-white transition-colors"
+                      title="Edit block"
+                    >
+                      <Settings className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteBlock(block.id)}
+                      className="p-2 hover:bg-rose-500/20 rounded-lg text-gray-400 hover:text-rose-400 transition-colors"
+                      title="Delete block"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                    <label className="toggle-switch emerald">
+                      <input
+                        type="checkbox"
+                        checked={block.isActive}
+                        onChange={() => handleToggleActive(block.id)}
+                      />
+                      <span className="toggle-switch-track" />
+                    </label>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center justify-between pt-4 border-t border-gray-700/50">
+        <button onClick={handleReset} className="btn-ghost text-sm">
+          <RotateCcw className="w-4 h-4 mr-1.5" />
+          Reset to Defaults
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={!hasChanges}
+          className={`btn-primary text-sm ${!hasChanges ? "opacity-50 cursor-not-allowed" : ""}`}
+        >
+          <Save className="w-4 h-4 mr-1.5" />
+          Save Changes
+        </button>
+      </div>
+
+      {/* Info Note */}
+      <div className="mt-4 p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
+        <div className="flex items-start gap-2">
+          <Info className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-gray-500">
+            Instruction blocks appear in the rich text editor when writing recipe steps. 
+            Type <kbd className="px-1.5 py-0.5 rounded bg-gray-700 text-amber-400 font-mono">/</kbd> in 
+            the editor to insert a block. Changes apply to all recipes.
+          </p>
+        </div>
+      </div>
+
+      {/* Edit Modal */}
+      <BlockEditorModal
+        block={editingBlock}
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSave={handleSaveBlock}
+        existingTypes={existingTypes}
+      />
+    </div>
+  );
+};
 
 // =============================================================================
 // GENERAL SETTINGS SECTION (LIVE)
@@ -204,10 +897,7 @@ const GeneralSettingsSection: React.FC = () => {
           </div>
         </div>
 
-        {/* ================================================================
-         * SOURCING INSTRUCTIONS
-         * Configurable text shown on Recipe Viewer Ingredients tab
-         * ================================================================ */}
+        {/* Sourcing Instructions */}
         <div id="sourcing" className="pt-6 border-t border-gray-700/50">
           <h4 className="text-sm font-medium text-white mb-4 flex items-center gap-2">
             <Scale className="w-4 h-4 text-emerald-400" />
@@ -231,18 +921,14 @@ const GeneralSettingsSection: React.FC = () => {
                   <p className="text-xs text-gray-500">Display sourcing instructions on the Ingredients tab</p>
                 </div>
               </div>
-              <button
-                onClick={() => setSourcingEnabled(!sourcingEnabled)}
-                className={`relative w-12 h-6 rounded-full transition-colors ${
-                  sourcingEnabled ? 'bg-emerald-500/50' : 'bg-gray-700'
-                }`}
-              >
-                <span
-                  className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                    sourcingEnabled ? 'translate-x-7' : 'translate-x-1'
-                  }`}
+              <label className="toggle-switch emerald">
+                <input
+                  type="checkbox"
+                  checked={sourcingEnabled}
+                  onChange={() => setSourcingEnabled(!sourcingEnabled)}
                 />
-              </button>
+                <span className="toggle-switch-track" />
+              </label>
             </div>
           </div>
 
@@ -420,6 +1106,7 @@ const PlaceholderSection: React.FC<PlaceholderSectionProps> = ({ tab, features, 
     amber: "bg-amber-500/20",
     cyan: "bg-cyan-500/20",
     rose: "bg-rose-500/20",
+    purple: "bg-purple-500/20",
   };
   
   const textColorMap: Record<string, string> = {
@@ -428,6 +1115,7 @@ const PlaceholderSection: React.FC<PlaceholderSectionProps> = ({ tab, features, 
     amber: "text-amber-400",
     cyan: "text-cyan-400",
     rose: "text-rose-400",
+    purple: "text-purple-400",
   };
 
   return (
@@ -504,7 +1192,8 @@ export const RecipeSettings: React.FC = () => {
 
   // Feature lists for placeholder tabs
   const tabFeatures: Record<TabId, { features: string[]; notes?: string }> = {
-    general: { features: [], notes: "" }, // Handled by GeneralSettingsSection
+    general: { features: [], notes: "" },
+    editor: { features: [], notes: "" }, // Handled by InstructionBlocksSection
     import: {
       features: [
         "Excel template configuration (your existing recipe spreadsheets)",
@@ -611,6 +1300,8 @@ export const RecipeSettings: React.FC = () => {
       {/* Tab Content */}
       {activeTab === "general" ? (
         <GeneralSettingsSection />
+      ) : activeTab === "editor" ? (
+        <InstructionBlocksSection />
       ) : (
         <PlaceholderSection 
           tab={currentTab} 

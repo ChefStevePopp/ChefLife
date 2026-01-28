@@ -10,6 +10,96 @@ import { useState, useEffect, useCallback } from 'react';
 
 const STORAGE_KEY = 'cheflife_recipe_config';
 
+// =============================================================================
+// INSTRUCTION BLOCK TEMPLATE TYPE
+// =============================================================================
+
+export interface InstructionBlockTemplate {
+  id: string;
+  type: string;
+  label: string;
+  description: string;
+  icon: string;
+  color: string;
+  isSystem: boolean;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+// ChefLife sensible defaults - system blocks + useful custom ones
+const DEFAULT_INSTRUCTION_BLOCKS: InstructionBlockTemplate[] = [
+  {
+    id: "tip",
+    type: "tip",
+    label: "Pro Tip",
+    description: "Best practices, shortcuts, chef knowledge",
+    icon: "Lightbulb",
+    color: "emerald",
+    isSystem: true,
+    isActive: true,
+    sortOrder: 0,
+  },
+  {
+    id: "caution",
+    type: "caution",
+    label: "Caution",
+    description: "Warnings, things to watch for",
+    icon: "AlertTriangle",
+    color: "amber",
+    isSystem: true,
+    isActive: true,
+    sortOrder: 1,
+  },
+  {
+    id: "critical",
+    type: "critical",
+    label: "Critical",
+    description: "Safety critical, must-do items",
+    icon: "AlertOctagon",
+    color: "rose",
+    isSystem: true,
+    isActive: true,
+    sortOrder: 2,
+  },
+  {
+    id: "info",
+    type: "info",
+    label: "Info",
+    description: "Additional context, FYI notes",
+    icon: "Info",
+    color: "blue",
+    isSystem: true,
+    isActive: true,
+    sortOrder: 3,
+  },
+  {
+    id: "fifo",
+    type: "fifo",
+    label: "FIFO Reminder",
+    description: "First In, First Out stock rotation",
+    icon: "RotateCcw",
+    color: "cyan",
+    isSystem: false,
+    isActive: true,
+    sortOrder: 4,
+  },
+  {
+    id: "temperature",
+    type: "temperature",
+    label: "Temperature",
+    description: "Temperature-specific notes and targets",
+    icon: "Thermometer",
+    color: "orange",
+    isSystem: false,
+    isActive: true,
+    sortOrder: 5,
+  },
+];
+
+// =============================================================================
+// RECIPE CONFIG INTERFACE
+// =============================================================================
+
 export interface RecipeConfig {
   // Badge Display Settings
   updatedBadgeDays: number;      // Days to show "UPDATED" badge (default: 14)
@@ -22,6 +112,9 @@ export interface RecipeConfig {
     body: string;                  // Main instruction text
     footer: string;                // Footer note
   };
+  
+  // Instruction Blocks (rich text editor callout blocks)
+  instructionBlocks: InstructionBlockTemplate[];
   
   // Future settings (documented for architecture)
   // defaultStation: string | null;
@@ -41,6 +134,7 @@ const DEFAULT_CONFIG: RecipeConfig = {
 If something is missing or looks off, flag it now \u2014 not halfway through the recipe.`,
     footer: "Your kitchen may have specific sourcing procedures.",
   },
+  instructionBlocks: DEFAULT_INSTRUCTION_BLOCKS,
 };
 
 /**
@@ -52,7 +146,12 @@ function loadConfig(): RecipeConfig {
     if (stored) {
       const parsed = JSON.parse(stored);
       // Merge with defaults to ensure all keys exist
-      return { ...DEFAULT_CONFIG, ...parsed };
+      return { 
+        ...DEFAULT_CONFIG, 
+        ...parsed,
+        // Ensure instruction blocks have all defaults if not present
+        instructionBlocks: parsed.instructionBlocks || DEFAULT_INSTRUCTION_BLOCKS,
+      };
     }
   } catch (e) {
     console.warn('Failed to load recipe config:', e);
@@ -111,6 +210,16 @@ export function useRecipeConfig() {
  */
 export function getRecipeConfig(): RecipeConfig {
   return loadConfig();
+}
+
+/**
+ * Get active instruction blocks only (for editor toolbar)
+ */
+export function getActiveInstructionBlocks(): InstructionBlockTemplate[] {
+  const config = loadConfig();
+  return config.instructionBlocks
+    .filter(b => b.isActive)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
 export default useRecipeConfig;

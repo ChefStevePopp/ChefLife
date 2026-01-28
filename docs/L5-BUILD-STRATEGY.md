@@ -1305,7 +1305,225 @@ Sequence numbers (`000000`, `100000`) allow multiple migrations per day in order
 
 ---
 
-## Mobile-First Design (MobileShell Paradigm)
+## L5 Viewer Screen Standard
+
+The **Viewer Screen** pattern is the gold standard for all user-facing (non-admin) screens where staff consume information. The Recipe Viewer is the reference implementation.
+
+### Target Devices (Priority Order)
+
+| Priority | Device | Resolution | Primary User |
+|----------|--------|------------|-------------|
+| 1 | iPad Landscape in Folio | ~1366×1024 | Line cooks, prep cooks |
+| 2 | iPad Portrait on Stand | ~1024×1366 | Recipe reference |
+| 3 | Desktop 1920×1080 | 1920×1080 | Managers, reviewing |
+| 4 | Large Display 2560+ | 2560×1440+ | Office, presentations |
+
+**One codebase scales gracefully from 4K to tablet portrait.** No separate "mobile version."
+
+### Responsive Container Strategy
+
+Content width adapts to content type, not fixed breakpoints:
+
+| Content Type | Max Width | Tailwind Class | Use Case |
+|--------------|-----------|----------------|----------|
+| Visual grids | 1600px | `max-w-[1600px]` | Flip cards, image galleries, ingredient cards |
+| Dashboard cards | 1280px | `max-w-7xl` | Overview panels, settings, 2-3 column grids |
+| Text-focused | 896px | `max-w-4xl` | Method steps, procedures, long-form reading |
+| Forms | 672px | `max-w-2xl` | Input forms, dialogs |
+| Full-bleed | 100% | `max-w-none` | Recipe Library, media galleries |
+
+**Implementation Pattern:**
+```tsx
+const getContainerClass = (contentType: string) => {
+  switch (contentType) {
+    case 'visual-grid':   return 'max-w-[1600px]';
+    case 'dashboard':     return 'max-w-7xl';
+    case 'text':          return 'max-w-4xl';
+    case 'form':          return 'max-w-2xl';
+    case 'full-bleed':    return 'max-w-none';
+    default:              return 'max-w-7xl';
+  }
+};
+
+// Usage
+<div className={`${getContainerClass(contentType)} mx-auto`}>
+  {children}
+</div>
+```
+
+### Grid Column Breakpoints
+
+Consistent column progression across all grid-based content:
+
+| Breakpoint | Width | Tailwind | Columns | Device |
+|------------|-------|----------|---------|--------|
+| Base | <640px | (default) | 1 | Phone portrait |
+| `sm` | 640px | `sm:` | 2 | Phone landscape, small tablet |
+| `md` | 768px | `md:` | 2 | iPad portrait |
+| `lg` | 1024px | `lg:` | 3 | iPad landscape |
+| `xl` | 1280px | `xl:` | 3-4 | Desktop |
+| `2xl` | 1536px | `2xl:` | 4 | Large desktop |
+| Custom | 1920px | `min-[1920px]:` | 5 | Full HD+ |
+
+**Standard Grid Classes:**
+```tsx
+// Visual cards (ingredients, recipes)
+"grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 min-[1920px]:grid-cols-4 gap-6"
+
+// Dashboard cards (overview panels)
+"grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
+
+// Flip cards (taller aspect ratio, need more width)
+"grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 min-[1920px]:grid-cols-4 gap-6"
+```
+
+### Viewer Screen Anatomy
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  HERO HEADER                                                            │
+│  ┌──────────────────────────────────────────────────────────────────┐  │
+│  │ ← Back   [Badge]                              [Status] [Print]   │  │
+│  │                                                                  │  │
+│  │                      Recipe Name                                 │  │
+│  │                      Station                                     │  │
+│  │                                                                  │  │
+│  │                                        [Time] [Yield] [Version]  │  │
+│  └──────────────────────────────────────────────────────────────────┘  │
+├─────────────────────────────────────────────────────────────────────────┤
+│  TAB BAR (sticky)                                                       │
+│  [Overview] [Ingredients] [Method] [Production] [Storage] ...          │
+├─────────────────────────────────────────────────────────────────────────┤
+│  TAB CONTENT (responsive container)                                     │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │                                                                 │   │
+│  │   Content adapts to type:                                       │   │
+│  │   - Dashboard cards: max-w-7xl, 2-3 columns                     │   │
+│  │   - Visual grids: max-w-[1600px], 3-4 columns                   │   │
+│  │   - Text content: max-w-4xl, single column                      │   │
+│  │                                                                 │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                              ↑ centered with mx-auto                    │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Touch-First Design Requirements
+
+| Element | Minimum Size | Why |
+|---------|--------------|-----|
+| Buttons | 44×44px | Apple HIG, greasy fingers |
+| Tab pills | 44px height | Thumb-friendly |
+| Card tap targets | Full card | No precision required |
+| Spacing between targets | 8px+ | Prevent mis-taps |
+
+### Premium Transitions
+
+Viewer screens use the Premium Morph pattern for tab transitions:
+
+```tsx
+// Tab content transition
+const [isTransitioning, setIsTransitioning] = useState(false);
+
+useEffect(() => {
+  if (activeTab !== displayedTab) {
+    setIsTransitioning(true);
+    const timer = setTimeout(() => {
+      setDisplayedTab(activeTab);
+      requestAnimationFrame(() => setIsTransitioning(false));
+    }, 150);
+    return () => clearTimeout(timer);
+  }
+}, [activeTab, displayedTab]);
+
+// CSS classes
+className={`
+  transition-all duration-200
+  ${isTransitioning 
+    ? "opacity-0 blur-[2px] translate-y-1" 
+    : "opacity-100 blur-0 translate-y-0"}
+`}
+```
+
+### Reference Implementation
+
+**Gold Standard:** `src/features/recipes/components/RecipeViewer/FullPageViewer.tsx`
+
+| Component | Pattern |
+|-----------|--------|
+| `HeroHeader` | Responsive hero with back nav, badges, stats |
+| `TabBar` | Horizontal scrolling tabs with auto-center |
+| `TabContent` | Dynamic container width per content type |
+| `Overview` | Dashboard card grid (2-3 columns) |
+| `Ingredients` | Visual flip card grid (3-4 columns) |
+| `Method` | Narrow text container for readability |
+
+### ViewerCard Pattern (Overview Cards)
+
+Dashboard cards within viewer screens use **neutral gray** styling to avoid competing with colored tabs:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ [Gray Icon] Card Title                      [Stat Badge]   │  ← Header stripe
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│   Card content in gray palette                              │  ← Content area
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Color Philosophy:**
+- Tabs own color identity - cards stay neutral
+- Gray icon boxes don't compete with tab colors
+- Darker header stripe (`bg-gray-800/70`) creates hierarchy
+- Optional stat badge on right for quick-glance info
+
+**Implementation:**
+```tsx
+interface ViewerCardProps {
+  icon: React.ElementType;
+  title: string;
+  children: React.ReactNode;
+  stat?: string | number;  // Optional stat in header
+  statLabel?: string;
+}
+
+const ViewerCard: React.FC<ViewerCardProps> = ({
+  icon: Icon, title, children, stat, statLabel
+}) => (
+  <div className="card overflow-hidden">
+    {/* Header Bar - Darker stripe with gray icon */}
+    <div className="flex items-center justify-between gap-3 px-4 py-3 bg-gray-800/70 border-b border-gray-700/50">
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 rounded-lg bg-gray-700/60 flex items-center justify-center">
+          <Icon className="w-4 h-4 text-gray-400" />
+        </div>
+        <h3 className="text-sm font-medium text-white">{title}</h3>
+      </div>
+      {stat !== undefined && (
+        <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-gray-700/50">
+          <span className="text-sm font-medium text-gray-300">{stat}</span>
+          {statLabel && <span className="text-xs text-gray-500">{statLabel}</span>}
+        </div>
+      )}
+    </div>
+    <div className="p-4 text-sm text-gray-400">{children}</div>
+  </div>
+);
+```
+
+**Reference:** `Overview.tsx` — Uses ViewerCard for Allergens, Description, Chef's Notes, Equipment, Certifications, Label Requirements
+
+### When to Use Viewer Pattern
+
+| Use Viewer Pattern | Use Admin/Manager Pattern |
+|--------------------|---------------------------|
+| Reading recipes | Editing recipes |
+| Viewing schedules | Managing schedules |
+| Checking inventory | Adjusting inventory |
+| Training content | Creating training |
+| Any "consumption" screen | Any "CRUD" screen |
+
+---
 
 ChefLife has two distinct experiences:
 - **Desktop Admin** — Complex data grids, deep configuration, sidebar navigation
@@ -1825,6 +2043,36 @@ All money-related values use a single teal accent:
 ---
 
 ## Changelog
+
+**Jan 28, 2026 (Session - Recipe Viewer L5 Responsive):**
+- **L5 Viewer Screen Standard** documented:
+  - Target devices: iPad landscape (primary) → 4K displays
+  - Responsive container strategy by content type
+  - Grid column breakpoints table
+  - Viewer screen anatomy diagram
+  - Touch-first design requirements (44px minimum)
+  - Premium transition pattern
+  - Reference implementation: FullPageViewer.tsx
+- **ViewerCard Pattern** created for Overview dashboard cards:
+  - Gray icon boxes (don't compete with colored tabs)
+  - Darker header stripe with optional stat badge
+  - "Tabs own color, cards stay neutral" philosophy
+  - Documented in L5 Viewer Screen Standard section
+- **FullPageViewer.tsx** updated:
+  - Dynamic container widths: `max-w-[1600px]` (visual), `max-w-7xl` (dashboard), `max-w-4xl` (text)
+  - Tab-specific container selection via `getContainerClass()`
+- **Overview.tsx** redesigned:
+  - New ViewerCard component replaces colored DashboardCard
+  - Grid now 3 columns on desktop: `xl:grid-cols-3`
+  - Stat badges added (allergen count, equipment count, etc.)
+- **IngredientFlipCard** L5 redesign:
+  - Letterbox layout: allergen icons top, image middle, quantity bottom
+  - Back face matches RecipeFlipCard L5 style exactly
+  - "No Allergens Declared" (legal language, not "No Allergens")
+  - Proper Tailwind color mapping for allergen icons
+- **Ingredients grid** updated:
+  - 3 columns on lg, 4 on 1920px+
+  - Larger gap (gap-6)
 
 **Jan 19, 2026 (Session - Price History Detail Modal):**
 - **PriceHistoryDetailModal** - L6 chart modal with Recharts:

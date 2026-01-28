@@ -8,6 +8,7 @@
 
 | Date | Handoff File | Focus Area |
 |------|--------------|------------|
+| 2026-01-28 | `handoffs/HANDOFF-Recipe-Viewer-L5.md` | L5 Viewer Screen Standard, ViewerCard pattern, responsive containers |
 | 2026-01-24 | `HANDOFF-2026-01-24-RecipeViewer-L5-Ingredients.md` | Recipe Viewer L5/L6, Ingredients tab, configurable sourcing |
 | 2026-01-18 | `HANDOFF-2025-01-18-Session68-Triage-Blank-Screen.md` | Fix Triage → Create Ingredient blank screen |
 | 2026-01-12 | `handoffs/HANDOFF-2026-01-12-Session46-PriceSourceTracking.md` | Price source visibility, TwoStageButton, override protection |
@@ -31,6 +32,7 @@ Transcripts are stored in `/mnt/transcripts/` and contain full conversation hist
 
 | Date | Transcript | Description |
 |------|------------|-------------|
+| 2026-01-28 | `2026-01-28-20-03-21-ingredient-cards-l5-letterbox-redesign.txt` | IngredientFlipCard letterbox, L5 Viewer Standard, ViewerCard pattern |
 | 2026-01-24 | `2026-01-25-01-07-20-recipe-overview-tab-l5-refactor.txt` | Recipe Viewer L5, Ingredients tab, configurable sourcing |
 | 2026-01-17 | `2026-01-17-23-05-08-session-67-catchweight-toggle-pdf-vim.txt` | Session 67: Catch Weight Toggle for PDF import |
 | 2026-01-17 | `2026-01-17-00-24-46-vendor-analytics-guided-mode-sections.txt` | VendorAnalytics 4-section story, NEXUS analytics events, ActivityFeed audit |

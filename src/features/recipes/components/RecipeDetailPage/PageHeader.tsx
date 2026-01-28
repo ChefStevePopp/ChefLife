@@ -191,14 +191,14 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   const [imageError, setImageError] = useState(false);
 
   // Get major group info from Food Relationships
-  const { majorGroups, categories, fetchMajorGroups } = useFoodRelationshipsStore();
+  const { majorGroups, categories, fetchFoodRelationships } = useFoodRelationshipsStore();
 
   // Fetch on mount if needed
   React.useEffect(() => {
     if (majorGroups.length === 0) {
-      fetchMajorGroups();
+      fetchFoodRelationships();
     }
-  }, [majorGroups.length, fetchMajorGroups]);
+  }, [majorGroups.length, fetchFoodRelationships]);
 
   const majorGroup = useMemo(() => {
     if (!recipe.major_group) return null;

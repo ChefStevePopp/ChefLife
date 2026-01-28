@@ -6,7 +6,6 @@ import {
   Wrench,
   Printer,
   Lightbulb,
-  Image,
   CheckCircle2,
 } from "lucide-react";
 import { AllergenBadge } from "@/features/allergens/components/AllergenBadge";
@@ -15,18 +14,25 @@ import type { Recipe } from "../../../types/recipe";
 
 /**
  * =============================================================================
- * OVERVIEW TAB - Dashboard Card Grid (L5 Pattern)
+ * OVERVIEW TAB - Dashboard Card Grid (L5 Viewer Pattern)
  * =============================================================================
  * 
- * Uses L5 CSS classes from index.css:
- * - .card - Dashboard card container
- * - .icon-badge-{color} - Icon box with color identity
- * - .subheader - Optional subheader (not used here, cards are the content)
+ * DESIGN PHILOSOPHY:
+ * - Tabs own color identity - cards stay neutral
+ * - Gray icon boxes don't compete with tab colors
+ * - Darker header stripe creates visual hierarchy within cards
+ * - Content area uses standard gray palette
  * 
- * Tab Identity: Overview = primary (blue) - first in tab progression
- * Card Colors: Each card gets its own identity color via icon-badge
+ * Visual Reference:
+ * ┌─────────────────────────────────────────────────────────────┐
+ * │ [Gray Icon] Card Title                          │ Header   │
+ * ├─────────────────────────────────────────────────────────────┤
+ * │                                                             │
+ * │   Card content in gray palette                              │
+ * │                                                             │
+ * └─────────────────────────────────────────────────────────────┘
  * 
- * Grid: 2 columns on tablet+, single column mobile
+ * Grid: 1 col mobile → 2 cols tablet → 3 cols desktop
  * =============================================================================
  */
 
@@ -35,32 +41,48 @@ interface OverviewProps {
 }
 
 // ============================================================================
-// DASHBOARD CARD COMPONENT (Using .card class from index.css)
+// VIEWER CARD COMPONENT - Neutral palette, header stripe
 // ============================================================================
-interface DashboardCardProps {
-  iconBadgeClass: string;  // e.g., "icon-badge-rose", "icon-badge-primary"
+interface ViewerCardProps {
   icon: React.ElementType;
   title: string;
   children: React.ReactNode;
+  stat?: string | number;  // Optional stat badge in header
+  statLabel?: string;
 }
 
-const DashboardCard: React.FC<DashboardCardProps> = ({
-  iconBadgeClass,
+const ViewerCard: React.FC<ViewerCardProps> = ({
   icon: Icon,
   title,
   children,
+  stat,
+  statLabel,
 }) => {
   return (
-    <div className="card p-4">
-      {/* Header: Icon Badge + Title */}
-      <div className="flex items-center gap-3 mb-3">
-        <div className={iconBadgeClass}>
-          <Icon />
+    <div className="card overflow-hidden">
+      {/* Header Bar - Darker stripe with gray icon */}
+      <div className="flex items-center justify-between gap-3 px-4 py-3 bg-gray-800/70 border-b border-gray-700/50">
+        <div className="flex items-center gap-3">
+          {/* Gray Icon Box - doesn't compete with tabs */}
+          <div className="w-8 h-8 rounded-lg bg-gray-700/60 flex items-center justify-center">
+            <Icon className="w-4 h-4 text-gray-400" />
+          </div>
+          <h3 className="text-sm font-medium text-white">{title}</h3>
         </div>
-        <h3 className="text-sm font-medium text-white">{title}</h3>
+        
+        {/* Optional Stat Badge */}
+        {stat !== undefined && (
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-gray-700/50">
+            <span className="text-sm font-medium text-gray-300">{stat}</span>
+            {statLabel && (
+              <span className="text-xs text-gray-500">{statLabel}</span>
+            )}
+          </div>
+        )}
       </div>
-      {/* Content: Gray palette */}
-      <div className="text-sm text-gray-400">
+      
+      {/* Content Area */}
+      <div className="p-4 text-sm text-gray-400">
         {children}
       </div>
     </div>
@@ -106,13 +128,12 @@ export const Overview: React.FC<OverviewProps> = ({ recipe }) => {
       {/* ================================================================
        * DASHBOARD CARD GRID
        * Mobile: 1 col | Tablet: 2 cols | Desktop: 3 cols
-       * Tab identity comes from the tab bar - no subheader needed here
+       * Tab identity comes from the tab bar - cards stay neutral
        * ================================================================ */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         
-        {/* ALLERGENS - Rose identity */}
-        <DashboardCard 
-          iconBadgeClass="icon-badge-rose" 
+        {/* ALLERGENS */}
+        <ViewerCard 
           icon={AlertTriangle} 
           title="Allergens"
         >
@@ -150,35 +171,32 @@ export const Overview: React.FC<OverviewProps> = ({ recipe }) => {
               )}
             </div>
           ) : (
-            <span className="text-gray-500">No allergens flagged</span>
+            <span className="text-gray-500">No allergens declared</span>
           )}
-        </DashboardCard>
+        </ViewerCard>
 
-        {/* DESCRIPTION - Primary (tab identity) */}
+        {/* DESCRIPTION */}
         {recipe.description && (
-          <DashboardCard 
-            iconBadgeClass="icon-badge-primary" 
+          <ViewerCard 
             icon={Book} 
             title="Description"
           >
             <p className="leading-relaxed">{recipe.description}</p>
-          </DashboardCard>
+          </ViewerCard>
         )}
 
-        {/* CHEF'S NOTES - Amber */}
+        {/* CHEF'S NOTES */}
         {recipe.production_notes && (
-          <DashboardCard 
-            iconBadgeClass="icon-badge-amber" 
+          <ViewerCard 
             icon={Lightbulb} 
             title="Chef's Notes"
           >
-            <p className="leading-relaxed italic">"{recipe.production_notes}"</p>
-          </DashboardCard>
+            <p className="leading-relaxed italic text-gray-300">"{recipe.production_notes}"</p>
+          </ViewerCard>
         )}
 
-        {/* EQUIPMENT - Emerald */}
-        <DashboardCard 
-          iconBadgeClass="icon-badge-emerald" 
+        {/* EQUIPMENT */}
+        <ViewerCard 
           icon={Wrench} 
           title="Required Equipment"
         >
@@ -194,11 +212,10 @@ export const Overview: React.FC<OverviewProps> = ({ recipe }) => {
           ) : (
             <span className="text-gray-500">No equipment specified</span>
           )}
-        </DashboardCard>
+        </ViewerCard>
 
-        {/* CERTIFICATIONS - Purple */}
-        <DashboardCard 
-          iconBadgeClass="icon-badge-purple" 
+        {/* CERTIFICATIONS */}
+        <ViewerCard 
           icon={Shield} 
           title="Required Certifications"
         >
@@ -214,12 +231,11 @@ export const Overview: React.FC<OverviewProps> = ({ recipe }) => {
           ) : (
             <span className="text-gray-500">No certifications required</span>
           )}
-        </DashboardCard>
+        </ViewerCard>
 
-        {/* LABELING - Gray (neutral utility) */}
+        {/* LABELING */}
         {(hasLabelRequirements || useLabelPrinter) && (
-          <DashboardCard 
-            iconBadgeClass="icon-badge-gray" 
+          <ViewerCard 
             icon={Printer} 
             title="Label Requirements"
           >
@@ -258,7 +274,7 @@ export const Overview: React.FC<OverviewProps> = ({ recipe }) => {
                 </button>
               )}
             </div>
-          </DashboardCard>
+          </ViewerCard>
         )}
       </div>
     </div>

@@ -146,7 +146,7 @@ export const IngredientFlipCard: React.FC<IngredientFlipCardProps> = ({
         {/* ================================================================ */}
         <div
           className={`absolute inset-0 rounded-xl overflow-hidden border shadow-lg flex flex-col ${
-            isChecked ? "border-green-500/50" : "border-gray-700/50"
+            isChecked ? "border-emerald-500/50" : "border-gray-700/50"
           }`}
           style={{ backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden" }}
         >
@@ -197,7 +197,7 @@ export const IngredientFlipCard: React.FC<IngredientFlipCardProps> = ({
             )}
             {isChecked && (
               <div className="absolute inset-0 flex items-center justify-center bg-gray-900/70">
-                <div className="w-16 h-16 rounded-full bg-green-500 flex items-center justify-center shadow-xl">
+                <div className="w-16 h-16 rounded-full bg-emerald-500 flex items-center justify-center shadow-xl">
                   <Check className="w-10 h-10 text-white" strokeWidth={2.5} />
                 </div>
               </div>
@@ -206,7 +206,7 @@ export const IngredientFlipCard: React.FC<IngredientFlipCardProps> = ({
 
           {/* BOTTOM LETTERBOX - Quantity + Name */}
           <div className="bg-gray-900 px-3 py-3">
-            <p className={`text-xl font-bold tabular-nums leading-none ${isChecked ? "text-green-400" : "text-white"}`}>
+            <p className={`text-xl font-bold tabular-nums leading-none ${isChecked ? "text-emerald-400" : "text-white"}`}>
               {quantityDisplay}
             </p>
             <h3 className={`text-sm font-medium leading-tight mt-1.5 line-clamp-2 ${isChecked ? "text-gray-500 line-through" : "text-gray-300"}`}>
@@ -233,10 +233,10 @@ export const IngredientFlipCard: React.FC<IngredientFlipCardProps> = ({
               {/* Status Badge - L5 Round */}
               <div
                 className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ml-2 ${
-                  isChecked ? "bg-green-500/20" : "bg-gray-500/20"
+                  isChecked ? "bg-emerald-500/20" : "bg-gray-500/20"
                 }`}
               >
-                <CheckCircle className={`w-3.5 h-3.5 ${isChecked ? "text-green-400" : "text-gray-400"}`} />
+                <CheckCircle className={`w-3.5 h-3.5 ${isChecked ? "text-emerald-400" : "text-gray-400"}`} />
               </div>
             </div>
 
@@ -246,8 +246,8 @@ export const IngredientFlipCard: React.FC<IngredientFlipCardProps> = ({
                 {/* Location */}
                 <div>
                   <div className="text-[10px] font-bold text-gray-500 flex items-center gap-1.5 mb-1">
-                    <span className="w-5 h-5 rounded-md bg-slate-700/50 flex items-center justify-center">
-                      <MapPin className="w-3 h-3 text-slate-400" />
+                    <span className="w-5 h-5 rounded-md bg-gray-700/50 flex items-center justify-center">
+                      <MapPin className="w-3 h-3 text-gray-400" />
                     </span>
                     LOCATION
                   </div>
@@ -259,8 +259,8 @@ export const IngredientFlipCard: React.FC<IngredientFlipCardProps> = ({
                 {/* Prep State */}
                 <div>
                   <div className="text-[10px] font-bold text-gray-500 flex items-center gap-1.5 mb-1">
-                    <span className="w-5 h-5 rounded-md bg-slate-700/50 flex items-center justify-center">
-                      <Thermometer className="w-3 h-3 text-slate-400" />
+                    <span className="w-5 h-5 rounded-md bg-gray-700/50 flex items-center justify-center">
+                      <Thermometer className="w-3 h-3 text-gray-400" />
                     </span>
                     PREP STATE
                   </div>
@@ -274,8 +274,8 @@ export const IngredientFlipCard: React.FC<IngredientFlipCardProps> = ({
                 {/* Quantity */}
                 <div>
                   <div className="text-[10px] font-bold text-gray-500 flex items-center gap-1.5 mb-1">
-                    <span className="w-5 h-5 rounded-md bg-slate-700/50 flex items-center justify-center">
-                      <Scale className="w-3 h-3 text-slate-400" />
+                    <span className="w-5 h-5 rounded-md bg-gray-700/50 flex items-center justify-center">
+                      <Scale className="w-3 h-3 text-gray-400" />
                     </span>
                     QUANTITY
                   </div>
@@ -287,8 +287,8 @@ export const IngredientFlipCard: React.FC<IngredientFlipCardProps> = ({
                 {/* Lead Time */}
                 <div>
                   <div className="text-[10px] font-bold text-gray-500 flex items-center gap-1.5 mb-1">
-                    <span className="w-5 h-5 rounded-md bg-slate-700/50 flex items-center justify-center">
-                      <Clock className="w-3 h-3 text-slate-400" />
+                    <span className="w-5 h-5 rounded-md bg-gray-700/50 flex items-center justify-center">
+                      <Clock className="w-3 h-3 text-gray-400" />
                     </span>
                     LEAD TIME
                   </div>
@@ -318,10 +318,10 @@ export const IngredientFlipCard: React.FC<IngredientFlipCardProps> = ({
               {/* Allergens - L5 Style (matches RecipeFlipCard) */}
               <div className="pt-2 border-t border-gray-700/50">
                 <div className="flex items-center gap-1.5 mb-2">
-                  <span className="w-5 h-5 rounded-md bg-primary-500/20 flex items-center justify-center">
-                    <AlertTriangle className="w-3 h-3 text-primary-400" />
+                  <span className="w-5 h-5 rounded-md bg-gray-700/50 flex items-center justify-center">
+                    <AlertTriangle className="w-3 h-3 text-gray-400" />
                   </span>
-                  <span className="text-[10px] font-bold text-primary-400/80">
+                  <span className="text-[10px] font-bold text-gray-500">
                     ALLERGENS
                   </span>
                 </div>
@@ -332,7 +332,7 @@ export const IngredientFlipCard: React.FC<IngredientFlipCardProps> = ({
                       return (
                         <span
                           key={allergen}
-                          className="text-xs font-semibold text-primary-300 px-2 py-1 bg-primary-500/20 rounded-lg border border-primary-500/40"
+                          className="text-xs font-semibold text-amber-300 px-2 py-1 bg-amber-500/20 rounded-lg border border-amber-500/40"
                         >
                           {label}
                         </span>
@@ -353,8 +353,8 @@ export const IngredientFlipCard: React.FC<IngredientFlipCardProps> = ({
               onClick={handleCheck}
               className={`mt-3 w-full flex justify-center py-2 px-3 rounded-lg transition-colors text-xs font-medium items-center gap-2 ${
                 isChecked
-                  ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                  : "bg-gray-700/70 hover:bg-primary-800/80 text-gray-300 hover:text-white"
+                  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                  : "bg-gray-700/70 hover:bg-gray-600/80 text-gray-300 hover:text-white"
               }`}
             >
               <Check className="w-3.5 h-3.5" />
