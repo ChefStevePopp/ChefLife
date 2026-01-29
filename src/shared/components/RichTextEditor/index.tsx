@@ -23,6 +23,12 @@
  * Default blocks include: Pro Tip, Caution, Critical, Info, FIFO, Temperature
  * Restaurants can add/remove/customize blocks to match their kitchen culture.
  * 
+ * SLASH MENU POSITIONING:
+ * - Detects available space below cursor
+ * - Flips to appear ABOVE cursor if near bottom of screen
+ * - Accounts for floating action bar (120px safe zone)
+ * - z-index: 100 to ensure visibility above all overlays
+ * 
  * USAGE:
  *   <RichTextEditor
  *     content={step.instruction}
@@ -194,16 +200,20 @@ const ToolbarDivider: React.FC = () => (
 
 // ============================================================================
 // SLASH COMMAND MENU
+// Smart positioning: flips above cursor if near bottom of screen
 // ============================================================================
 
 interface SlashMenuProps {
   editor: any;
   isOpen: boolean;
   onClose: () => void;
-  position: { top: number; left: number };
+  position: { top: number; left: number; bottom: number };
   insertCallout: (type: CalloutType) => void;
   calloutBlocks: InstructionBlockTemplate[];
 }
+
+const MENU_HEIGHT = 320; // max-h-80 = 20rem = 320px
+const BOTTOM_SAFE_ZONE = 120; // Space for floating action bar + padding
 
 const SlashMenu: React.FC<SlashMenuProps> = ({ 
   editor, 
@@ -327,11 +337,25 @@ const SlashMenu: React.FC<SlashMenuProps> = ({
 
   if (!isOpen) return null;
 
+  // Calculate whether to show menu above or below cursor
+  const viewportHeight = window.innerHeight;
+  const spaceBelow = viewportHeight - position.top - BOTTOM_SAFE_ZONE;
+  const showAbove = spaceBelow < MENU_HEIGHT;
+  
+  // Position the menu
+  const menuStyle: React.CSSProperties = {
+    left: Math.min(position.left, window.innerWidth - 300), // Keep within viewport
+    ...(showAbove 
+      ? { bottom: viewportHeight - position.bottom + 8 } 
+      : { top: position.top }
+    ),
+  };
+
   return (
     <div
       ref={menuRef}
-      className="slash-menu fixed z-50 w-72 max-h-80 overflow-y-auto bg-gray-800 border border-gray-700 rounded-xl shadow-2xl"
-      style={{ top: position.top, left: position.left }}
+      className="slash-menu fixed z-[100] w-72 max-h-80 overflow-y-auto bg-gray-800 border border-gray-700 rounded-xl shadow-2xl"
+      style={menuStyle}
     >
       <div className="p-2 border-b border-gray-700/50">
         <div className="text-xs text-gray-500 px-2 pb-1">Insert block</div>
@@ -385,7 +409,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   disabled = false,
 }) => {
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
-  const [slashMenuPosition, setSlashMenuPosition] = useState({ top: 0, left: 0 });
+  const [slashMenuPosition, setSlashMenuPosition] = useState({ top: 0, left: 0, bottom: 0 });
   const editorRef = useRef<HTMLDivElement>(null);
 
   // Load active instruction blocks from config
@@ -437,9 +461,13 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
       const textBefore = $from.parent.textContent.slice(0, $from.parentOffset);
       
       if (textBefore.endsWith('/')) {
-        // Open slash menu
+        // Open slash menu - get both top and bottom for smart positioning
         const coords = editor.view.coordsAtPos($from.pos);
-        setSlashMenuPosition({ top: coords.bottom + 8, left: coords.left });
+        setSlashMenuPosition({ 
+          top: coords.bottom + 8, 
+          left: coords.left,
+          bottom: coords.top, // cursor top = where to anchor if showing above
+        });
         setSlashMenuOpen(true);
       } else if (!textBefore.includes('/')) {
         setSlashMenuOpen(false);
@@ -734,7 +762,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
       </BubbleMenu>
 
       {/* ================================================================
-       * SLASH COMMAND MENU
+       * SLASH COMMAND MENU - Smart positioning
        * ================================================================ */}
       <SlashMenu
         editor={editor}

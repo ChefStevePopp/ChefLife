@@ -4,10 +4,10 @@ import {
   Plus,
   ChevronLeft,
   ChevronRight,
-  Save,
   ArrowUp,
   ArrowDown,
   Layers,
+  ChevronDown,
 } from "lucide-react";
 import { supabase } from "@/config/supabase";
 import { useDiagnostics } from "@/hooks/useDiagnostics";
@@ -25,7 +25,8 @@ import StageList from "./StageList";
  * 
  * DESIGN PHILOSOPHY:
  * - One step at a time = focused editing
- * - Horizontal carousel navigation (no vertical scroll)
+ * - Navigation row = NAVIGATION ONLY (Previous/Next/Move)
+ * - Save actions in parent's floating action bar (not duplicated here)
  * - Big touch targets for iPad (44px minimum)
  * - Amber color scheme (Method tab identity)
  * 
@@ -34,6 +35,11 @@ import StageList from "./StageList";
  * - Stages can be flagged as Prep List Tasks
  * - When building prep lists, entire stages drag as units
  * - Individual steps inherit prep list status from their stage
+ * 
+ * SAVE BEHAVIOR:
+ * - Changes auto-persist via onChange (controlled component)
+ * - Parent's "Save Changes" button commits to database
+ * - No redundant save buttons in this component
  * =============================================================================
  */
 
@@ -142,20 +148,6 @@ export const InstructionEditor: React.FC<InstructionEditorProps> = ({
     if (currentStepIndex < totalSteps - 1) {
       setCurrentStepIndex(currentStepIndex + 1);
     }
-  };
-
-  const saveAndNext = () => {
-    if (currentStepIndex < totalSteps - 1) {
-      setCurrentStepIndex(currentStepIndex + 1);
-    } else {
-      // On last step - add new step
-      addStep(currentStep?.stage_id);
-    }
-  };
-
-  const saveCurrentStep = () => {
-    // Changes are already persisted via onChange - just show confirmation
-    toast.success(`Step ${currentStepIndex + 1} saved`);
   };
 
   // ============================================================================
@@ -279,7 +271,7 @@ export const InstructionEditor: React.FC<InstructionEditorProps> = ({
       <StageList recipe={recipe} onChange={onChange} />
 
       {/* ================================================================
-       * CAROUSEL HEADER - Step counter, navigation, actions
+       * CAROUSEL HEADER - Step counter + Add Step
        * Amber color scheme (Method tab identity)
        * ================================================================ */}
       <div className="card overflow-hidden">
@@ -308,7 +300,8 @@ export const InstructionEditor: React.FC<InstructionEditorProps> = ({
         </div>
 
         {/* ================================================================
-         * CAROUSEL NAVIGATION - Big touch targets
+         * CAROUSEL NAVIGATION - Navigation ONLY (no save buttons)
+         * Save is handled by parent's floating action bar
          * ================================================================ */}
         {totalSteps > 0 && (
           <div className="flex items-center justify-between px-4 py-3 bg-gray-800/40 border-b border-gray-700/30">
@@ -322,7 +315,7 @@ export const InstructionEditor: React.FC<InstructionEditorProps> = ({
               <span className="text-sm text-gray-300 hidden sm:inline">Previous</span>
             </button>
 
-            {/* Center - Reorder + Step dots + Reorder */}
+            {/* Center - Reorder + Step dots */}
             <div className="flex items-center gap-3">
               {/* Move Earlier pill */}
               {totalSteps > 1 && (
@@ -330,10 +323,11 @@ export const InstructionEditor: React.FC<InstructionEditorProps> = ({
                   onClick={moveStepUp}
                   disabled={currentStepIndex === 0}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-700/40 hover:bg-gray-700/60 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-sm"
+                  title="Move step earlier"
                 >
                   <ArrowUp className="w-3.5 h-3.5 text-gray-400" />
                   <span className="text-gray-300 hidden sm:inline">
-                    {currentStepIndex > 0 ? `Move back to Step ${currentStepIndex}` : 'First'}
+                    Move back to Step {currentStepIndex}
                   </span>
                 </button>
               )}
@@ -363,9 +357,10 @@ export const InstructionEditor: React.FC<InstructionEditorProps> = ({
                   onClick={moveStepDown}
                   disabled={currentStepIndex >= totalSteps - 1}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-700/40 hover:bg-gray-700/60 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-sm"
+                  title="Move step later"
                 >
                   <span className="text-gray-300 hidden sm:inline">
-                    {currentStepIndex < totalSteps - 1 ? `Move to Step ${currentStepIndex + 2}` : 'Last'}
+                    Move to Step {currentStepIndex + 2}
                   </span>
                   <ArrowDown className="w-3.5 h-3.5 text-gray-400" />
                 </button>
@@ -373,33 +368,14 @@ export const InstructionEditor: React.FC<InstructionEditorProps> = ({
             </div>
 
             {/* Right Nav */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={goToNextStep}
-                disabled={currentStepIndex >= totalSteps - 1}
-                className="flex items-center gap-2 px-4 py-3 rounded-lg bg-gray-700/50 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors min-h-[44px]"
-              >
-                <span className="text-sm text-gray-300 hidden sm:inline">Next</span>
-                <ChevronRight className="w-5 h-5 text-gray-300" />
-              </button>
-              <button
-                onClick={saveCurrentStep}
-                className="flex items-center gap-2 px-4 py-3 rounded-lg bg-gray-700/50 hover:bg-emerald-500/20 text-gray-300 hover:text-emerald-400 transition-colors min-h-[44px]"
-                title="Save and stay on this step"
-              >
-                <Save className="w-4 h-4" />
-                <span className="text-sm hidden sm:inline">Save</span>
-              </button>
-              <button
-                onClick={saveAndNext}
-                className="flex items-center gap-2 px-4 py-3 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 transition-colors min-h-[44px]"
-              >
-                <ChevronRight className="w-4 h-4" />
-                <span className="text-sm hidden sm:inline">
-                  {currentStepIndex >= totalSteps - 1 ? 'Save & Add' : 'Save & Next'}
-                </span>
-              </button>
-            </div>
+            <button
+              onClick={goToNextStep}
+              disabled={currentStepIndex >= totalSteps - 1}
+              className="flex items-center gap-2 px-4 py-3 rounded-lg bg-gray-700/50 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors min-h-[44px]"
+            >
+              <span className="text-sm text-gray-300 hidden sm:inline">Next</span>
+              <ChevronRight className="w-5 h-5 text-gray-300" />
+            </button>
           </div>
         )}
 
@@ -456,7 +432,7 @@ export const InstructionEditor: React.FC<InstructionEditorProps> = ({
                   </p>
                 </div>
               </div>
-              <ChevronRight className={`w-5 h-5 text-gray-500 transition-transform ${isOverviewExpanded ? 'rotate-90' : ''}`} />
+              <ChevronDown className={`w-5 h-5 text-gray-500 transition-transform ${isOverviewExpanded ? 'rotate-180' : ''}`} />
             </div>
           </button>
 
