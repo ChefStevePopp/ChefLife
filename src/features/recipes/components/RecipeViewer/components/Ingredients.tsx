@@ -274,11 +274,15 @@ export const Ingredients: React.FC<IngredientsProps> = ({ recipe }) => {
       </div>
 
       {/* ================================================================
-       * INGREDIENT GRID - Flip Cards (matches Recipe Library layout)
-       * Same breakpoints as RecipeViewer for visual consistency
+       * INGREDIENT GRID - Flip Cards (Auto-responsive)
+       * Uses CSS Grid auto-fill for automatic column count
+       * Cards maintain 9:16 aspect ratio, min 180px width
        * ================================================================ */}
       {recipe.ingredients && recipe.ingredients.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 min-[1920px]:grid-cols-4 gap-6">
+        <div 
+          className="grid gap-4"
+          style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}
+        >
           {ingredientsWithMaster.map(({ ingredient, masterInfo, allergens }) => {
             const isChecked = checkedItems.has(ingredient.id);
             const scaledMeasure = scaleCommonMeasure(ingredient.common_measure || ingredient.commonMeasure);
@@ -293,17 +297,18 @@ export const Ingredients: React.FC<IngredientsProps> = ({ recipe }) => {
                 : [];
             
             return (
-              <IngredientFlipCard
-                key={ingredient.id}
-                ingredient={{
-                  ...ingredient,
-                  allergens: ingredientAllergens,
-                }}
-                masterInfo={masterInfo}
-                scaledMeasure={scaledMeasure}
-                isChecked={isChecked}
-                onToggleCheck={() => toggleChecked(ingredient.id)}
-              />
+              <div key={ingredient.id} className="aspect-[9/16]">
+                <IngredientFlipCard
+                  ingredient={{
+                    ...ingredient,
+                    allergens: ingredientAllergens,
+                  }}
+                  masterInfo={masterInfo}
+                  scaledMeasure={scaledMeasure}
+                  isChecked={isChecked}
+                  onToggleCheck={() => toggleChecked(ingredient.id)}
+                />
+              </div>
             );
           })}
         </div>

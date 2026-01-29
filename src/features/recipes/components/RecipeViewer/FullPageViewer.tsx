@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ChevronLeft,
   Printer,
@@ -393,9 +393,13 @@ const TabBar: React.FC<TabBarProps> = ({ activeTab, onTabChange }) => {
 interface TabContentProps {
   activeTab: TabId;
   recipe: Recipe;
+  /** Initial view mode from URL params (for Method tab) */
+  methodMode?: 'guided' | 'focus' | null;
+  /** Initial page for Guided mode (0=cover, 1=ingredients, 2+=steps) */
+  methodPage?: number | null;
 }
 
-const TabContent: React.FC<TabContentProps> = ({ activeTab, recipe }) => {
+const TabContent: React.FC<TabContentProps> = ({ activeTab, recipe, methodMode, methodPage }) => {
   const [displayedTab, setDisplayedTab] = useState(activeTab);
   const [isTransitioning, setIsTransitioning] = useState(false);
 
@@ -442,7 +446,7 @@ const TabContent: React.FC<TabContentProps> = ({ activeTab, recipe }) => {
       case "ingredients":
         return <Ingredients recipe={recipe} />;
       case "method":
-        return <Method recipe={recipe} />;
+        return <Method recipe={recipe} initialMode={methodMode} initialPage={methodPage} />;
       case "production":
         return <Production recipe={recipe} />;
       case "storage":
@@ -484,10 +488,28 @@ const TabContent: React.FC<TabContentProps> = ({ activeTab, recipe }) => {
 // ============================================================================
 export const FullPageViewer: React.FC = () => {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { recipes, fetchRecipes } = useRecipeStore();
   const { showDiagnostics } = useDiagnostics();
-  const [activeTab, setActiveTab] = useState<TabId>("overview");
+  
+  // URL params for deep linking
+  // ?mode=guided or ?mode=focus -> opens Method tab in that mode
+  // ?tab=method -> opens Method tab
+  // ?start=2 -> starts Guided mode at page 2 (step 1)
+  const urlMode = searchParams.get('mode') as 'guided' | 'focus' | null;
+  const urlTab = searchParams.get('tab') as TabId | null;
+  const urlStart = searchParams.get('start');
+  const initialPage = urlStart ? parseInt(urlStart, 10) : null;
+  
+  // Determine initial tab: if mode is set, go to method tab
+  const getInitialTab = (): TabId => {
+    if (urlMode === 'guided' || urlMode === 'focus') return 'method';
+    if (urlTab && VIEWER_TABS.some(t => t.id === urlTab)) return urlTab;
+    return 'overview';
+  };
+  
+  const [activeTab, setActiveTab] = useState<TabId>(getInitialTab());
   const [isLoading, setIsLoading] = useState(true);
 
   // Load recipes
@@ -559,7 +581,12 @@ export const FullPageViewer: React.FC = () => {
       <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
 
       {/* Tab Content with Premium Morph */}
-      <TabContent activeTab={activeTab} recipe={recipe} />
+      <TabContent 
+        activeTab={activeTab} 
+        recipe={recipe} 
+        methodMode={urlMode}
+        methodPage={initialPage}
+      />
 
       {/* Print-only Header */}
       <div className="hidden print:block p-6 border-b-2 border-gray-300">

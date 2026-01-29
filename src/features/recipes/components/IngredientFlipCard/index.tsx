@@ -130,12 +130,11 @@ export const IngredientFlipCard: React.FC<IngredientFlipCardProps> = ({
   };
 
   return (
-    <div className="group" style={{ perspective: "1000px" }}>
+    <div className="group h-full w-full" style={{ perspective: "1000px" }}>
       <div
         onClick={handleFlip}
-        className="relative w-full cursor-pointer group-hover:[transform:rotateY(180deg)]"
+        className="relative w-full h-full cursor-pointer group-hover:[transform:rotateY(180deg)] card-responsive"
         style={{
-          aspectRatio: "9 / 16",
           transformStyle: "preserve-3d",
           transform: isFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
           transition: "transform 500ms cubic-bezier(0.33, 1, 0.68, 1)",
@@ -151,9 +150,9 @@ export const IngredientFlipCard: React.FC<IngredientFlipCardProps> = ({
           style={{ backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden" }}
         >
           {/* TOP LETTERBOX - Allergens */}
-          <div className="bg-gray-900 px-3 py-2 flex items-center min-h-[44px]">
+          <div className="bg-gray-900 card-letterbox flex items-center flex-shrink-0">
             {allergens.length > 0 ? (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1 flex-wrap">
                 {allergens.slice(0, 5).map((allergen) => {
                   const Icon = getAllergenIcon(allergen);
                   const colors = getAllergenColors(allergen);
@@ -161,21 +160,23 @@ export const IngredientFlipCard: React.FC<IngredientFlipCardProps> = ({
                   return (
                     <div
                       key={allergen}
-                      className={`w-7 h-7 rounded-full ${colors.bg} flex items-center justify-center`}
+                      className={`card-allergen-badge rounded-full ${colors.bg} flex items-center justify-center`}
                       title={allergen.replace('_', ' ')}
                     >
-                      <Icon className={`w-4 h-4 ${colors.text}`} />
+                      <Icon className={colors.text} />
                     </div>
                   );
                 })}
                 {allergens.length > 5 && (
-                  <span className="text-xs text-gray-500 ml-1">+{allergens.length - 5}</span>
+                  <span className="card-allergen-text text-gray-500 ml-1">+{allergens.length - 5}</span>
                 )}
               </div>
             ) : (
-              <div className="flex items-center gap-1.5 text-gray-600">
-                <CheckCircle className="w-4 h-4" />
-                <span className="text-[10px] uppercase tracking-wide">No Allergens Declared</span>
+              <div className="flex items-center gap-1 text-emerald-400">
+                <div className="card-allergen-badge rounded-full bg-emerald-500/20 flex items-center justify-center">
+                  <CheckCircle />
+                </div>
+                <span className="card-allergen-text uppercase tracking-wide">None Defined</span>
               </div>
             )}
           </div>
@@ -205,11 +206,11 @@ export const IngredientFlipCard: React.FC<IngredientFlipCardProps> = ({
           </div>
 
           {/* BOTTOM LETTERBOX - Quantity + Name */}
-          <div className="bg-gray-900 px-3 py-3">
-            <p className={`text-xl font-bold tabular-nums leading-none ${isChecked ? "text-emerald-400" : "text-white"}`}>
+          <div className="bg-gray-900 card-letterbox flex-shrink-0">
+            <p className={`card-quantity tabular-nums ${isChecked ? "text-emerald-400" : "text-white"}`}>
               {quantityDisplay}
             </p>
-            <h3 className={`text-sm font-medium leading-tight mt-1.5 line-clamp-2 ${isChecked ? "text-gray-500 line-through" : "text-gray-300"}`}>
+            <h3 className={`card-name mt-1 line-clamp-2 ${isChecked ? "text-gray-500 line-through" : "text-gray-300"}`}>
               {ingredientName}
             </h3>
           </div>

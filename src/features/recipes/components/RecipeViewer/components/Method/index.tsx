@@ -7,31 +7,19 @@
  *
  * 1. COMPACT MODE (default)
  *    - Dense accordion cards for daily kitchen ops
- *    - Quick reference, minimal scrolling
- *    - Functional, get-it-done aesthetic
  *
  * 2. GUIDED MODE (magazine style)
  *    - HORIZONTAL SIDE-SCROLLING like a cookbook
- *    - Starts INLINE in content area
- *    - Optional fullscreen with F key or button
- *    - L5 SUBTLE GREY PALETTE - images are the star
+ *    - Optional fullscreen with F key or button (CSS-based)
  *
  * 3. FOCUS MODE (fullscreen)
  *    - One step at a time, immersive
- *    - IMMEDIATELY enters fullscreen on click
- *    - Timer + navigation in bottom action bar
- *    - Designed for wet/floury hands during cooking
- *
- * L5 COLOR PHILOSOPHY:
- * - Food photos are the HERO - UI gets out of the way
- * - Subtle grey palette: neutral-950, neutral-900, neutral-800
- * - Brand amber ONLY for navigation accents
- * - Elegant restraint over visual noise
+ *    - Uses browser fullscreen API
  *
  * =============================================================================
  */
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Book, Timer, ListOrdered, ShieldAlert } from 'lucide-react';
 import { useDiagnostics } from '@/hooks/useDiagnostics';
 import { getActiveInstructionBlocks } from '@/features/recipes/hooks/useRecipeConfig';
@@ -52,13 +40,15 @@ import { formatDuration, calculateTotalTime, type ViewMode } from './shared';
 
 interface MethodProps {
   recipe: Recipe;
+  /** Initial view mode from URL params (guided, focus) */
+  initialMode?: ViewMode | null;
+  /** Initial page for Guided mode (0=cover, 1=ingredients, 2+=steps) */
+  initialPage?: number | null;
 }
 
-export const Method: React.FC<MethodProps> = ({ recipe }) => {
+export const Method: React.FC<MethodProps> = ({ recipe, initialMode, initialPage }) => {
   const { showDiagnostics } = useDiagnostics();
-  const [viewMode, setViewMode] = useState<ViewMode>('compact');
-  const [guidedFullscreen, setGuidedFullscreen] = useState(false);
-  const guidedContainerRef = useRef<HTMLDivElement>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>(initialMode || 'compact');
 
   const blocks = useMemo(() => getActiveInstructionBlocks(), []);
   const hasSteps = recipe.steps && recipe.steps.length > 0;
@@ -68,57 +58,6 @@ export const Method: React.FC<MethodProps> = ({ recipe }) => {
     if (!hasSteps) return 0;
     return recipe.steps.filter(s => s.is_critical_control_point || s.is_quality_control_point).length;
   }, [recipe.steps, hasSteps]);
-
-  // Guided fullscreen handlers
-  const enterGuidedFullscreen = useCallback(async () => {
-    try {
-      if (guidedContainerRef.current?.requestFullscreen) {
-        await guidedContainerRef.current.requestFullscreen();
-        setGuidedFullscreen(true);
-      } else if ((guidedContainerRef.current as any)?.webkitRequestFullscreen) {
-        await (guidedContainerRef.current as any).webkitRequestFullscreen();
-        setGuidedFullscreen(true);
-      }
-    } catch (err) {
-      console.warn('Fullscreen not supported:', err);
-    }
-  }, []);
-
-  const exitGuidedFullscreen = useCallback(async () => {
-    try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else if ((document as any).webkitExitFullscreen) await (document as any).webkitExitFullscreen();
-      setGuidedFullscreen(false);
-    } catch (err) {}
-  }, []);
-
-  const toggleGuidedFullscreen = useCallback(() => {
-    if (guidedFullscreen) {
-      exitGuidedFullscreen();
-    } else {
-      enterGuidedFullscreen();
-    }
-  }, [guidedFullscreen, enterGuidedFullscreen, exitGuidedFullscreen]);
-
-  // Handle fullscreen change events for guided mode
-  useEffect(() => {
-    const handleChange = () => {
-      const isNow = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
-      setGuidedFullscreen(isNow);
-    };
-    document.addEventListener('fullscreenchange', handleChange);
-    document.addEventListener('webkitfullscreenchange', handleChange);
-    return () => {
-      document.removeEventListener('fullscreenchange', handleChange);
-      document.removeEventListener('webkitfullscreenchange', handleChange);
-    };
-  }, []);
-
-  // Close guided mode
-  const closeGuidedMode = useCallback(async () => {
-    await exitGuidedFullscreen();
-    setViewMode('compact');
-  }, [exitGuidedFullscreen]);
 
   return (
     <>
@@ -174,17 +113,14 @@ export const Method: React.FC<MethodProps> = ({ recipe }) => {
         {/* COMPACT MODE */}
         {viewMode === 'compact' && hasSteps && <CompactView recipe={recipe} blocks={blocks} />}
 
-        {/* GUIDED MODE - Inline */}
-        {viewMode === 'guided' && hasSteps && !guidedFullscreen && (
-          <div ref={guidedContainerRef}>
-            <GuidedView
-              recipe={recipe}
-              blocks={blocks}
-              isFullscreen={false}
-              onToggleFullscreen={toggleGuidedFullscreen}
-              onClose={closeGuidedMode}
-            />
-          </div>
+        {/* GUIDED MODE - handles its own fullscreen internally */}
+        {viewMode === 'guided' && hasSteps && (
+          <GuidedView
+            recipe={recipe}
+            blocks={blocks}
+            initialPage={initialPage}
+            onClose={() => setViewMode('compact')}
+          />
         )}
 
         {/* Empty State */}
@@ -196,22 +132,14 @@ export const Method: React.FC<MethodProps> = ({ recipe }) => {
         )}
       </div>
 
-      {/* GUIDED MODE - Fullscreen Portal */}
-      {viewMode === 'guided' && hasSteps && guidedFullscreen && (
-        <div ref={guidedContainerRef} className="fixed inset-0 z-50">
-          <GuidedView
-            recipe={recipe}
-            blocks={blocks}
-            isFullscreen={true}
-            onToggleFullscreen={toggleGuidedFullscreen}
-            onClose={closeGuidedMode}
-          />
-        </div>
-      )}
-
-      {/* FOCUS MODE - Always Fullscreen */}
+      {/* FOCUS MODE - Always Fullscreen (uses browser API) */}
       {viewMode === 'focus' && hasSteps && (
-        <FocusView steps={recipe.steps} recipeName={recipe.name} blocks={blocks} onClose={() => setViewMode('compact')} />
+        <FocusView 
+          steps={recipe.steps} 
+          recipeName={recipe.name} 
+          blocks={blocks} 
+          onClose={() => setViewMode('compact')} 
+        />
       )}
     </>
   );

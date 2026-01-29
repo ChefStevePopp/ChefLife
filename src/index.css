@@ -1411,3 +1411,48 @@ select::-ms-expand {
   max-width: var(--admin-max-width);
   margin-inline: auto;
 }
+
+/* ============================================================================
+   RESPONSIVE FLIP CARD - Container Query Based Scaling
+   ============================================================================
+   Uses CSS container queries to scale text based on card width, not viewport.
+   This ensures text is always readable regardless of how many cards fit.
+   ============================================================================ */
+
+/* Mark card as a container for size queries */
+.card-responsive {
+  container-type: inline-size;
+  container-name: flip-card;
+}
+
+/* Default sizes (smallest cards ~120px) */
+.card-responsive .card-quantity {
+  font-size: clamp(0.875rem, 8cqw, 1.5rem);
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.card-responsive .card-name {
+  font-size: clamp(0.625rem, 5cqw, 0.875rem);
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.card-responsive .card-allergen-badge {
+  width: clamp(1.25rem, 12cqw, 1.75rem);
+  height: clamp(1.25rem, 12cqw, 1.75rem);
+}
+
+.card-responsive .card-allergen-badge svg {
+  width: clamp(0.75rem, 8cqw, 1rem);
+  height: clamp(0.75rem, 8cqw, 1rem);
+}
+
+.card-responsive .card-allergen-text {
+  font-size: clamp(0.5rem, 4cqw, 0.625rem);
+}
+
+/* Letterbox padding scales with card */
+.card-responsive .card-letterbox {
+  padding: clamp(0.375rem, 4cqw, 0.75rem);
+}
