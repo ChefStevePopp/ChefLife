@@ -2,11 +2,6 @@ import React, { useState, useMemo } from "react";
 import {
   Check,
   Package,
-  MapPin,
-  Thermometer,
-  Clock,
-  AlertTriangle,
-  Scale,
   CheckCircle,
 } from "lucide-react";
 import * as Icons from "lucide-react";
@@ -16,16 +11,13 @@ import type { MasterIngredient } from "@/types/master-ingredient";
 
 /**
  * =============================================================================
- * INGREDIENT FLIP CARD - L5 Design (Matches RecipeFlipCard exactly)
+ * INGREDIENT FLIP CARD - L5 Design (Mise en Place)
+ * =============================================================================
+ * Front: Allergen icons, product image, quantity + name
+ * Back: Simplified - name, allergens, "I Have This" button
+ *       No scrolling, no clutter - just confirm and move on
  * =============================================================================
  */
-
-interface ChefNotes {
-  storageLocation?: string;
-  prepState?: string;
-  leadTime?: string;
-  safetyNote?: string;
-}
 
 interface IngredientFlipCardProps {
   ingredient: {
@@ -44,7 +36,6 @@ interface IngredientFlipCardProps {
   scaledMeasure: string | null;
   isChecked: boolean;
   onToggleCheck: () => void;
-  chefNotes?: ChefNotes;
 }
 
 // Allergen color classes (full class names for Tailwind purging)
@@ -79,40 +70,17 @@ const getAllergenColors = (allergenType: string) => {
   return ALLERGEN_COLORS[color] || ALLERGEN_COLORS.gray;
 };
 
-const getMockChefNotes = (ingredientName: string): ChefNotes => {
-  const name = ingredientName?.toLowerCase() || "";
-  
-  if (name.includes("butter")) {
-    return { storageLocation: "Walk-in, Dairy shelf", prepState: "Room temperature", leadTime: "Pull 1 hour before prep" };
-  }
-  if (name.includes("chicken") || name.includes("pork") || name.includes("beef") || name.includes("rib")) {
-    return { storageLocation: "Walk-in, Meat drawer", prepState: "Thawed, patted dry", leadTime: "Pull 30 min before cooking", safetyNote: "Check internal temp" };
-  }
-  if (name.includes("cream") || name.includes("milk")) {
-    return { storageLocation: "Walk-in, Dairy shelf", prepState: "Cold", safetyNote: "Smell check before use" };
-  }
-  if (name.includes("sauce") || name.includes("ketchup") || name.includes("vinegar") || name.includes("beer")) {
-    return { storageLocation: "Line station" };
-  }
-  if (name.includes("spice") || name.includes("rub") || name.includes("seasoning") || name.includes("fire")) {
-    return { storageLocation: "Spice rack", prepState: "Check for clumping" };
-  }
-  return { storageLocation: "Check prep sheet" };
-};
-
 export const IngredientFlipCard: React.FC<IngredientFlipCardProps> = ({
   ingredient,
   masterInfo,
   scaledMeasure,
   isChecked,
   onToggleCheck,
-  chefNotes: providedNotes,
 }) => {
   const [isFlipped, setIsFlipped] = useState(false);
   const [imageError, setImageError] = useState(false);
 
   const ingredientName = ingredient.ingredient_name || masterInfo?.product || ingredient.name || "Ingredient";
-  const chefNotes = providedNotes || getMockChefNotes(ingredientName);
   const allergens = ingredient.allergens || [];
   const quantityDisplay = scaledMeasure || `${ingredient.quantity} ${ingredient.unit}`;
 
@@ -217,149 +185,72 @@ export const IngredientFlipCard: React.FC<IngredientFlipCardProps> = ({
         </div>
 
         {/* ================================================================ */}
-        {/* BACK FACE - L5 Style (matches RecipeFlipCard exactly)            */}
+        {/* BACK FACE - Simplified for Mise en Place                         */}
+        {/* Just: Name confirmation, Allergens, Ready button                 */}
+        {/* Uses same container query pattern as front face                  */}
         {/* ================================================================ */}
         <div
-          className="absolute inset-0 rounded-xl overflow-hidden border border-gray-700/50 shadow-xl bg-gray-800/50"
+          className="absolute inset-0 rounded-xl overflow-hidden border border-gray-700/50 shadow-xl bg-gray-800 card-responsive"
           style={{ backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden", transform: "rotateY(180deg)" }}
         >
-          <div className="h-full flex flex-col p-3 overflow-y-auto scrollbar-thin">
-            {/* Header - Name left, Status right (matches RecipeFlipCard) */}
-            <div className="flex items-start justify-between mb-3 pb-2 border-b border-gray-700/50">
-              <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-bold text-white leading-tight line-clamp-2">
-                  {ingredientName}
-                </h3>
-              </div>
-              {/* Status Badge - L5 Round */}
-              <div
-                className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ml-2 ${
-                  isChecked ? "bg-emerald-500/20" : "bg-gray-500/20"
-                }`}
-              >
-                <CheckCircle className={`w-3.5 h-3.5 ${isChecked ? "text-emerald-400" : "text-gray-400"}`} />
-              </div>
+          <div className="h-full flex flex-col card-back-padding justify-between">
+            {/* Ingredient Name - Confirmation */}
+            <div className="text-center">
+              <h3 className="card-back-name font-bold text-white leading-tight line-clamp-2">
+                {ingredientName}
+              </h3>
+              <p className="card-back-quantity text-gray-400 tabular-nums">
+                {quantityDisplay}
+              </p>
             </div>
 
-            {/* Two-Column Grid - L5 Pattern (matches RecipeFlipCard) */}
-            <div className="flex-1 space-y-2">
-              <div className="grid grid-cols-2 gap-2">
-                {/* Location */}
-                <div>
-                  <div className="text-[10px] font-bold text-gray-500 flex items-center gap-1.5 mb-1">
-                    <span className="w-5 h-5 rounded-md bg-gray-700/50 flex items-center justify-center">
-                      <MapPin className="w-3 h-3 text-gray-400" />
-                    </span>
-                    LOCATION
-                  </div>
-                  <span className={`text-xs ${chefNotes.storageLocation ? 'text-gray-300' : 'text-gray-500 italic'}`}>
-                    {chefNotes.storageLocation || "Unassigned"}
+            {/* Allergens - Centered, prominent */}
+            <div className="flex-1 flex flex-col items-center justify-center card-back-allergen-area">
+              {allergens.length > 0 ? (
+                <>
+                  <span className="card-back-label font-bold text-amber-400/80 uppercase tracking-wider">
+                    Contains Allergens
                   </span>
-                </div>
-
-                {/* Prep State */}
-                <div>
-                  <div className="text-[10px] font-bold text-gray-500 flex items-center gap-1.5 mb-1">
-                    <span className="w-5 h-5 rounded-md bg-gray-700/50 flex items-center justify-center">
-                      <Thermometer className="w-3 h-3 text-gray-400" />
-                    </span>
-                    PREP STATE
-                  </div>
-                  <span className={`text-xs ${chefNotes.prepState ? 'text-gray-300' : 'text-gray-500 italic'}`}>
-                    {chefNotes.prepState || "As received"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                {/* Quantity */}
-                <div>
-                  <div className="text-[10px] font-bold text-gray-500 flex items-center gap-1.5 mb-1">
-                    <span className="w-5 h-5 rounded-md bg-gray-700/50 flex items-center justify-center">
-                      <Scale className="w-3 h-3 text-gray-400" />
-                    </span>
-                    QUANTITY
-                  </div>
-                  <span className="text-xs text-gray-300 font-medium">
-                    {quantityDisplay}
-                  </span>
-                </div>
-
-                {/* Lead Time */}
-                <div>
-                  <div className="text-[10px] font-bold text-gray-500 flex items-center gap-1.5 mb-1">
-                    <span className="w-5 h-5 rounded-md bg-gray-700/50 flex items-center justify-center">
-                      <Clock className="w-3 h-3 text-gray-400" />
-                    </span>
-                    LEAD TIME
-                  </div>
-                  <span className={`text-xs ${chefNotes.leadTime ? 'text-gray-300' : 'text-gray-500'}`}>
-                    {chefNotes.leadTime || "—"}
-                  </span>
-                </div>
-              </div>
-
-              {/* Safety Note - Only if present */}
-              {chefNotes.safetyNote && (
-                <div className="pt-2 border-t border-gray-700/50">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <span className="w-5 h-5 rounded-md bg-rose-500/20 flex items-center justify-center">
-                      <AlertTriangle className="w-3 h-3 text-rose-400" />
-                    </span>
-                    <span className="text-[10px] font-bold text-rose-400/80">
-                      SAFETY
-                    </span>
-                  </div>
-                  <span className="text-xs text-rose-300 px-2 py-1 bg-rose-500/20 rounded-lg border border-rose-500/30 inline-block">
-                    {chefNotes.safetyNote}
-                  </span>
-                </div>
-              )}
-
-              {/* Allergens - L5 Style (matches RecipeFlipCard) */}
-              <div className="pt-2 border-t border-gray-700/50">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <span className="w-5 h-5 rounded-md bg-gray-700/50 flex items-center justify-center">
-                    <AlertTriangle className="w-3 h-3 text-gray-400" />
-                  </span>
-                  <span className="text-[10px] font-bold text-gray-500">
-                    ALLERGENS
-                  </span>
-                </div>
-                {allergens.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex flex-wrap justify-center card-back-badge-gap">
                     {allergens.map((allergen) => {
+                      const Icon = getAllergenIcon(allergen);
+                      const colors = getAllergenColors(allergen);
                       const label = allergen.charAt(0).toUpperCase() + allergen.slice(1).replace(/_/g, ' ');
                       return (
-                        <span
+                        <div
                           key={allergen}
-                          className="text-xs font-semibold text-amber-300 px-2 py-1 bg-amber-500/20 rounded-lg border border-amber-500/40"
+                          className={`card-back-badge flex items-center rounded-lg ${colors.bg}`}
                         >
-                          {label}
-                        </span>
+                          {Icon && <Icon className={`card-back-badge-icon ${colors.text}`} />}
+                          <span className={`card-back-badge-text font-semibold ${colors.text}`}>
+                            {label}
+                          </span>
+                        </div>
                       );
                     })}
                   </div>
-                ) : (
-                  <div className="flex items-center gap-2 py-1">
-                    <CheckCircle className="w-4 h-4 text-emerald-400" />
-                    <span className="text-sm font-medium text-emerald-400">None Declared</span>
+                </>
+              ) : (
+                <div className="flex flex-col items-center card-back-safe-gap">
+                  <div className="card-back-safe-icon rounded-full bg-emerald-500/20 flex items-center justify-center">
+                    <CheckCircle className="text-emerald-400" style={{ width: '50%', height: '50%' }} />
                   </div>
-                )}
-              </div>
+                  <span className="card-back-safe-text font-medium text-emerald-400">No Allergens Declared</span>
+                </div>
+              )}
             </div>
 
-            {/* Confirm Button - L5 Style (matches RecipeFlipCard) */}
+            {/* Ready Button - scales with card */}
             <button
               onClick={handleCheck}
-              className={`mt-3 w-full flex justify-center py-2 px-3 rounded-lg transition-colors text-xs font-medium items-center gap-2 ${
+              className={`w-full flex justify-center card-back-button rounded-xl transition-all font-semibold items-center ${
                 isChecked
-                  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                  : "bg-gray-700/70 hover:bg-gray-600/80 text-gray-300 hover:text-white"
+                  ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/30"
+                  : "bg-gray-700 hover:bg-primary-500 text-gray-200 hover:text-white"
               }`}
             >
-              <Check className="w-3.5 h-3.5" />
-              {isChecked ? "Ready!" : "I Have This Ready"}
+              <Check className={`card-back-button-icon ${isChecked ? '' : 'opacity-70'}`} />
+              {isChecked ? "Ready!" : "I Have This"}
             </button>
           </div>
         </div>

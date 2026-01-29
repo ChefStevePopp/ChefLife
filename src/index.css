@@ -1456,3 +1456,83 @@ select::-ms-expand {
 .card-responsive .card-letterbox {
   padding: clamp(0.375rem, 4cqw, 0.75rem);
 }
+
+/* ==========================================================================
+   BACK FACE - Container Query Responsive Scaling
+   Simplified mise en place: Name, Allergens, Ready button
+   ========================================================================== */
+
+/* Back face padding */
+.card-responsive .card-back-padding {
+  padding: clamp(0.5rem, 5cqw, 1rem);
+}
+
+/* Ingredient name on back */
+.card-responsive .card-back-name {
+  font-size: clamp(0.75rem, 7cqw, 1.125rem);
+  line-height: 1.2;
+}
+
+/* Quantity display on back */
+.card-responsive .card-back-quantity {
+  font-size: clamp(0.625rem, 5cqw, 0.875rem);
+  margin-top: clamp(0.125rem, 1cqw, 0.25rem);
+}
+
+/* Allergen area spacing */
+.card-responsive .card-back-allergen-area {
+  padding-top: clamp(0.25rem, 3cqw, 0.75rem);
+  padding-bottom: clamp(0.25rem, 3cqw, 0.75rem);
+}
+
+/* "Contains Allergens" label */
+.card-responsive .card-back-label {
+  font-size: clamp(0.5rem, 4cqw, 0.625rem);
+  margin-bottom: clamp(0.25rem, 2cqw, 0.5rem);
+}
+
+/* Allergen badge gap */
+.card-responsive .card-back-badge-gap {
+  gap: clamp(0.25rem, 2cqw, 0.5rem);
+}
+
+/* Individual allergen badge */
+.card-responsive .card-back-badge {
+  padding: clamp(0.25rem, 2cqw, 0.375rem) clamp(0.375rem, 3cqw, 0.625rem);
+  gap: clamp(0.125rem, 1.5cqw, 0.375rem);
+}
+
+.card-responsive .card-back-badge-icon {
+  width: clamp(0.75rem, 6cqw, 1rem);
+  height: clamp(0.75rem, 6cqw, 1rem);
+}
+
+.card-responsive .card-back-badge-text {
+  font-size: clamp(0.5rem, 4cqw, 0.75rem);
+}
+
+/* No allergens - safe state */
+.card-responsive .card-back-safe-gap {
+  gap: clamp(0.25rem, 2cqw, 0.5rem);
+}
+
+.card-responsive .card-back-safe-icon {
+  width: clamp(1.5rem, 15cqw, 3rem);
+  height: clamp(1.5rem, 15cqw, 3rem);
+}
+
+.card-responsive .card-back-safe-text {
+  font-size: clamp(0.625rem, 5cqw, 0.875rem);
+}
+
+/* Ready button */
+.card-responsive .card-back-button {
+  padding: clamp(0.375rem, 3cqw, 0.75rem) clamp(0.5rem, 4cqw, 1rem);
+  font-size: clamp(0.625rem, 5cqw, 0.875rem);
+  gap: clamp(0.25rem, 2cqw, 0.5rem);
+}
+
+.card-responsive .card-back-button-icon {
+  width: clamp(0.875rem, 7cqw, 1.25rem);
+  height: clamp(0.875rem, 7cqw, 1.25rem);
+}

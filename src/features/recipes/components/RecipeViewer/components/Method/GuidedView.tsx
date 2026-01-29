@@ -6,7 +6,7 @@
  * 
  * INGREDIENT CHECKOUT:
  * - Same IngredientFlipCard components from Ingredients tab
- * - Dense 5-column grid optimized for iPad landscape
+ * - Max 6 columns, centered, responsive grid
  * - Scale selector for batch cooking
  * - Configurable sourcing instructions (from Module Editor)
  * - Progress tracking with enforcement:
@@ -16,6 +16,12 @@
  * AUDIT TRAIL:
  * - Timed for user performance and efficiency auditing
  * - No skip option - solid audit trail, no grey areas
+ * 
+ * L5 DESIGN ALIGNMENT:
+ * - Uses gray-* palette (not neutral-*) for warmth
+ * - Containers use slate-800/60 backdrop-blur pattern
+ * - Borders use gray-700/40 or gray-700/50
+ * - Close button always on right (standard UI convention)
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -283,27 +289,21 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
   const containerHeight = isFullscreen ? 'h-screen' : 'h-[600px] sm:h-[700px]';
 
   return (
-    <div className={`${containerHeight} w-full bg-neutral-950 flex flex-col ${isFullscreen ? '' : 'rounded-xl border border-neutral-800/50'} overflow-hidden`}>
-      {/* Top Navigation Bar */}
-      <div className="flex-shrink-0 bg-neutral-900/80 backdrop-blur-sm border-b border-neutral-800/50 z-10">
+    <div className={`${containerHeight} w-full bg-gray-900 flex flex-col ${isFullscreen ? '' : 'rounded-xl border border-gray-700/50'} overflow-hidden`}>
+      {/* Top Navigation Bar - L5 subheader pattern */}
+      <div className="flex-shrink-0 bg-slate-800/60 backdrop-blur-sm border-b border-gray-700/40 z-10">
         <div className="flex items-center justify-between px-4 py-3">
+          {/* Left: Recipe name */}
           <div className="flex items-center gap-3">
-            {isFullscreen && (
-              <button
-                onClick={onClose}
-                className="w-8 h-8 rounded-full bg-neutral-800/80 hover:bg-neutral-700/80 flex items-center justify-center text-neutral-400 hover:text-neutral-200 transition-all"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
             <div>
-              <h1 className="text-sm font-medium text-neutral-200 truncate max-w-[150px] sm:max-w-[300px]">
+              <h1 className="text-sm font-medium text-white truncate max-w-[150px] sm:max-w-[300px]">
                 {recipe.name}
               </h1>
-              <p className="text-xs text-neutral-600">Guided Mode</p>
+              <p className="text-xs text-gray-500">Guided Mode</p>
             </div>
           </div>
 
+          {/* Right: All controls (standard UI convention) */}
           <div className="flex items-center gap-3">
             {/* Page Dots */}
             <div className="hidden md:flex items-center gap-1">
@@ -316,17 +316,17 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                       ? 'bg-amber-500 w-5'
                       : i === ingredientPageIndex && !isCheckoutComplete
                         ? 'bg-emerald-500/50 w-1.5 hover:bg-emerald-500'
-                        : 'bg-neutral-700 w-1.5 hover:bg-neutral-600'
+                        : 'bg-gray-600 w-1.5 hover:bg-gray-500'
                   }`}
                 />
               ))}
             </div>
 
             {/* Page Counter */}
-            <span className="text-sm text-neutral-500">
+            <span className="text-sm text-gray-400">
               {getPageLabel()}
-              <span className="text-neutral-700 mx-1">/</span>
-              <span className="text-neutral-600">{steps.length} steps</span>
+              <span className="text-gray-600 mx-1">/</span>
+              <span className="text-gray-500">{steps.length} steps</span>
             </span>
 
             {/* Nav Arrows */}
@@ -336,8 +336,8 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                 disabled={currentPage === 0}
                 className={`w-7 h-7 rounded-md flex items-center justify-center transition-all ${
                   currentPage === 0
-                    ? 'text-neutral-800 cursor-not-allowed'
-                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50'
+                    ? 'text-gray-700 cursor-not-allowed'
+                    : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700/50'
                 }`}
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -347,8 +347,8 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                 disabled={currentPage === totalPages - 1}
                 className={`w-7 h-7 rounded-md flex items-center justify-center transition-all ${
                   currentPage === totalPages - 1
-                    ? 'text-neutral-800 cursor-not-allowed'
-                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50'
+                    ? 'text-gray-700 cursor-not-allowed'
+                    : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700/50'
                 }`}
               >
                 <ChevronRight className="w-4 h-4" />
@@ -358,22 +358,20 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
             {/* Fullscreen Toggle */}
             <button
               onClick={onToggleFullscreen}
-              className="w-7 h-7 rounded-md flex items-center justify-center text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50 transition-all"
+              className="w-7 h-7 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition-all"
               title={isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
             >
               {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
             </button>
             
-            {/* Close button when not fullscreen */}
-            {!isFullscreen && (
-              <button
-                onClick={onClose}
-                className="w-7 h-7 rounded-md flex items-center justify-center text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50 transition-all"
-                title="Exit Guided mode"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
+            {/* Close button - always on right (standard UI convention) */}
+            <button
+              onClick={onClose}
+              className="w-7 h-7 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition-all"
+              title="Exit Guided mode (Esc)"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </div>
@@ -398,46 +396,46 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
             {heroImage && (
               <>
                 <img src={heroImage} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-r from-neutral-950/95 via-neutral-950/70 to-neutral-950/50" />
+                <div className="absolute inset-0 bg-gradient-to-r from-gray-900/95 via-gray-900/70 to-gray-900/50" />
               </>
             )}
 
             <div className="relative z-10 max-w-xl mx-auto px-8 text-center">
-              <div className="w-14 h-14 rounded-xl bg-neutral-800/50 border border-neutral-700/50 flex items-center justify-center mx-auto mb-6 backdrop-blur-sm">
-                <BookOpen className="w-7 h-7 text-amber-500/80" />
+              <div className="w-14 h-14 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center mx-auto mb-6 backdrop-blur-sm">
+                <BookOpen className="w-7 h-7 text-amber-400/80" />
               </div>
 
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-light text-neutral-100 mb-4 leading-tight tracking-tight">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-light text-white mb-4 leading-tight tracking-tight">
                 {recipe.name}
               </h1>
 
               {recipe.description && (
-                <p className="text-sm sm:text-base text-neutral-400 mb-6 leading-relaxed font-light">
+                <p className="text-sm sm:text-base text-gray-400 mb-6 leading-relaxed font-light">
                   {recipe.description}
                 </p>
               )}
 
               {/* Stats: Ingredients → Steps → Time */}
-              <div className="flex items-center justify-center gap-6 text-neutral-500">
+              <div className="flex items-center justify-center gap-6 text-gray-400">
                 {hasIngredients && (
                   <div className="flex items-center gap-2">
-                    <ShoppingBasket className="w-4 h-4 text-emerald-500/60" />
+                    <ShoppingBasket className="w-4 h-4 text-emerald-400/60" />
                     <span className="text-sm font-light">{totalItems} ingredients</span>
                   </div>
                 )}
                 <div className="flex items-center gap-2">
-                  <ListOrdered className="w-4 h-4 text-amber-500/60" />
+                  <ListOrdered className="w-4 h-4 text-amber-400/60" />
                   <span className="text-sm font-light">{steps.length} steps</span>
                 </div>
                 {totalTime > 0 && (
                   <div className="flex items-center gap-2">
-                    <Timer className="w-4 h-4 text-amber-500/60" />
+                    <Timer className="w-4 h-4 text-amber-400/60" />
                     <span className="text-sm font-light">{formatDuration(totalTime)}</span>
                   </div>
                 )}
               </div>
 
-              <div className="mt-10 flex items-center justify-center gap-2 text-neutral-700">
+              <div className="mt-10 flex items-center justify-center gap-2 text-gray-600">
                 <span className="text-xs font-light">swipe or use arrows</span>
                 <ChevronRight className="w-3 h-3" />
               </div>
@@ -446,23 +444,23 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
 
           {/* ================================================================
            * PAGE 1: INGREDIENT CHECKOUT (Mise en Place)
-           * Includes configurable sourcing instructions from Module Editor
+           * L5 subheader pattern for header area
            * ================================================================ */}
           {hasIngredients && (
             <div
-              className="w-full h-full flex-shrink-0 snap-start snap-always flex flex-col overflow-hidden bg-neutral-950"
+              className="w-full h-full flex-shrink-0 snap-start snap-always flex flex-col overflow-hidden bg-gray-900"
               style={{ width: `${100 / totalPages}%` }}
             >
-              {/* Header */}
-              <div className="flex-shrink-0 px-6 py-4 border-b border-neutral-800/50">
+              {/* Header - L5 subheader pattern */}
+              <div className="flex-shrink-0 px-6 py-4 border-b border-gray-700/40 bg-slate-800/60 backdrop-blur-sm">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-                      <ShoppingBasket className="w-5 h-5 text-emerald-400" />
+                    <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                      <ShoppingBasket className="w-5 h-5 text-emerald-400/80" />
                     </div>
                     <div>
-                      <h2 className="text-lg font-medium text-neutral-100">Mise en Place</h2>
-                      <p className="text-xs text-neutral-500">Gather all ingredients before you begin</p>
+                      <h2 className="text-lg font-medium text-white">Mise en Place</h2>
+                      <p className="text-xs text-gray-500">Gather all ingredients before you begin</p>
                     </div>
                   </div>
                   
@@ -470,17 +468,17 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                   <div className="relative">
                     <button
                       onClick={() => setShowScaleDropdown(!showScaleDropdown)}
-                      className="flex items-center gap-2 px-3 py-2 bg-neutral-800/50 rounded-lg hover:bg-neutral-800 transition-colors border border-neutral-700/50"
+                      className="flex items-center gap-2 px-3 py-2 bg-gray-700/50 rounded-lg hover:bg-gray-700 transition-colors border border-gray-600/50"
                     >
                       <Scale className="w-4 h-4 text-emerald-400" />
                       <span className="text-sm font-medium text-white">
                         {scale === 1 ? '1× Batch' : `${scale}× Batch`}
                       </span>
-                      <ChevronDown className={`w-4 h-4 text-neutral-400 transition-transform ${showScaleDropdown ? 'rotate-180' : ''}`} />
+                      <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showScaleDropdown ? 'rotate-180' : ''}`} />
                     </button>
                     
                     {showScaleDropdown && (
-                      <div className="absolute top-full right-0 mt-1 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl z-20 min-w-[120px]">
+                      <div className="absolute top-full right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-20 min-w-[120px]">
                         {SCALE_OPTIONS.map((opt) => (
                           <button
                             key={opt.value}
@@ -488,8 +486,8 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                               setScale(opt.value);
                               setShowScaleDropdown(false);
                             }}
-                            className={`w-full px-4 py-2.5 text-left text-sm hover:bg-neutral-700/50 transition-colors first:rounded-t-lg last:rounded-b-lg ${
-                              scale === opt.value ? 'text-emerald-400 font-medium' : 'text-neutral-300'
+                            className={`w-full px-4 py-2.5 text-left text-sm hover:bg-gray-700/50 transition-colors first:rounded-t-lg last:rounded-b-lg ${
+                              scale === opt.value ? 'text-emerald-400 font-medium' : 'text-gray-300'
                             }`}
                           >
                             {opt.label} Batch
@@ -502,24 +500,24 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
 
                 {/* Expandable Sourcing Instructions (from Module Editor) */}
                 {sourcingInstructions?.enabled && (
-                  <div className={`mt-3 rounded-lg border transition-all ${isInfoExpanded ? 'bg-neutral-900/50 border-emerald-500/30' : 'bg-neutral-900/30 border-neutral-800/50'}`}>
+                  <div className={`mt-3 rounded-lg border transition-all ${isInfoExpanded ? 'bg-gray-800/50 border-emerald-500/30' : 'bg-gray-800/30 border-gray-700/50'}`}>
                     <button
                       onClick={() => setIsInfoExpanded(!isInfoExpanded)}
                       className="w-full flex items-center justify-between px-3 py-2.5"
                     >
                       <div className="flex items-center gap-2">
                         <Info className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                        <span className="text-sm font-medium text-neutral-200">{sourcingInstructions.title}</span>
+                        <span className="text-sm font-medium text-gray-200">{sourcingInstructions.title}</span>
                       </div>
-                      <ChevronUp className={`w-4 h-4 text-neutral-500 transition-transform ${isInfoExpanded ? '' : 'rotate-180'}`} />
+                      <ChevronUp className={`w-4 h-4 text-gray-500 transition-transform ${isInfoExpanded ? '' : 'rotate-180'}`} />
                     </button>
                     {isInfoExpanded && (
-                      <div className="px-3 pb-3 pt-0 border-t border-neutral-800/50">
-                        <p className="text-sm text-neutral-400 whitespace-pre-line mt-2">
+                      <div className="px-3 pb-3 pt-0 border-t border-gray-700/50">
+                        <p className="text-sm text-gray-400 whitespace-pre-line mt-2">
                           {sourcingInstructions.body}
                         </p>
                         {sourcingInstructions.footer && (
-                          <p className="text-xs text-neutral-600 mt-2 pt-2 border-t border-neutral-800/30">
+                          <p className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-700/30">
                             {sourcingInstructions.footer}
                           </p>
                         )}
@@ -532,10 +530,10 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                 <div className="mt-4 flex items-center gap-4">
                   <div className="flex-1">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-neutral-500">Progress</span>
-                      <span className="text-xs font-medium text-neutral-300">{checkedCount} / {totalItems}</span>
+                      <span className="text-xs text-gray-500">Progress</span>
+                      <span className="text-xs font-medium text-gray-300">{checkedCount} / {totalItems}</span>
                     </div>
-                    <div className="h-2 bg-neutral-800 rounded-full overflow-hidden">
+                    <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
                       <div 
                         className={`h-full transition-all duration-300 ${isCheckoutComplete ? 'bg-emerald-500' : 'bg-emerald-500/70'}`}
                         style={{ width: `${progressPercent}%` }}
@@ -569,12 +567,13 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                 )}
               </div>
 
-              {/* Ingredient Grid - Auto-responsive using CSS Grid auto-fill */}
+              {/* Ingredient Grid - Max 6 columns, centered, responsive */}
               <div className="flex-1 overflow-y-auto p-4">
-                <div 
-                  className="grid gap-3"
-                  style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}
-                >
+                <div className="max-w-[1400px] mx-auto">
+                  <div 
+                    className="grid gap-4"
+                    style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}
+                  >
                   {ingredientsWithMaster.map(({ ingredient, masterInfo, allergens }) => {
                     const isChecked = checkedItems.has(ingredient.id);
                     const scaledMeasure = scaleCommonMeasure(ingredient.common_measure || ingredient.commonMeasure);
@@ -602,11 +601,12 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                       </div>
                     );
                   })}
+                  </div>
                 </div>
               </div>
 
               {/* Bottom: Proceed Button */}
-              <div className="flex-shrink-0 px-6 py-4 border-t border-neutral-800/50 bg-neutral-900/50">
+              <div className="flex-shrink-0 px-6 py-4 border-t border-gray-700/40 bg-slate-800/60">
                 <button
                   onClick={() => goToPage(firstStepIndex)}
                   disabled={!isCheckoutComplete && !hasAdminAccess}
@@ -615,7 +615,7 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                       ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30'
                       : hasAdminAccess
                         ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20'
-                        : 'bg-neutral-800/50 text-neutral-600 cursor-not-allowed'
+                        : 'bg-gray-800/50 text-gray-500 cursor-not-allowed'
                   }`}
                 >
                   {isCheckoutComplete ? (
@@ -655,7 +655,7 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                   {/* Image Column */}
                   <div
                     className={`lg:w-1/2 h-2/5 lg:h-full flex-shrink-0 relative ${
-                      stepImage ? '' : 'hidden lg:flex lg:items-center lg:justify-center bg-neutral-900/30'
+                      stepImage ? '' : 'hidden lg:flex lg:items-center lg:justify-center bg-gray-800/30'
                     }`}
                   >
                     {stepImage ? (
@@ -666,19 +666,19 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                           className="absolute inset-0 w-full h-full object-cover"
                         />
                         <div
-                          className={`absolute inset-0 bg-gradient-to-${index % 2 === 0 ? 'r' : 'l'} from-transparent via-transparent to-neutral-950/80 hidden lg:block`}
+                          className={`absolute inset-0 bg-gradient-to-${index % 2 === 0 ? 'r' : 'l'} from-transparent via-transparent to-gray-900/80 hidden lg:block`}
                         />
-                        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/20 to-transparent lg:hidden" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/20 to-transparent lg:hidden" />
                       </>
                     ) : (
-                      <div className="text-center text-neutral-800">
+                      <div className="text-center text-gray-700">
                         <ChefHat className="w-10 h-10 mx-auto" />
                       </div>
                     )}
                   </div>
 
                   {/* Content Column */}
-                  <div className="flex-1 flex items-center justify-center p-5 sm:p-8 lg:p-10 overflow-y-auto bg-neutral-950">
+                  <div className="flex-1 flex items-center justify-center p-5 sm:p-8 lg:p-10 overflow-y-auto bg-gray-900">
                     <div className="max-w-md w-full">
                       {hasControlPoints && (
                         <div className="mb-3">
@@ -691,26 +691,26 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                           className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${
                             hasControlPoints
                               ? 'bg-rose-500/10 border border-rose-500/20'
-                              : 'bg-neutral-800/50 border border-neutral-700/50'
+                              : 'bg-gray-800/50 border border-gray-700/50'
                           }`}
                         >
-                          <span className={`text-lg sm:text-xl font-light ${hasControlPoints ? 'text-rose-400/80' : 'text-amber-500/80'}`}>
+                          <span className={`text-lg sm:text-xl font-light ${hasControlPoints ? 'text-rose-400/80' : 'text-amber-400/80'}`}>
                             {index + 1}
                           </span>
                         </div>
                         <div className="pt-1 flex-1">
-                          <h2 className="text-base sm:text-lg lg:text-xl font-medium text-neutral-100 leading-tight tracking-tight">
+                          <h2 className="text-base sm:text-lg lg:text-xl font-medium text-white leading-tight tracking-tight">
                             {title}
                           </h2>
                           <div className="flex flex-wrap items-center gap-3 mt-1.5">
                             {step.time_in_minutes && step.time_in_minutes > 0 && (
-                              <span className="flex items-center gap-1 text-neutral-600">
+                              <span className="flex items-center gap-1 text-gray-500">
                                 <Timer className="w-3 h-3" />
                                 <span className="text-xs font-light">{step.time_in_minutes} min</span>
                               </span>
                             )}
                             {step.temperature?.value && (
-                              <span className="flex items-center gap-1 text-neutral-600">
+                              <span className="flex items-center gap-1 text-gray-500">
                                 <Thermometer className="w-3 h-3" />
                                 <span className="text-xs font-light">
                                   {step.temperature.value}°{step.temperature.unit}
@@ -724,19 +724,19 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                       <RichTextRenderer html={step.instruction} blocks={blocks} size="guided" subtle />
 
                       {step.delay?.value && step.delay.value > 0 && (
-                        <div className="mt-4 flex items-center gap-2 p-2.5 rounded-lg bg-neutral-900/50 border border-neutral-800/50">
-                          <Hourglass className="w-3.5 h-3.5 text-neutral-600" />
-                          <span className="text-sm text-neutral-500 font-light">Wait {formatDelay(step.delay)}</span>
+                        <div className="mt-4 flex items-center gap-2 p-2.5 rounded-lg bg-gray-800/50 border border-gray-700/50">
+                          <Hourglass className="w-3.5 h-3.5 text-gray-500" />
+                          <span className="text-sm text-gray-400 font-light">Wait {formatDelay(step.delay)}</span>
                         </div>
                       )}
 
                       {step.notes && (
-                        <div className="mt-4 p-2.5 rounded-lg bg-neutral-900/30 border border-neutral-800/30">
+                        <div className="mt-4 p-2.5 rounded-lg bg-gray-800/30 border border-gray-700/30">
                           <div className="flex items-center gap-1.5 mb-1">
-                            <Info className="w-3 h-3 text-neutral-700" />
-                            <span className="text-[10px] font-medium text-neutral-700 uppercase tracking-wider">Note</span>
+                            <Info className="w-3 h-3 text-gray-600" />
+                            <span className="text-[10px] font-medium text-gray-600 uppercase tracking-wider">Note</span>
                           </div>
-                          <p className="text-sm text-neutral-500 font-light italic">{step.notes}</p>
+                          <p className="text-sm text-gray-400 font-light italic">{step.notes}</p>
                         </div>
                       )}
                     </div>
@@ -750,29 +750,29 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
            * COMPLETION PAGE
            * ================================================================ */}
           <div
-            className="w-full h-full flex-shrink-0 snap-start snap-always flex items-center justify-center bg-neutral-950"
+            className="w-full h-full flex-shrink-0 snap-start snap-always flex items-center justify-center bg-gray-900"
             style={{ width: `${100 / totalPages}%` }}
           >
             <div className="text-center px-8 max-w-sm">
-              <div className="w-16 h-16 rounded-full bg-neutral-900/50 border border-neutral-800/50 flex items-center justify-center mx-auto mb-6">
-                <CheckCircle className="w-8 h-8 text-emerald-500/60" />
+              <div className="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center mx-auto mb-6">
+                <CheckCircle className="w-8 h-8 text-emerald-400/80" />
               </div>
 
-              <h2 className="text-xl sm:text-2xl font-light text-neutral-200 mb-3 tracking-tight">Recipe Complete</h2>
+              <h2 className="text-xl sm:text-2xl font-light text-white mb-3 tracking-tight">Recipe Complete</h2>
 
-              <p className="text-sm text-neutral-600 mb-8 font-light">{recipe.name}</p>
+              <p className="text-sm text-gray-500 mb-8 font-light">{recipe.name}</p>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
                 <button
                   onClick={() => goToPage(0)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900/50 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50 transition-all border border-neutral-800/50 text-sm"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800/50 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition-all border border-gray-700/50 text-sm"
                 >
                   <ChevronLeft className="w-4 h-4" />
                   <span className="font-light">Restart</span>
                 </button>
                 <button
                   onClick={onClose}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500/10 text-amber-500/80 hover:text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20 text-sm"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500/10 text-amber-400/80 hover:text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20 text-sm"
                 >
                   <X className="w-4 h-4" />
                   <span className="font-light">Exit</span>
@@ -784,7 +784,7 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
       </div>
 
       {/* Bottom Page Indicator (Mobile) */}
-      <div className="flex-shrink-0 md:hidden bg-neutral-900/80 border-t border-neutral-800/50 py-2 px-4">
+      <div className="flex-shrink-0 md:hidden bg-slate-800/60 border-t border-gray-700/40 py-2 px-4">
         <div className="flex items-center justify-center gap-1">
           {Array.from({ length: totalPages }).map((_, i) => (
             <button
@@ -795,7 +795,7 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                   ? 'bg-amber-500/80 w-4' 
                   : i === ingredientPageIndex && !isCheckoutComplete
                     ? 'bg-emerald-500/50 w-1'
-                    : 'bg-neutral-800 w-1 hover:bg-neutral-700'
+                    : 'bg-gray-700 w-1 hover:bg-gray-600'
               }`}
             />
           ))}
@@ -826,7 +826,7 @@ export const GuidedView: React.FC<GuidedViewProps> = ({
   // When fullscreen, render via portal to escape parent containers
   if (isFullscreen) {
     return createPortal(
-      <div className="fixed inset-0 z-[9999] bg-neutral-950">
+      <div className="fixed inset-0 z-[9999] bg-gray-900">
         <GuidedContent
           recipe={recipe}
           blocks={blocks}

@@ -1525,6 +1525,247 @@ const ViewerCard: React.FC<ViewerCardProps> = ({
 
 ---
 
+## Container Query Fluid Typography
+
+For elements that need text to scale with their container (not the viewport), use CSS Container Queries with `cqw` units.
+
+> "The card knows its own size. The text scales to fit."
+
+**When to use:** Flip cards, grid items, any component where the same element appears at wildly different sizes depending on grid density.
+
+### The Pattern
+
+**1. Mark the container:**
+```tsx
+<div className="card-responsive">
+  {/* Children can now use cqw units */}
+</div>
+```
+
+**2. CSS in index.css:**
+```css
+/* Container query setup */
+.card-responsive {
+  container-type: inline-size;
+}
+
+/* Text scales with container width */
+.card-quantity {
+  font-size: clamp(0.875rem, 8cqw, 1.5rem);  /* 14px min, 24px max */
+  font-weight: 700;
+}
+
+.card-name {
+  font-size: clamp(0.625rem, 5cqw, 0.875rem);  /* 10px min, 14px max */
+}
+
+.card-allergen-badge {
+  width: clamp(1.25rem, 12cqw, 1.75rem);  /* 20px min, 28px max */
+  height: clamp(1.25rem, 12cqw, 1.75rem);
+}
+
+.card-letterbox {
+  padding: clamp(0.375rem, 4cqw, 0.75rem);  /* 6px min, 12px max */
+}
+```
+
+**How cqw works:**
+- `1cqw` = 1% of the container's width
+- `8cqw` on a 150px card = 12px
+- `8cqw` on a 200px card = 16px
+- `clamp()` sets min/max bounds
+
+**Scaling Table:**
+| Container Width | 8cqw Result | Use Case |
+|-----------------|-------------|----------|
+| 100px | 8px | Dense mobile grid |
+| 150px | 12px | Standard card |
+| 200px | 16px | Comfortable card |
+| 250px | 20px (capped at 24px) | Large card |
+
+### Reference Implementation
+
+**Location:** `src/features/recipes/components/IngredientFlipCard/index.tsx`
+
+```tsx
+<div className="h-full w-full card-responsive">
+  <div className="card-letterbox bg-gray-800/70">
+    <span className="card-quantity text-white">2 cups</span>
+    <span className="card-name text-gray-400">All-Purpose Flour</span>
+  </div>
+</div>
+```
+
+**CSS Classes (in index.css):**
+- `.card-responsive` — marks container
+- `.card-quantity` — large bold numbers
+- `.card-name` — smaller item name
+- `.card-allergen-badge` — icon container
+- `.card-allergen-text` — tiny allergen labels
+- `.card-letterbox` — scaled padding
+
+---
+
+## CSS Grid Auto-Fill Pattern
+
+For grids that should automatically determine column count based on available space:
+
+> "No breakpoints. The grid figures it out."
+
+**When to use:** Card grids where you want optimal density without managing breakpoints.
+
+### The Pattern
+
+```tsx
+<div 
+  className="grid gap-4"
+  style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}
+>
+  {items.map(item => (
+    <div key={item.id} className="aspect-[9/16]">
+      <Card item={item} />
+    </div>
+  ))}
+</div>
+```
+
+**How it works:**
+- `auto-fill` — Grid calculates how many columns fit
+- `minmax(150px, 1fr)` — Each column is at least 150px, grows equally to fill space
+- No partial cards — cards either fit completely or wrap
+- Works on ANY screen size without breakpoints
+
+**Responsive Behavior:**
+| Container Width | Min Card Size | Columns | Card Width |
+|-----------------|---------------|---------|------------|
+| 320px | 150px | 2 | 160px |
+| 600px | 150px | 4 | 150px |
+| 900px | 150px | 6 | 150px |
+| 1200px | 150px | 8 | 150px |
+
+### Combining with Container Queries
+
+```tsx
+// Grid determines columns automatically
+<div style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
+  {items.map(item => (
+    // Wrapper maintains aspect ratio
+    <div className="aspect-[9/16]">
+      {/* Card fills wrapper, uses container queries for text */}
+      <IngredientFlipCard item={item} />
+    </div>
+  ))}
+</div>
+```
+
+**The key insight:** The grid wrapper sets the aspect ratio, the card fills it with `h-full w-full`, and container queries handle text scaling.
+
+### Reference Implementation
+
+**Location:** `src/features/recipes/components/RecipeViewer/components/Method/GuidedView.tsx` (Mise en Place page)
+
+---
+
+## Deep Linking with URL Parameters
+
+For tabbed interfaces that need shareable/bookmarkable state:
+
+> "Copy the URL. Send it to a cook. They land exactly where you were."
+
+**When to use:** Any viewer with tabs or sub-views that users might want to share or bookmark.
+
+### The Pattern
+
+**URL Structure:**
+```
+/recipes/{id}?tab=method&mode=guided&page=3
+```
+
+**Reading URL params:**
+```tsx
+import { useSearchParams } from 'react-router-dom';
+
+const [searchParams, setSearchParams] = useSearchParams();
+
+// Read params with defaults
+const tab = searchParams.get('tab') || 'overview';
+const mode = searchParams.get('mode') || 'compact';
+const page = parseInt(searchParams.get('page') || '0', 10);
+```
+
+**Updating URL without navigation:**
+```tsx
+const updateParams = (updates: Record<string, string | null>) => {
+  const newParams = new URLSearchParams(searchParams);
+  Object.entries(updates).forEach(([key, value]) => {
+    if (value === null) {
+      newParams.delete(key);
+    } else {
+      newParams.set(key, value);
+    }
+  });
+  setSearchParams(newParams, { replace: true });
+};
+
+// Usage
+updateParams({ mode: 'guided', page: '3' });
+updateParams({ page: null }); // Remove param
+```
+
+### Recipe Viewer URL Params
+
+| Param | Values | Default | Purpose |
+|-------|--------|---------|--------|
+| `tab` | overview, ingredients, method, etc. | overview | Which tab is active |
+| `mode` | compact, guided, focus | compact | Method viewing mode |
+| `page` | 0, 1, 2... | 0 | Guided mode page index |
+
+**Example URLs:**
+```
+/recipes/abc123                           → Overview tab
+/recipes/abc123?tab=method                → Method tab, Compact mode
+/recipes/abc123?tab=method&mode=guided    → Guided mode, Cover page
+/recipes/abc123?tab=method&mode=guided&page=1  → Mise en Place page
+/recipes/abc123?tab=method&mode=guided&page=5  → Step 3 (after cover + mise + 3 steps)
+```
+
+### Reference Implementation
+
+**Location:** `src/features/recipes/components/RecipeViewer/FullPageViewer.tsx`
+
+```tsx
+// URL param sync
+useEffect(() => {
+  const urlTab = searchParams.get('tab');
+  const urlMode = searchParams.get('mode');
+  const urlPage = searchParams.get('page');
+  
+  if (urlTab && VIEWER_TABS.some(t => t.id === urlTab)) {
+    setActiveTab(urlTab);
+  }
+  if (urlMode && ['compact', 'guided', 'focus'].includes(urlMode)) {
+    setViewMode(urlMode as ViewMode);
+  }
+  if (urlPage !== null) {
+    setCurrentPage(parseInt(urlPage, 10));
+  }
+}, [searchParams]);
+
+// Update URL when state changes
+const handleTabChange = (tab: string) => {
+  setActiveTab(tab);
+  updateParams({ tab, mode: null, page: null }); // Reset sub-params on tab change
+};
+```
+
+**Benefits:**
+- Shareable links to exact recipe state
+- Browser back/forward works naturally
+- Refresh preserves position
+- Can deep-link from training materials
+
+---
+
 ChefLife has two distinct experiences:
 - **Desktop Admin** — Complex data grids, deep configuration, sidebar navigation
 - **Mobile Command Center** — Launcher-style interface, swipeable pages, glanceable widgets
@@ -2043,6 +2284,29 @@ All money-related values use a single teal accent:
 ---
 
 ## Changelog
+
+**Jan 29, 2026 (Session - Responsive Flip Cards & URL Routing):**
+- **Container Query Fluid Typography** pattern documented:
+  - `cqw` units for text that scales with container width
+  - `.card-responsive` marks container for queries
+  - `.card-quantity`, `.card-name`, `.card-allergen-badge`, `.card-letterbox` classes
+  - Scaling table showing cqw → px conversions
+  - Reference: IngredientFlipCard/index.tsx
+- **CSS Grid Auto-Fill Pattern** documented:
+  - `repeat(auto-fill, minmax(150px, 1fr))` for automatic column count
+  - No breakpoints needed — grid calculates optimal density
+  - Combining with container queries for complete responsive system
+  - Reference: GuidedView.tsx Mise en Place page
+- **Deep Linking with URL Parameters** documented:
+  - Recipe Viewer URL params: tab, mode, page
+  - `useSearchParams` pattern for reading/writing
+  - Example URLs for all Guided mode pages
+  - Benefits: shareable, bookmarkable, back/forward works
+  - Reference: FullPageViewer.tsx
+- **IngredientFlipCard** fully responsive:
+  - Container queries for all text/icon sizing
+  - "None Defined" for allergen-free state (liability language)
+  - Emerald check icon matches allergen badge sizing
 
 **Jan 28, 2026 (Session - Recipe Viewer L5 Responsive):**
 - **L5 Viewer Screen Standard** documented:
