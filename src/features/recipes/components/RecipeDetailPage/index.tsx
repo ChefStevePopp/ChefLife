@@ -29,13 +29,12 @@ import { PageHeader } from "./PageHeader";
 import { RecipeTabs } from "./RecipeTabs";
 import { useTabChanges } from "./useTabChanges";
 
-// Recipe Editor Sections (existing components)
+// Recipe Editor Sections
 import BasicInformation from "../RecipeEditor/BasicInformation";
-import { ProductionSpecs } from "../RecipeEditor/ProductionSpecs";
+import { Production } from "../RecipeEditor/Production";
 import { LabelRequirements } from "../RecipeEditor/LabelRequirements";
 import { InstructionEditor } from "../RecipeEditor/InstructionEditor";
 import { StationEquipment } from "../RecipeEditor/StationEquipment";
-import { StorageProtocols } from "../RecipeEditor/StorageProtocols";
 import { QualityStandards } from "../RecipeEditor/QualityStandards";
 import { AllergenControl } from "../RecipeEditor/AllergenControl";
 import { MediaManager } from "../RecipeEditor/MediaManager";
@@ -545,13 +544,10 @@ export const RecipeDetailPage: React.FC = () => {
           <InstructionEditor recipe={formData as Recipe} onChange={handleChange} />
         )}
         {activeTab === "production" && (
-          <ProductionSpecs recipe={formData as Recipe} onChange={handleChange} />
+          <Production recipe={formData as Recipe} onChange={handleChange} />
         )}
         {activeTab === "labels" && (
           <LabelRequirements recipe={formData as Recipe} onChange={handleChange} />
-        )}
-        {activeTab === "storage" && (
-          <StorageProtocols recipe={formData as Recipe} onChange={handleChange} />
         )}
         {activeTab === "stations" && (
           <StationEquipment recipe={formData as Recipe} onChange={handleChange} />

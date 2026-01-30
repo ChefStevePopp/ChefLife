@@ -15,6 +15,9 @@ import {
   HelpCircle,
   Book,
   ImageOff,
+  DollarSign,
+  Scale,
+  Beaker,
 } from "lucide-react";
 import { useFoodRelationshipsStore } from "@/stores/foodRelationshipsStore";
 import { useDiagnostics } from "@/hooks/useDiagnostics";
@@ -29,9 +32,9 @@ import type { Recipe } from "../../types/recipe";
  * Hero banner style matching RecipeCardL5:
  * - Full-width image with gradient overlay
  * - Type badge top-left, status badge top-right
- * - Title + badges overlaid at bottom
- * - Click anywhere on image → Media tab
- * - Expandable Recipe Details section below
+ * - Title + subtitle + station overlaid at bottom
+ * - Stats row below hero: Cost, Yield, Recipe Units
+ * - Expandable Recipe Details section for editing
  * =============================================================================
  */
 
@@ -191,7 +194,8 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   const [imageError, setImageError] = useState(false);
 
   // Get major group info from Food Relationships
-  const { majorGroups, categories, fetchFoodRelationships } = useFoodRelationshipsStore();
+  const { majorGroups, categories, subCategories, fetchFoodRelationships, getRecipeTypeGroups } = useFoodRelationshipsStore();
+  const recipeTypeGroups = getRecipeTypeGroups();
 
   // Fetch on mount if needed
   React.useEffect(() => {
@@ -204,6 +208,11 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
     if (!recipe.major_group) return null;
     return majorGroups.find((g) => g.id === recipe.major_group);
   }, [recipe.major_group, majorGroups]);
+
+  const category = useMemo(() => {
+    if (!recipe.category) return null;
+    return categories.find((c) => c.id === recipe.category);
+  }, [recipe.category, categories]);
 
   // Dynamic icon based on major group or recipe type
   const GroupIcon = useMemo(() => {
@@ -228,17 +237,70 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   const statusConfig = recipe.status ? getStatusConfig(recipe.status) : null;
   const StatusIcon = statusConfig?.icon;
 
-  // Categories for selected major group
+  // Categories filtered by selected major group (recipe type)
   const filteredCategories = useMemo(() => {
     if (!recipe.major_group) return [];
-    return categories.filter((c) => c.major_group_id === recipe.major_group);
+    return categories.filter((c) => c.group_id === recipe.major_group && !c.archived);
   }, [recipe.major_group, categories]);
 
-  // Major group display name
-  const majorGroupName = majorGroup?.name 
-    || (recipe.type === "prepared" ? "Prep Item" 
-      : recipe.type === "final" ? "Final Plate" 
-      : "Recipe");
+  // Sub-categories filtered by selected category
+  const filteredSubCategories = useMemo(() => {
+    if (!recipe.category) return [];
+    return subCategories.filter((s) => s.category_id === recipe.category && !s.archived);
+  }, [recipe.category, subCategories]);
+
+  // Recipe type display name - use major_group name if it's a recipe type group
+  const recipeTypeDisplay = useMemo(() => {
+    // First check if major_group matches a recipe type group
+    if (recipe.major_group) {
+      const typeGroup = recipeTypeGroups.find(g => g.id === recipe.major_group);
+      if (typeGroup) return typeGroup.name;
+    }
+    // Fallback to legacy type field
+    if (recipe.type === "prepared") return "Prep Item";
+    if (recipe.type === "final") return "Final Plate";
+    if (recipe.type === "component") return "Component";
+    return "Recipe";
+  }, [recipe.major_group, recipe.type, recipeTypeGroups]);
+
+  // Major group display name (for badge)
+  const majorGroupName = majorGroup?.name || recipeTypeDisplay;
+
+  // Subtitle line: Type • Category • Station
+  const subtitleParts = [
+    recipeTypeDisplay,
+    category?.name,
+    recipe.station,
+  ].filter(Boolean);
+  const subtitleLine = subtitleParts.join(" • ");
+
+  // ---------------------------------------------------------------------------
+  // COST CALCULATIONS (for stats row)
+  // ---------------------------------------------------------------------------
+  const calculatedTotal = useMemo(() => {
+    return recipe.ingredients?.reduce((sum, ingredient) => {
+      const quantity = typeof ingredient.quantity === 'number' 
+        ? ingredient.quantity 
+        : parseFloat(ingredient.quantity as string) || 0;
+      const cost = ingredient.cost_per_unit || ingredient.cost || 0;
+      return sum + (quantity * cost);
+    }, 0) || 0;
+  }, [recipe.ingredients]);
+
+  const totalCost = recipe.total_cost || calculatedTotal;
+  const recipeUnits = parseFloat(recipe.recipe_unit_ratio || "0") || 0;
+  const recipeUnitType = recipe.unit_type || "";
+  const costPerUnit = recipe.cost_per_unit || (recipeUnits > 0 ? totalCost / recipeUnits : 0);
+
+  // Format currency
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+  };
 
   return (
     <div className="bg-[#1a1f2b] rounded-xl shadow-lg mb-6 overflow-hidden">
@@ -250,7 +312,6 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
 
       {/* ===================================================================
        * HERO BANNER - Responsive height based on screen size
-       * Mobile: compact | Tablet: medium | Desktop: tall | 4K: impact
        * =================================================================== */}
       <button
         onClick={() => onNavigateToTab?.("media")}
@@ -307,19 +368,48 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
           </div>
         )}
 
-        {/* Center: Title + Station (vertically and horizontally centered) */}
+        {/* Center: Title + Subtitle (vertically and horizontally centered) */}
         <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none">
           <div className="text-center px-4">
             <h1 className="font-display text-fluid-2xl sm:text-fluid-3xl lg:text-fluid-4xl font-bold text-white group-hover:text-primary-300 transition-colors drop-shadow-lg">
               {recipe.name || (isNew ? "New Recipe" : "Untitled Recipe")}
             </h1>
-            {recipe.station && (
-              <p className="font-body text-fluid-sm sm:text-fluid-base lg:text-fluid-lg text-gray-300 mt-1 drop-shadow-md">{recipe.station}</p>
+            {subtitleLine && (
+              <p className="font-body text-fluid-sm sm:text-fluid-base text-gray-300/90 mt-1 drop-shadow-md">
+                {subtitleLine}
+              </p>
             )}
           </div>
         </div>
 
-        {/* Badges - bottom right */}
+        {/* Bottom Left: Stats Badges - Cost, R/U Cost, Recipe Units */}
+        <div className="absolute bottom-3 left-3 sm:bottom-4 sm:left-4 lg:bottom-5 lg:left-5 xl:bottom-6 xl:left-6 flex items-center gap-1.5 sm:gap-2 z-30">
+          {/* Total Cost */}
+          {totalCost > 0 && (
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-gray-900/80 text-gray-300 border border-gray-700 text-xs font-medium backdrop-blur-sm">
+              <DollarSign className="w-3 h-3 text-gray-500" />
+              <span>{formatCurrency(totalCost)}</span>
+            </div>
+          )}
+
+          {/* R/U Cost - hidden on mobile */}
+          {costPerUnit > 0 && (
+            <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-full bg-gray-900/80 text-gray-300 border border-gray-700 text-xs font-medium backdrop-blur-sm">
+              <span className="text-gray-500 text-[10px] font-medium">R/U</span>
+              <span>{formatCurrency(costPerUnit)}</span>
+            </div>
+          )}
+
+          {/* Recipe Units - hidden on mobile/tablet */}
+          {recipeUnits > 0 && (
+            <div className="hidden lg:flex items-center gap-1.5 px-2 py-1 rounded-full bg-gray-900/80 text-gray-300 border border-gray-700 text-xs font-medium backdrop-blur-sm">
+              <Beaker className="w-3 h-3 text-gray-500" />
+              <span>{recipeUnits.toLocaleString()} {recipeUnitType}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom Right: Status Badges - Completion, Version, Freshness */}
         <div className="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 lg:bottom-5 lg:right-5 xl:bottom-6 xl:right-6 flex items-center gap-1.5 sm:gap-2 z-30">
             {/* Completion - always visible */}
             <div className="group/tooltip relative">
@@ -401,7 +491,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
       </button>
 
       {/* ===================================================================
-       * EXPANDABLE: Recipe Details
+       * EXPANDABLE: Recipe Details (Editing form)
        * =================================================================== */}
       <div className="border-t border-gray-700/50">
         <button
@@ -447,64 +537,83 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
                 />
               </div>
 
-              {/* Row 2: Type & Major Group */}
+              {/* Row 2: Recipe Type & Category */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-400 mb-1.5">
                     Recipe Type <span className="text-rose-400">*</span>
                   </label>
                   <select
-                    value={recipe.type || "prepared"}
-                    onChange={(e) => onChange({ type: e.target.value as Recipe["type"] })}
-                    className="input w-full"
-                  >
-                    <option value="prepared">Prep Item</option>
-                    <option value="final">Final Plate</option>
-                    <option value="component">Component</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1.5">
-                    Major Group
-                  </label>
-                  <select
                     value={recipe.major_group || ""}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const selectedGroup = recipeTypeGroups.find(g => g.id === e.target.value);
+                      // Map to legacy type for backward compatibility
+                      let legacyType: Recipe["type"] = "prepared";
+                      if (selectedGroup) {
+                        const name = selectedGroup.name.toUpperCase();
+                        if (name.includes("FINAL")) legacyType = "final";
+                        else if (name.includes("COMPONENT")) legacyType = "component";
+                      }
                       onChange({
                         major_group: e.target.value || undefined,
+                        type: legacyType,
                         category: undefined,
-                      })
-                    }
+                        sub_category: undefined,
+                      });
+                    }}
                     className="input w-full"
                   >
-                    <option value="">Select group...</option>
-                    {majorGroups.map((group) => (
+                    <option value="">Select type...</option>
+                    {recipeTypeGroups.map((group) => (
                       <option key={group.id} value={group.id}>
                         {group.name}
                       </option>
                     ))}
                   </select>
                 </div>
-              </div>
-
-              {/* Row 3: Category & Station */}
-              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-400 mb-1.5">
                     Category
                   </label>
                   <select
                     value={recipe.category || ""}
-                    onChange={(e) => onChange({ category: e.target.value || undefined })}
+                    onChange={(e) => onChange({ 
+                      category: e.target.value || undefined,
+                      sub_category: undefined,
+                    })}
                     className="input w-full"
                     disabled={!recipe.major_group}
                   >
                     <option value="">
-                      {recipe.major_group ? "Select category..." : "Select major group first"}
+                      {recipe.major_group ? "Select category..." : "Select type first"}
                     </option>
                     {filteredCategories.map((cat) => (
                       <option key={cat.id} value={cat.id}>
                         {cat.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Row 3: Sub Category & Station */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1.5">
+                    Sub Category
+                  </label>
+                  <select
+                    value={recipe.sub_category || ""}
+                    onChange={(e) => onChange({ sub_category: e.target.value || undefined })}
+                    className="input w-full"
+                    disabled={!recipe.category}
+                  >
+                    <option value="">
+                      {recipe.category ? "Select sub-category..." : "Select category first"}
+                    </option>
+                    {filteredSubCategories.map((sub) => (
+                      <option key={sub.id} value={sub.id}>
+                        {sub.name}
                       </option>
                     ))}
                   </select>

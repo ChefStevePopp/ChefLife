@@ -10,11 +10,10 @@ import {
 } from "lucide-react";
 import { useRecipeStore } from "../../stores/recipeStore";
 import BasicInformation from "./BasicInformation";
-import { ProductionSpecs } from "./ProductionSpecs";
+import { Production } from "./Production";
 import { LabelRequirements } from "./LabelRequirements";
 import { InstructionEditor } from "./InstructionEditor";
 import { StationEquipment } from "./StationEquipment";
-import { StorageProtocols } from "./StorageProtocols";
 import { QualityStandards } from "./QualityStandards";
 import { AllergenControl } from "./AllergenControl";
 import { MediaManager } from "./MediaManager";
@@ -157,12 +156,22 @@ const RecipeEditorModal: React.FC<RecipeEditorModalProps> = ({
     }
   };
 
+  // Tab order follows L5 color progression:
+  // 1. Recipe Info (Primary/Blue)
+  // 2. Instructions (Green)
+  // 3. Production (Amber) - consolidated with Storage
+  // 4. Labels (Rose)
+  // 5. Stations (Purple)
+  // 6. Quality (Lime)
+  // 7. Allergens (Red/Rose)
+  // 8. Media (Cyan)
+  // 9. Training (Teal)
+  // 10. Versions (Gray)
   const tabs = [
     { id: "recipe", label: "Recipe Information" },
     { id: "instructions", label: "Instructions" },
     { id: "production", label: "Production" },
     { id: "labels", label: "Labels" },
-    { id: "storage", label: "Storage" },
     { id: "stations", label: "Stations & Equipment" },
     { id: "quality", label: "Quality Standards" },
     { id: "allergens", label: "Allergens" },
@@ -251,16 +260,13 @@ const RecipeEditorModal: React.FC<RecipeEditorModalProps> = ({
             />
           )}
           {activeTab === "production" && (
-            <ProductionSpecs recipe={recipe} onChange={handleChange} />
+            <Production recipe={recipe} onChange={handleChange} />
           )}
           {activeTab === "instructions" && (
             <InstructionEditor recipe={recipe} onChange={handleChange} />
           )}
           {activeTab === "stations" && (
             <StationEquipment recipe={recipe} onChange={handleChange} />
-          )}
-          {activeTab === "storage" && (
-            <StorageProtocols recipe={recipe} onChange={handleChange} />
           )}
           {activeTab === "quality" && (
             <QualityStandards recipe={recipe} onChange={handleChange} />

@@ -22,6 +22,7 @@
  * - Containers use slate-800/60 backdrop-blur pattern
  * - Borders use gray-700/40 or gray-700/50
  * - Close button always on right (standard UI convention)
+ * - Fluid typography (text-fluid-*) for smooth scaling across devices
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -296,10 +297,10 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
           {/* Left: Recipe name */}
           <div className="flex items-center gap-3">
             <div>
-              <h1 className="text-sm font-medium text-white truncate max-w-[150px] sm:max-w-[300px]">
+              <h1 className="text-fluid-sm font-medium text-white truncate max-w-[150px] sm:max-w-[300px]">
                 {recipe.name}
               </h1>
-              <p className="text-xs text-gray-500">Guided Mode</p>
+              <p className="text-fluid-xs text-gray-500">Guided Mode</p>
             </div>
           </div>
 
@@ -323,7 +324,7 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
             </div>
 
             {/* Page Counter */}
-            <span className="text-sm text-gray-400">
+            <span className="text-fluid-sm text-gray-400">
               {getPageLabel()}
               <span className="text-gray-600 mx-1">/</span>
               <span className="text-gray-500">{steps.length} steps</span>
@@ -405,12 +406,12 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                 <BookOpen className="w-7 h-7 text-amber-400/80" />
               </div>
 
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-light text-white mb-4 leading-tight tracking-tight">
+              <h1 className="text-fluid-4xl font-light text-white mb-4 leading-tight tracking-tight">
                 {recipe.name}
               </h1>
 
               {recipe.description && (
-                <p className="text-sm sm:text-base text-gray-400 mb-6 leading-relaxed font-light">
+                <p className="text-fluid-base text-gray-400 mb-6 leading-relaxed font-light">
                   {recipe.description}
                 </p>
               )}
@@ -420,23 +421,23 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                 {hasIngredients && (
                   <div className="flex items-center gap-2">
                     <ShoppingBasket className="w-4 h-4 text-emerald-400/60" />
-                    <span className="text-sm font-light">{totalItems} ingredients</span>
+                    <span className="text-fluid-sm font-light">{totalItems} ingredients</span>
                   </div>
                 )}
                 <div className="flex items-center gap-2">
                   <ListOrdered className="w-4 h-4 text-amber-400/60" />
-                  <span className="text-sm font-light">{steps.length} steps</span>
+                  <span className="text-fluid-sm font-light">{steps.length} steps</span>
                 </div>
                 {totalTime > 0 && (
                   <div className="flex items-center gap-2">
                     <Timer className="w-4 h-4 text-amber-400/60" />
-                    <span className="text-sm font-light">{formatDuration(totalTime)}</span>
+                    <span className="text-fluid-sm font-light">{formatDuration(totalTime)}</span>
                   </div>
                 )}
               </div>
 
               <div className="mt-10 flex items-center justify-center gap-2 text-gray-600">
-                <span className="text-xs font-light">swipe or use arrows</span>
+                <span className="text-fluid-xs font-light">swipe or use arrows</span>
                 <ChevronRight className="w-3 h-3" />
               </div>
             </div>
@@ -459,8 +460,8 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                       <ShoppingBasket className="w-5 h-5 text-emerald-400/80" />
                     </div>
                     <div>
-                      <h2 className="text-lg font-medium text-white">Mise en Place</h2>
-                      <p className="text-xs text-gray-500">Gather all ingredients before you begin</p>
+                      <h2 className="text-fluid-lg font-medium text-white">Mise en Place</h2>
+                      <p className="text-fluid-xs text-gray-500">Gather all ingredients before you begin</p>
                     </div>
                   </div>
                   
@@ -471,7 +472,7 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                       className="flex items-center gap-2 px-3 py-2 bg-gray-700/50 rounded-lg hover:bg-gray-700 transition-colors border border-gray-600/50"
                     >
                       <Scale className="w-4 h-4 text-emerald-400" />
-                      <span className="text-sm font-medium text-white">
+                      <span className="text-fluid-sm font-medium text-white">
                         {scale === 1 ? '1× Batch' : `${scale}× Batch`}
                       </span>
                       <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showScaleDropdown ? 'rotate-180' : ''}`} />
@@ -486,7 +487,7 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                               setScale(opt.value);
                               setShowScaleDropdown(false);
                             }}
-                            className={`w-full px-4 py-2.5 text-left text-sm hover:bg-gray-700/50 transition-colors first:rounded-t-lg last:rounded-b-lg ${
+                            className={`w-full px-4 py-2.5 text-left text-fluid-sm hover:bg-gray-700/50 transition-colors first:rounded-t-lg last:rounded-b-lg ${
                               scale === opt.value ? 'text-emerald-400 font-medium' : 'text-gray-300'
                             }`}
                           >
@@ -507,17 +508,17 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                     >
                       <div className="flex items-center gap-2">
                         <Info className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                        <span className="text-sm font-medium text-gray-200">{sourcingInstructions.title}</span>
+                        <span className="text-fluid-sm font-medium text-gray-200">{sourcingInstructions.title}</span>
                       </div>
                       <ChevronUp className={`w-4 h-4 text-gray-500 transition-transform ${isInfoExpanded ? '' : 'rotate-180'}`} />
                     </button>
                     {isInfoExpanded && (
                       <div className="px-3 pb-3 pt-0 border-t border-gray-700/50">
-                        <p className="text-sm text-gray-400 whitespace-pre-line mt-2">
+                        <p className="text-fluid-sm text-gray-400 whitespace-pre-line mt-2">
                           {sourcingInstructions.body}
                         </p>
                         {sourcingInstructions.footer && (
-                          <p className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-700/30">
+                          <p className="text-fluid-xs text-gray-500 mt-2 pt-2 border-t border-gray-700/30">
                             {sourcingInstructions.footer}
                           </p>
                         )}
@@ -530,8 +531,8 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                 <div className="mt-4 flex items-center gap-4">
                   <div className="flex-1">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-gray-500">Progress</span>
-                      <span className="text-xs font-medium text-gray-300">{checkedCount} / {totalItems}</span>
+                      <span className="text-fluid-xs text-gray-500">Progress</span>
+                      <span className="text-fluid-xs font-medium text-gray-300">{checkedCount} / {totalItems}</span>
                     </div>
                     <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
                       <div 
@@ -544,7 +545,7 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                   {isCheckoutComplete && (
                     <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
                       <CheckCircle className="w-4 h-4 text-emerald-400" />
-                      <span className="text-sm font-medium text-emerald-400">Ready!</span>
+                      <span className="text-fluid-sm font-medium text-emerald-400">Ready!</span>
                     </div>
                   )}
                 </div>
@@ -557,7 +558,7 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                       : 'bg-rose-500/10 border-rose-500/30'
                   }`}>
                     <AlertTriangle className={`w-4 h-4 ${hasAdminAccess ? 'text-amber-400' : 'text-rose-400'}`} />
-                    <span className={`text-sm ${hasAdminAccess ? 'text-amber-300' : 'text-rose-300'}`}>
+                    <span className={`text-fluid-sm ${hasAdminAccess ? 'text-amber-300' : 'text-rose-300'}`}>
                       {hasAdminAccess 
                         ? `${totalItems - checkedCount} items unchecked. Tap again to proceed anyway.`
                         : `Please check all ${totalItems - checkedCount} remaining items before proceeding.`
@@ -621,12 +622,12 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                   {isCheckoutComplete ? (
                     <>
                       <CheckCircle className="w-5 h-5" />
-                      <span>Start Cooking</span>
+                      <span className="text-fluid-sm">Start Cooking</span>
                       <ChevronRight className="w-5 h-5" />
                     </>
                   ) : (
                     <>
-                      <span>{totalItems - checkedCount} items remaining</span>
+                      <span className="text-fluid-sm">{totalItems - checkedCount} items remaining</span>
                     </>
                   )}
                 </button>
@@ -694,25 +695,25 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                               : 'bg-gray-800/50 border border-gray-700/50'
                           }`}
                         >
-                          <span className={`text-lg sm:text-xl font-light ${hasControlPoints ? 'text-rose-400/80' : 'text-amber-400/80'}`}>
+                          <span className={`text-fluid-xl font-light ${hasControlPoints ? 'text-rose-400/80' : 'text-amber-400/80'}`}>
                             {index + 1}
                           </span>
                         </div>
                         <div className="pt-1 flex-1">
-                          <h2 className="text-base sm:text-lg lg:text-xl font-medium text-white leading-tight tracking-tight">
+                          <h2 className="text-fluid-xl font-medium text-white leading-tight tracking-tight">
                             {title}
                           </h2>
                           <div className="flex flex-wrap items-center gap-3 mt-1.5">
                             {step.time_in_minutes && step.time_in_minutes > 0 && (
                               <span className="flex items-center gap-1 text-gray-500">
                                 <Timer className="w-3 h-3" />
-                                <span className="text-xs font-light">{step.time_in_minutes} min</span>
+                                <span className="text-fluid-xs font-light">{step.time_in_minutes} min</span>
                               </span>
                             )}
                             {step.temperature?.value && (
                               <span className="flex items-center gap-1 text-gray-500">
                                 <Thermometer className="w-3 h-3" />
-                                <span className="text-xs font-light">
+                                <span className="text-fluid-xs font-light">
                                   {step.temperature.value}°{step.temperature.unit}
                                 </span>
                               </span>
@@ -726,7 +727,7 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                       {step.delay?.value && step.delay.value > 0 && (
                         <div className="mt-4 flex items-center gap-2 p-2.5 rounded-lg bg-gray-800/50 border border-gray-700/50">
                           <Hourglass className="w-3.5 h-3.5 text-gray-500" />
-                          <span className="text-sm text-gray-400 font-light">Wait {formatDelay(step.delay)}</span>
+                          <span className="text-fluid-sm text-gray-400 font-light">Wait {formatDelay(step.delay)}</span>
                         </div>
                       )}
 
@@ -736,7 +737,7 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                             <Info className="w-3 h-3 text-gray-600" />
                             <span className="text-[10px] font-medium text-gray-600 uppercase tracking-wider">Note</span>
                           </div>
-                          <p className="text-sm text-gray-400 font-light italic">{step.notes}</p>
+                          <p className="text-fluid-sm text-gray-400 font-light italic">{step.notes}</p>
                         </div>
                       )}
                     </div>
@@ -758,21 +759,21 @@ const GuidedContent: React.FC<GuidedContentProps> = ({
                 <CheckCircle className="w-8 h-8 text-emerald-400/80" />
               </div>
 
-              <h2 className="text-xl sm:text-2xl font-light text-white mb-3 tracking-tight">Recipe Complete</h2>
+              <h2 className="text-fluid-2xl font-light text-white mb-3 tracking-tight">Recipe Complete</h2>
 
-              <p className="text-sm text-gray-500 mb-8 font-light">{recipe.name}</p>
+              <p className="text-fluid-sm text-gray-500 mb-8 font-light">{recipe.name}</p>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
                 <button
                   onClick={() => goToPage(0)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800/50 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition-all border border-gray-700/50 text-sm"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800/50 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition-all border border-gray-700/50 text-fluid-sm"
                 >
                   <ChevronLeft className="w-4 h-4" />
                   <span className="font-light">Restart</span>
                 </button>
                 <button
                   onClick={onClose}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500/10 text-amber-400/80 hover:text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20 text-sm"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500/10 text-amber-400/80 hover:text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20 text-fluid-sm"
                 >
                   <X className="w-4 h-4" />
                   <span className="font-light">Exit</span>

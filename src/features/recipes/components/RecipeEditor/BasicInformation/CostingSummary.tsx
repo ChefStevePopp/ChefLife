@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { CircleDollarSign, Calculator } from "lucide-react";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import type { Recipe } from "../../../types/recipe";
 import type { OperationsSettings } from "@/types/operations";
 
@@ -14,6 +15,7 @@ export const CostingSummary: React.FC<CostingSummaryProps> = ({
   onChange,
   settings,
 }) => {
+  const { showDiagnostics } = useDiagnostics();
   // Calculate total ingredient cost
   const recipeTotal = recipe.ingredients.reduce((sum, ingredient) => {
     const quantity = parseFloat(ingredient.quantity) || 0;
@@ -33,7 +35,13 @@ export const CostingSummary: React.FC<CostingSummaryProps> = ({
   }, [costPerRecipeUnit, recipe.cost_per_unit, onChange]);
 
   return (
-    <div className="grid grid-cols-2 gap-6">
+    <div className="space-y-4">
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/recipes/components/RecipeEditor/BasicInformation/CostingSummary.tsx
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-6">
       {/* Explanation Card */}
       <div className="bg-gray-800/50 rounded-lg p-6 border border-gray-700/30 shadow-md">
         <div className="flex items-center rounded-lg bg-[#1a1f2b] shadow-lg py-[4] pt-[3] px-[3] p-2">
@@ -160,6 +168,7 @@ export const CostingSummary: React.FC<CostingSummaryProps> = ({
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );
