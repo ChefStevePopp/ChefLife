@@ -280,6 +280,37 @@ Collapsible help/context area with premium morph animation.
 
 ---
 
+## Responsive Flex Table Pattern
+
+For data tables that need perfect header/row alignment with responsive text columns:
+
+```tsx
+{/* Headers */}
+<div className="hidden lg:flex lg:items-center gap-2 px-3 py-2 text-xs font-medium text-gray-500 uppercase">
+  <div className="w-5 flex-shrink-0"></div>           {/* Fixed: Grip/Action */}
+  <div className="flex-[3] min-w-0">Name</div>        {/* Grows: Primary text */}
+  <div className="flex-[1.5] min-w-0">Secondary</div> {/* Grows: Secondary text */}
+  <div className="w-20 flex-shrink-0 text-center">Fixed</div>  {/* Fixed: Numbers */}
+  <div className="w-32 flex-shrink-0">Actions</div>   {/* Fixed: Action buttons */}
+</div>
+
+{/* Rows - identical structure */}
+<div className="hidden lg:flex lg:items-center gap-2 px-3 py-2">
+  {/* ... same widths as headers */}
+</div>
+```
+
+**Key Principles:**
+- `flex-[N]` for text columns that should grow proportionally
+- `w-XX flex-shrink-0` for fixed-width numeric/action columns
+- `min-w-0` on flex columns to allow text truncation
+- `gap-2` for consistent spacing
+- Headers and rows MUST use identical width values
+
+**Reference:** `src/features/recipes/components/RecipeEditor/IngredientsInput/TableView.tsx`
+
+---
+
 ## Color Palette Reference
 
 | Color | Token | Use Case |

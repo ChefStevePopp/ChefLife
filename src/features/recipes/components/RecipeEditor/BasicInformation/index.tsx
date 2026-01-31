@@ -13,7 +13,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useDiagnostics } from "@/hooks/useDiagnostics";
-import { IngredientsInput } from "./IngredientsInput";
+import { IngredientsInput } from "../IngredientsInput";
 import { CostingSummary } from "./CostingSummary";
 import type { Recipe } from "@/stores/recipeStore";
 import type { OperationsSettings } from "@/types/operations";

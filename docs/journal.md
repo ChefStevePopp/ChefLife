@@ -38,6 +38,7 @@ Transcripts are stored in `/mnt/transcripts/` and contain full conversation hist
 | 2026-01-17 | `2026-01-17-00-24-46-vendor-analytics-guided-mode-sections.txt` | VendorAnalytics 4-section story, NEXUS analytics events, ActivityFeed audit |
 | 2026-01-12 | `2026-01-12-13-23-45-price-source-tracking-implementation.txt` | Price source tracking, TwoStageButton enhancement, override protection |
 | 2026-01-12 | `2026-01-12-00-06-37-triage-filter-fixes-visual-hierarchy.txt` | Triage badge, filterType, L5 Icon Badge Pattern, visual hierarchy |
+| 2026-01-31 | `2026-01-31-22-13-29-ingredients-input-l5-redesign.txt` | IngredientsInput L5/L6 rebuild - Table/Tablet/Guided modes, Sandbox ingredients |
 | 2026-01-11 | `2026-01-11-23-54-14-triage-badge-count-filter-fixes.txt` | Triage badge count, filter fixes |
 | 2026-01-11 | `2026-01-11-23-42-09-vim-layout-triage-badge-import-icons.txt` | VIM layout, triage badge, import icons |
 | 2026-01-10 | `2026-01-10-18-28-53-vim-audit-trail-day2-complete-promises-system.txt` | VIM audit trail Day 2, PROMISES, Code Groups, ML training |
@@ -72,6 +73,12 @@ Transcripts are stored in `/mnt/transcripts/` and contain full conversation hist
 ## Quick Reference: Current Focus Areas
 
 ### Recently Completed
+- ✅ **IngredientsInput L5/L6 Rebuild** (January 31, 2026)
+  - Three-mode architecture: Table / Tablet / Guided
+  - Sandbox ingredients concept (verify later via invoice)
+  - Responsive flex layout with perfect column alignment
+  - Touch-friendly badges and action buttons
+  - Educational tips in Guided mode
 - ✅ Recipe Viewer L5 Tab System (January 24, 2026)
 - ✅ Ingredients Tab Mise en Place UX (tap-to-check, scaling)
 - ✅ Configurable Sourcing Instructions (org-level settings)
@@ -86,6 +93,11 @@ Transcripts are stored in `/mnt/transcripts/` and contain full conversation hist
 - ✅ NEXUS analytics events (7 new event types)
 
 ### In Progress
+- 🔄 **Recipe Editor L5/L6 Overhaul**
+  - ✅ Ingredients tab (Table/Tablet/Guided modes)
+  - ⏳ Production tab
+  - ⏳ Method tab
+  - ⏳ Costing tab
 - 🔄 **Recipe Viewer L5/L6 Overhaul** (Ingredients tab done, 8 tabs remaining)
 - 🔄 **Triage → Create Ingredient blank screen** (Session 68 priority)
 - 🔄 ActivityFeed redesign (6-phase audit complete, needs rebuild)
@@ -136,4 +148,4 @@ YYYY-MM-DD-HH-MM-SS-[description].txt
 
 ---
 
-*Last updated: January 24, 2026 (Recipe Viewer L5 Session)*
+*Last updated: January 31, 2026 (IngredientsInput L5/L6 Rebuild)*

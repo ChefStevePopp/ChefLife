@@ -20,6 +20,7 @@ import {
   Beaker,
 } from "lucide-react";
 import { useFoodRelationshipsStore } from "@/stores/foodRelationshipsStore";
+import { useOperationsStore } from "@/stores/operationsStore";
 import { useDiagnostics } from "@/hooks/useDiagnostics";
 import { getLucideIcon } from "@/utils/iconMapping";
 import { differenceInWeeks, differenceInDays } from "date-fns";
@@ -197,12 +198,19 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   const { majorGroups, categories, subCategories, fetchFoodRelationships, getRecipeTypeGroups } = useFoodRelationshipsStore();
   const recipeTypeGroups = getRecipeTypeGroups();
 
+  // Get kitchen stations from Operations
+  const { settings: operationsSettings, fetchSettings: fetchOperationsSettings } = useOperationsStore();
+  const kitchenStations = operationsSettings?.kitchen_stations || [];
+
   // Fetch on mount if needed
   React.useEffect(() => {
     if (majorGroups.length === 0) {
       fetchFoodRelationships();
     }
-  }, [majorGroups.length, fetchFoodRelationships]);
+    if (!operationsSettings) {
+      fetchOperationsSettings();
+    }
+  }, [majorGroups.length, fetchFoodRelationships, operationsSettings, fetchOperationsSettings]);
 
   const majorGroup = useMemo(() => {
     if (!recipe.major_group) return null;
@@ -622,45 +630,46 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
                   <label className="block text-sm font-medium text-gray-400 mb-1.5">
                     Station
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={recipe.station || ""}
-                    onChange={(e) => onChange({ station: e.target.value })}
-                    placeholder="e.g., Grill, Prep, Sauté"
+                    onChange={(e) => onChange({ station: e.target.value || undefined })}
                     className="input w-full"
-                  />
+                  >
+                    <option value="">Select station...</option>
+                    {kitchenStations.map((station) => (
+                      <option key={station} value={station}>
+                        {station}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
-              {/* Row 4: Yield Amount & Unit */}
+              {/* Row 4: Yield Amount & Unit (read-only - set in Production tab) */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-400 mb-1.5">
-                    Yield Amount <span className="text-rose-400">*</span>
+                    Yield Amount <span className="text-gray-500 text-xs">(from Production)</span>
                   </label>
-                  <input
-                    type="number"
-                    value={recipe.yield_amount || ""}
-                    onChange={(e) =>
-                      onChange({ yield_amount: parseFloat(e.target.value) || 0 })
-                    }
-                    placeholder="e.g., 12"
-                    min="0"
-                    step="0.25"
-                    className="input w-full"
-                  />
+                  <div 
+                    className="input w-full bg-gray-700/30 text-gray-400 cursor-not-allowed flex items-center"
+                    onClick={() => onNavigateToTab?.("production")}
+                    title="Edit in Production tab"
+                  >
+                    {recipe.yield_amount > 0 ? recipe.yield_amount : "—"}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-400 mb-1.5">
-                    Yield Unit <span className="text-rose-400">*</span>
+                    Yield Unit <span className="text-gray-500 text-xs">(from Production)</span>
                   </label>
-                  <input
-                    type="text"
-                    value={recipe.yield_unit || ""}
-                    onChange={(e) => onChange({ yield_unit: e.target.value })}
-                    placeholder="e.g., portions, oz, each"
-                    className="input w-full"
-                  />
+                  <div 
+                    className="input w-full bg-gray-700/30 text-gray-400 cursor-not-allowed flex items-center"
+                    onClick={() => onNavigateToTab?.("production")}
+                    title="Edit in Production tab"
+                  >
+                    {recipe.yield_unit || "—"}
+                  </div>
                 </div>
               </div>
 

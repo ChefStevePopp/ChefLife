@@ -107,8 +107,19 @@ export interface RecipeIngredient {
   // Joined fields (read-only, from queries)
   // =========================================
   ingredient_name?: string;        // From master_ingredients.product or recipes.name
+  common_name?: string;            // From master_ingredients.common_name (e.g., "Brisket")
   allergens?: string[];            // From master_ingredients.allergens
   recipe_unit_type?: string;       // From master_ingredients.recipe_unit_type
+  
+  // =========================================
+  // SANDBOX MODE - For speculative ingredients
+  // not yet verified via invoice/MIL
+  // =========================================
+  is_sandbox?: boolean;            // Toggle: true = sandbox item
+  sandbox_vendor?: string;         // Prospective vendor (e.g., "GFS")
+  sandbox_vendor_code?: string;    // Vendor catalog code
+  sandbox_description?: string;    // User-entered description
+  sandbox_estimated_cost?: number; // Manual cost estimate (flagged as unverified)
   
   // =========================================
   // DEPRECATED: Legacy JSONB fields

@@ -26,6 +26,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useMasterIngredientsStore } from "@/stores/masterIngredientsStore";
 import { useRecipeStore } from "@/features/recipes/stores/recipeStore";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import type { Recipe, RecipeIngredient } from "../../../types/recipe";
 import toast from "react-hot-toast";
 import { supabase } from "@/lib/supabase";
@@ -303,6 +304,7 @@ export const IngredientsInput: React.FC<{
   recipe: Recipe;
   onChange: (updates: Partial<Recipe>) => void;
 }> = ({ recipe, onChange }) => {
+  const { showDiagnostics } = useDiagnostics();
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -590,6 +592,11 @@ export const IngredientsInput: React.FC<{
 
   return (
     <div className="space-y-4">
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/recipes/components/RecipeEditor/BasicInformation/IngredientsInput.tsx
+        </div>
+      )}
       <div className="sticky top-0 bg-gray-800 z-20 pr-[6] pb-[4] pb-[4] px-[6] py-[6] py-[6] py-[6] pr-[4] p-4 shadow-md rounded-lg">
         <div className="flex items-center justify-between rounded-lg bg-[#1a1f2b] shadow-lg py-[4] pt-[3] px-[3] py-[2] p-4">
           <div className="flex items-center gap-3">
