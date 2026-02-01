@@ -21,6 +21,10 @@ export interface OperationsSettings {
   storage_containers: string[];
   container_types: string[];
   kitchen_stations: string[];
+  kitchen_station_allergens?: Record<string, {
+    environmentalAllergens: string[];
+    notes?: string;
+  }>;
   label_templates: string[];
   printer_settings: any;
   category_groups?: CategoryGroup[];

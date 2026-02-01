@@ -1179,6 +1179,272 @@ const PlaceholderSection: React.FC<PlaceholderSectionProps> = ({ tab, features, 
 };
 
 // =============================================================================
+// ALLERGEN PORTAL SECTION
+// =============================================================================
+
+import { useOperationsStore } from "@/stores/operationsStore";
+import { ALLERGEN_LIST, type AllergenType } from "@/features/allergens/types";
+import { ALLERGENS } from "@/features/allergens/constants";
+import { AllergenBadge } from "@/features/allergens/components/AllergenBadge";
+
+const AllergenPortalSection: React.FC = () => {
+  const { settings: operationsSettings, updateSettings, fetchSettings } = useOperationsStore();
+  const [stationAllergens, setStationAllergens] = useState<Record<string, {
+    environmentalAllergens: AllergenType[];
+    notes?: string;
+  }>>({});
+  const [hasChanges, setHasChanges] = useState(false);
+  const [expandedStation, setExpandedStation] = useState<string | null>(null);
+
+  // Fetch operations settings on mount
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
+
+  // Initialize from saved settings
+  useEffect(() => {
+    if (operationsSettings?.kitchen_station_allergens) {
+      setStationAllergens(operationsSettings.kitchen_station_allergens);
+    }
+  }, [operationsSettings?.kitchen_station_allergens]);
+
+  const kitchenStations = operationsSettings?.kitchen_stations || [];
+
+  const handleToggleAllergen = (station: string, allergen: AllergenType) => {
+    setStationAllergens(prev => {
+      const current = prev[station]?.environmentalAllergens || [];
+      const hasAllergen = current.includes(allergen);
+      return {
+        ...prev,
+        [station]: {
+          ...prev[station],
+          environmentalAllergens: hasAllergen
+            ? current.filter(a => a !== allergen)
+            : [...current, allergen]
+        }
+      };
+    });
+    setHasChanges(true);
+  };
+
+  const handleUpdateNotes = (station: string, notes: string) => {
+    setStationAllergens(prev => ({
+      ...prev,
+      [station]: {
+        ...prev[station],
+        environmentalAllergens: prev[station]?.environmentalAllergens || [],
+        notes
+      }
+    }));
+    setHasChanges(true);
+  };
+
+  const handleSave = async () => {
+    if (!operationsSettings) return;
+    try {
+      await updateSettings({
+        ...operationsSettings,
+        kitchen_station_allergens: stationAllergens
+      });
+      setHasChanges(false);
+      toast.success("Station allergens saved");
+    } catch (error) {
+      toast.error("Failed to save station allergens");
+    }
+  };
+
+  const handleReset = () => {
+    if (operationsSettings?.kitchen_station_allergens) {
+      setStationAllergens(operationsSettings.kitchen_station_allergens);
+    } else {
+      setStationAllergens({});
+    }
+    setHasChanges(false);
+  };
+
+  const getStationAllergenCount = (station: string) => {
+    return stationAllergens[station]?.environmentalAllergens?.length || 0;
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Station Environmental Allergens */}
+      <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-5">
+        {/* Section Header */}
+        <div className="flex items-center gap-3 mb-6 pb-3 border-b border-gray-700/50">
+          <div className="w-10 h-10 rounded-lg bg-rose-500/20 flex items-center justify-center flex-shrink-0">
+            <AlertTriangle className="w-5 h-5 text-rose-400" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-base font-semibold text-white">Station Environmental Allergens</h3>
+            <p className="text-sm text-gray-400">
+              Configure allergens present at each kitchen station — these cascade to all recipes assigned to that station
+            </p>
+          </div>
+        </div>
+
+        {/* Explanation Card */}
+        <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50 mb-6">
+          <div className="flex items-start gap-3">
+            <Info className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm text-gray-300 font-medium">How Environmental Allergens Work</p>
+              <p className="text-sm text-gray-500 mt-1">
+                When a recipe is assigned to a station (e.g., "Pans"), it automatically inherits that station's 
+                environmental allergens. This handles scenarios like flour aerosolization near the breading station 
+                or nut dust near the dessert line. The chain: Station → Recipe → Customer Declaration.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Station List */}
+        {kitchenStations.length === 0 ? (
+          <div className="text-center py-8 bg-gray-800/30 rounded-lg border-2 border-dashed border-gray-700/50">
+            <Settings className="w-8 h-8 text-gray-600 mx-auto mb-2" />
+            <p className="text-sm text-gray-500">No kitchen stations configured</p>
+            <p className="text-xs text-gray-600 mt-1">
+              Add stations in Operations → Kitchen → Kitchen Stations
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {kitchenStations.map((station) => {
+              const isExpanded = expandedStation === station;
+              const allergenCount = getStationAllergenCount(station);
+              const stationData = stationAllergens[station];
+              
+              return (
+                <div
+                  key={station}
+                  className="bg-gray-800/50 rounded-xl border border-gray-700/50 overflow-hidden"
+                >
+                  {/* Station Header */}
+                  <button
+                    onClick={() => setExpandedStation(isExpanded ? null : station)}
+                    className="w-full flex items-center justify-between p-4 hover:bg-gray-700/30 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-gray-700/50 flex items-center justify-center">
+                        <Utensils className="w-4 h-4 text-gray-400" />
+                      </div>
+                      <div className="text-left">
+                        <p className="text-sm font-medium text-white">{station}</p>
+                        <p className="text-xs text-gray-500">
+                          {allergenCount > 0 
+                            ? `${allergenCount} environmental allergen${allergenCount !== 1 ? 's' : ''}`
+                            : 'No environmental allergens'
+                          }
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {allergenCount > 0 && (
+                        <div className="flex items-center gap-1">
+                          {(stationData?.environmentalAllergens || []).slice(0, 4).map(allergen => (
+                            <AllergenBadge key={allergen} type={allergen} size="sm" disableTooltip />
+                          ))}
+                          {allergenCount > 4 && (
+                            <span className="text-xs text-gray-500 ml-1">+{allergenCount - 4}</span>
+                          )}
+                        </div>
+                      )}
+                      {isExpanded ? (
+                        <ChevronUp className="w-4 h-4 text-gray-400" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4 text-gray-400" />
+                      )}
+                    </div>
+                  </button>
+
+                  {/* Expanded Content */}
+                  {isExpanded && (
+                    <div className="px-4 pb-4 pt-2 border-t border-gray-700/50">
+                      <p className="text-xs text-gray-500 mb-3">
+                        Select allergens that are environmentally present at this station:
+                      </p>
+                      
+                      {/* Allergen Grid */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 mb-4">
+                        {ALLERGEN_LIST.map((allergen) => {
+                          const config = ALLERGENS[allergen];
+                          const isSelected = stationData?.environmentalAllergens?.includes(allergen);
+                          
+                          return (
+                            <button
+                              key={allergen}
+                              onClick={() => handleToggleAllergen(station, allergen)}
+                              className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-left ${
+                                isSelected
+                                  ? 'bg-rose-500/20 border-rose-500/50 text-rose-300'
+                                  : 'bg-gray-800/30 border-gray-700/50 text-gray-400 hover:border-gray-600'
+                              }`}
+                            >
+                              <span className="text-base">⚠️</span>
+                              <span className="text-xs font-medium truncate">{config?.label || allergen}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Notes */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                          Station Notes (optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={stationData?.notes || ''}
+                          onChange={(e) => handleUpdateNotes(station, e.target.value)}
+                          placeholder="e.g., Flour aerosolized during breading prep"
+                          className="input w-full text-sm"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Actions */}
+        {kitchenStations.length > 0 && (
+          <div className="flex items-center justify-between pt-4 mt-4 border-t border-gray-700/50">
+            <button onClick={handleReset} className="btn-ghost text-sm" disabled={!hasChanges}>
+              <RotateCcw className="w-4 h-4 mr-1.5" />
+              Discard Changes
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={!hasChanges}
+              className={`btn-primary text-sm ${!hasChanges ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <Save className="w-4 h-4 mr-1.5" />
+              Save Station Allergens
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Other Planned Features */}
+      <PlaceholderSection
+        tab={TABS.find(t => t.id === 'allergens')!}
+        features={[
+          "Customer-facing allergen portal configuration",
+          "Which allergens to display (Big 9, Big 14, or custom list)",
+          "Menu item → allergen linking display",
+          "Disclaimer text customization",
+          "Embed code for allergen portal on your website",
+          "QR code generation for table tents",
+        ]}
+        notes="Protect your guests and your business. Clear allergen communication is essential for food safety."
+      />
+    </div>
+  );
+};
+
+// =============================================================================
 // MAIN COMPONENT
 // =============================================================================
 
@@ -1302,6 +1568,8 @@ export const RecipeSettings: React.FC = () => {
         <GeneralSettingsSection />
       ) : activeTab === "editor" ? (
         <InstructionBlocksSection />
+      ) : activeTab === "allergens" ? (
+        <AllergenPortalSection />
       ) : (
         <PlaceholderSection 
           tab={currentTab} 

@@ -4,6 +4,14 @@ export type AllergenType =
   | 'gluten' | 'mustard' | 'celery' | 'garlic' | 'onion'
   | 'nitrite' | 'mushroom' | 'hot_pepper' | 'citrus' | 'pork';
 
+// List of all allergen types for iteration
+export const ALLERGEN_LIST: AllergenType[] = [
+  'peanut', 'crustacean', 'treenut', 'shellfish', 'sesame',
+  'soy', 'fish', 'wheat', 'milk', 'sulphite', 'egg',
+  'gluten', 'mustard', 'celery', 'garlic', 'onion',
+  'nitrite', 'mushroom', 'hot_pepper', 'citrus', 'pork'
+];
+
 export interface CustomAllergen {
   name: string;
   active: boolean;

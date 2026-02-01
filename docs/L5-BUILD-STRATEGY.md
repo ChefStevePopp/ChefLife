@@ -2285,6 +2285,27 @@ All money-related values use a single teal accent:
 
 ## Changelog
 
+**Jan 31, 2026 (Session - IngredientsInput L5/L6 Rebuild):**
+- **Three-Mode Input Pattern** documented:
+  - Table Mode: Desktop efficiency, responsive flex layout
+  - Tablet Mode: Full-screen speed entry, one ingredient at a time
+  - Guided Mode: Same as Tablet with `showEducation={true}` for tips
+  - Key insight: Don't build separate components, use props to add context
+- **Sandbox Ingredients** concept:
+  - Toggle on RecipeIngredient: `is_sandbox`, `sandbox_vendor`, `sandbox_vendor_code`, `sandbox_description`, `sandbox_estimated_cost`
+  - Amber styling for unverified, emerald "Verified" badge when linked to MIL
+  - Resolution flow: Invoice arrives → User matches → Sandbox converts to verified
+- **Responsive Flex Table Pattern** added to DESIGN-SYSTEM.md:
+  - Headers and rows use identical flex structure
+  - `flex-[N]` for text columns that grow proportionally
+  - `w-XX flex-shrink-0` for fixed-width numeric/action columns
+  - Reference: `IngredientsInput/TableView.tsx`
+- **Touch-Friendly Mode Switcher**:
+  - Spaced badges instead of grouped buttons
+  - `px-3 py-2` for 44px+ touch targets
+  - Labels visible on `sm:` breakpoint and up
+- **Reference Implementation:** `src/features/recipes/components/RecipeEditor/IngredientsInput/`
+
 **Jan 29, 2026 (Session - Responsive Flip Cards & URL Routing):**
 - **Container Query Fluid Typography** pattern documented:
   - `cqw` units for text that scales with container width
