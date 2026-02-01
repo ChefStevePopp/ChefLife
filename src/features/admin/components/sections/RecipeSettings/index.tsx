@@ -31,6 +31,9 @@ import {
   Snowflake,
   CheckCircle,
   X,
+  ShieldAlert,
+  Utensils,
+  Sparkles,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { SECURITY_LEVELS } from "@/config/security";

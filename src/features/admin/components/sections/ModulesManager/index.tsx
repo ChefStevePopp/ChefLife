@@ -12,6 +12,7 @@ import {
   Info,
   ChevronUp,
   ShieldAlert,
+  Scale,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
@@ -86,6 +87,15 @@ const ADDON_FEATURES = [
     icon: Mail,
     requiresCompliance: false,
     configPath: '/admin/modules/communications',
+  },
+  {
+    id: 'hr' as ModuleId,
+    label: 'HR & Policies',
+    description: 'Policy warehouse, acknowledgments, job descriptions, and compliance tracking',
+    icon: Scale,
+    requiresCompliance: true,
+    complianceWarning: 'HR policies and employment documentation requirements vary by jurisdiction. Ensure your policies comply with local labor laws. You are responsible for legal compliance.',
+    configPath: '/admin/modules/hr',
   },
 ];
 

@@ -225,6 +225,123 @@ export interface CommunicationsModuleConfig extends BaseModuleConfig {
 }
 
 // =============================================================================
+// HR MODULE
+// =============================================================================
+
+/** Policy category for organization */
+export type PolicyCategory =
+  | 'food_safety'
+  | 'workplace_safety'
+  | 'harassment'
+  | 'attendance'
+  | 'dress_code'
+  | 'technology'
+  | 'confidentiality'
+  | 'general'
+  | 'custom';
+
+/** Recertification interval presets */
+export type RecertificationInterval =
+  | 'none'        // One-time acknowledgment
+  | '30_days'
+  | '90_days'
+  | '180_days'
+  | 'annual'      // 365 days
+  | 'biennial'    // 730 days
+  | 'custom';     // Custom days
+
+/** Policy definition stored in config */
+export interface PolicyTemplate {
+  id: string;
+  title: string;
+  description: string;
+  category: PolicyCategory;
+  /** Storage path to PDF in Supabase */
+  documentUrl: string | null;
+  /** Version string (e.g., "1.0", "2.1") */
+  version: string;
+  /** Effective date of this version */
+  effectiveDate: string;
+  /** Whether team members must acknowledge this policy */
+  requiresAcknowledgment: boolean;
+  /** Recertification settings */
+  recertification: {
+    required: boolean;
+    interval: RecertificationInterval;
+    customDays?: number;
+  };
+  /** Which roles/positions must acknowledge (empty = all) */
+  applicableRoles: string[];
+  /** Is this policy currently active */
+  isActive: boolean;
+  /** Created/updated metadata */
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+/** Job description template */
+export interface JobDescriptionTemplate {
+  id: string;
+  title: string;
+  department: string;
+  responsibilities: string[];
+  requirements: string[];
+  documentUrl: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Onboarding checklist item */
+export interface OnboardingItem {
+  id: string;
+  label: string;
+  description: string;
+  required: boolean;
+  documentUrl: string | null;
+  order: number;
+}
+
+export interface HRConfig {
+  /** Policy management settings */
+  policies: {
+    enabled: boolean;
+    /** Custom categories beyond defaults */
+    customCategories: { id: string; label: string; color: string }[];
+    /** Default recertification interval for new policies */
+    defaultRecertificationInterval: RecertificationInterval;
+    /** Reminder days before recertification due */
+    reminderDaysBefore: number[];
+    /** Allow digital signatures */
+    digitalSignaturesEnabled: boolean;
+  };
+  /** Job descriptions settings */
+  jobDescriptions: {
+    enabled: boolean;
+    requireForNewHires: boolean;
+  };
+  /** Onboarding settings */
+  onboarding: {
+    enabled: boolean;
+    defaultChecklist: OnboardingItem[];
+  };
+  /** Compliance document settings */
+  compliance: {
+    enabled: boolean;
+    /** Track certifications (Food Handler, First Aid, etc.) */
+    trackCertifications: boolean;
+    /** Certification types to track */
+    certificationTypes: { id: string; label: string; expiryRequired: boolean }[];
+  };
+}
+
+export interface HRModuleConfig extends BaseModuleConfig {
+  config: HRConfig | null;
+}
+
+// =============================================================================
 // ALL MODULES MAP
 // =============================================================================
 
@@ -236,6 +353,7 @@ export interface OrganizationModules {
   haccp: HACCPModuleConfig;
   tasks: TasksModuleConfig;
   communications: CommunicationsModuleConfig;
+  hr: HRModuleConfig;
 }
 
 export type ModuleId = keyof OrganizationModules;
@@ -321,6 +439,16 @@ export const MODULE_REGISTRY: ModuleDefinition[] = [
     requiresCompliance: false,
     defaultEnabled: false,
   },
+  {
+    id: 'hr',
+    label: 'HR & Policies',
+    description: 'Policy warehouse, acknowledgments, certifications, and compliance tracking',
+    icon: 'Scale',
+    color: 'indigo',
+    requiresCompliance: true,
+    complianceWarning: 'HR policies and employment documentation requirements vary by jurisdiction. Ensure your policies comply with local labor laws. You are responsible for legal compliance.',
+    defaultEnabled: false,
+  },
 ];
 
 // =============================================================================
@@ -366,6 +494,7 @@ export const DEFAULT_MODULE_PERMISSIONS: Record<ModuleId, ModulePermissions> = {
   haccp: { view: 5, enable: 1, configure: 2, use: 5 },
   tasks: { view: 5, enable: 1, configure: 3, use: 5 },
   communications: { view: 3, enable: 1, configure: 2, use: 3 },
+  hr: { view: 5, enable: 1, configure: 2, use: 5 },
 };
 
 export const DEFAULT_COMMUNICATIONS_CONFIG: CommunicationsConfig = {
@@ -379,4 +508,32 @@ export const DEFAULT_COMMUNICATIONS_CONFIG: CommunicationsConfig = {
   triggersEnabled: false,
   timezone: 'America/Toronto',
   maxTemplates: 50,
+};
+
+export const DEFAULT_HR_CONFIG: HRConfig = {
+  policies: {
+    enabled: true,
+    customCategories: [],
+    defaultRecertificationInterval: 'annual',
+    reminderDaysBefore: [30, 14, 7, 1],
+    digitalSignaturesEnabled: true,
+  },
+  jobDescriptions: {
+    enabled: false,
+    requireForNewHires: false,
+  },
+  onboarding: {
+    enabled: false,
+    defaultChecklist: [],
+  },
+  compliance: {
+    enabled: false,
+    trackCertifications: false,
+    certificationTypes: [
+      { id: 'food_handler', label: 'Food Handler Certificate', expiryRequired: true },
+      { id: 'first_aid', label: 'First Aid/CPR', expiryRequired: true },
+      { id: 'smart_serve', label: 'Smart Serve / TIPS', expiryRequired: true },
+      { id: 'whmis', label: 'WHMIS', expiryRequired: true },
+    ],
+  },
 };

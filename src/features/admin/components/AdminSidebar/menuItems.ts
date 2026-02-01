@@ -126,18 +126,10 @@ export const menuItems = (isDev: boolean, securityLevel: SecurityLevel = SECURIT
           tooltip: "Points, tiers & coaching",
         },
         {
-          icon: Briefcase,
-          label: "Job Descriptions",
-          path: "/admin/job-descriptions",
-          tooltip: "What they do here",
-          comingSoon: true,
-        },
-        {
           icon: Scale,
           label: "Policies",
           path: "/admin/policies",
-          tooltip: "How we operate",
-          comingSoon: true,
+          tooltip: "Company policies & compliance tracking",
         },
         {
           icon: Satellite,
