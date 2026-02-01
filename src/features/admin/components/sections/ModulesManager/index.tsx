@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { 
-  Package, 
-  Calendar, 
+import {
+  Package,
+  Calendar,
   LibraryBig,
   UtensilsCrossed,
   ThermometerSnowflake,
@@ -11,6 +11,7 @@ import {
   Cog,
   Info,
   ChevronUp,
+  ShieldAlert,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
@@ -56,6 +57,13 @@ const CORE_FEATURES = [
     description: 'Temperature monitoring and food safety compliance',
     icon: ThermometerSnowflake, // Matches sidebar
     configPath: '/admin/haccp/settings',
+  },
+  {
+    id: 'allergens',
+    label: 'Allergen Manager',
+    description: 'Comprehensive allergen tracking and customer disclosure',
+    icon: ShieldAlert, // Matches sidebar
+    configPath: '/admin/allergens',
   },
 ];
 

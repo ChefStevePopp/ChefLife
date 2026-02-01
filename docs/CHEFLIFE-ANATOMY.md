@@ -1,10 +1,10 @@
 # ChefLife Anatomy
 ## A Living Restaurant System
 
-**Document Created:** January 8, 2026  
-**Last Updated:** January 11, 2026  
-**Authors:** Steve Popp (Creator) & Claude (Architecture Partner)  
-**Version:** 1.5 - L6 Mobile Invoice Example
+**Document Created:** January 8, 2026
+**Last Updated:** February 1, 2026
+**Authors:** Steve Popp (Creator) & Claude (Architecture Partner)
+**Version:** 2.0 - Allergen Manager Core Module
 
 ---
 
@@ -181,6 +181,78 @@ Not to make money - to feed people, to create experiences, to share craft.
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+### 🛡️ ALLERGEN MANAGER — The Immune System
+**Location:** Allergen Manager (`/admin/allergens`)
+**Function:** Protection. Compliance. Trust.
+
+The immune system protects guests and the business:
+- **Environmental Tracking** — Allergens present at kitchen stations (flour dust, nut contamination)
+- **Ingredient-Level** — Three-state system (Contains | May Contain | None) for each ingredient
+- **Recipe Cascading** — Station allergens automatically flow to recipes assigned to that station
+- **Customer Disclosure** — Chain: Ingredients → Recipes → Menu Items → Customer Portal
+- **Regulatory Compliance** — Supports Natasha's Law (UK), Health Canada, FDA Big 9 (US), FSANZ (AU/NZ)
+- **White-Label Customization** — Upload custom allergen icons to match your brand identity
+
+**Architecture:**
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     ALLERGEN MANAGER STRUCTURE                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ALLERGEN DATA FLOW                                                         │
+│  ═══════════════════                                                        │
+│  Layer 0: Master Ingredients                                                │
+│  ├── Allergen presence (Contains, May Contain, None)                        │
+│  ├── Supplier warnings (cross-contamination risk)                           │
+│  └── Custom allergen fields (3 slots for jurisdiction-specific needs)       │
+│                                                                             │
+│  Layer 1: Kitchen Stations (Environmental)                                  │
+│  ├── Station allergen configuration (flour aerosolization, nut dust, etc.)  │
+│  ├── Cross-contact risk areas                                               │
+│  └── Automatically cascades to recipes assigned to that station             │
+│                                                                             │
+│  Layer 2: Recipes                                                           │
+│  ├── Inherits ingredient allergens                                          │
+│  ├── Inherits station environmental allergens                               │
+│  └── Can override/add manual declarations                                   │
+│                                                                             │
+│  Layer 3: Customer Portal (Future)                                          │
+│  ├── Public-facing allergen information                                     │
+│  ├── QR codes for table tents                                               │
+│  ├── Embeddable widget for website                                          │
+│  └── White-label custom allergen icons                                      │
+│                                                                             │
+│  WHITE-LABEL CUSTOMIZATION (Planned)                                        │
+│  ═══════════════════════════════                                            │
+│  • Icon Pack Selection (Modern, Classic, Minimal, Medical)                  │
+│  • Per-Allergen Custom SVG Upload                                           │
+│  • Fallback to system defaults if no custom icon provided                   │
+│  • Preview system before applying changes                                   │
+│  • Multi-jurisdiction support (swap icon sets by region)                    │
+│                                                                             │
+│  COMPLIANCE SUPPORT                                                         │
+│  ══════════════════                                                         │
+│  • Natasha's Law (UK) — Full ingredient/allergen disclosure                 │
+│  • Health Canada — Enhanced labeling requirements                           │
+│  • FDA Big 9 (US) — Major food allergen labeling                            │
+│  • FSANZ (AU/NZ) — Food Standards Australia New Zealand                     │
+│  • Three-state system for nuanced risk communication                        │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Why Allergen Manager is Core:**
+
+This isn't optional. One allergic reaction can:
+- Hospitalize a guest
+- Destroy your reputation
+- Close your doors permanently
+- Result in criminal charges (Natasha's Law precedent)
+
+The immune system MUST be healthy. ChefLife treats allergen management with the same importance as COGS tracking — it's mission-critical to survival.
 
 ---
 
@@ -931,9 +1003,9 @@ That's the vision. That's the mission. That's ChefLife.
 
 ---
 
-**Document Version:** 1.9  
-**Status:** Living Document  
-**Last Update:** January 22, 2026 - Recipe Module Architecture (Heart of the House)  
+**Document Version:** 2.0
+**Status:** Living Document
+**Last Update:** February 1, 2026 - Allergen Manager Core Module (The Immune System)
 **Next Update:** As the body grows
 
 ---
@@ -952,3 +1024,4 @@ That's the vision. That's the mission. That's ChefLife.
 | 1.7 | Jan 16, 2026 | **Nexus Dashboard** - MRI screen for vital signs, Premium Animation System (AnimatedNumber, MorphingText) |
 | 1.8 | Jan 21, 2026 | **Food Relationships** - The Taxonomy/DNA organ. Major Groups → Categories → Sub-Categories hierarchy. L5 build with Guided Mode, character counters, empty state management. |
 | 1.9 | Jan 22, 2026 | **Recipe Module Architecture** - 11-tab editor detail, tab-level change tracking, dynamic Recipe Type from taxonomy, admin-container responsive layout. |
+| 2.0 | Feb 1, 2026 | **Allergen Manager Core Module** - 5th core module extracted from Recipe Settings. Three-state allergen system (Contains/May Contain/None), environmental tracking at stations, L5 Vitals Page accordion pattern, white-label icon customization (planned), multi-jurisdiction compliance (Natasha's Law, FDA, Health Canada, FSANZ). The Immune System organ. |
