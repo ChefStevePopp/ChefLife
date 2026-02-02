@@ -114,7 +114,11 @@ export type ActivityType =
   | "single_source_risk"
   | "market_divergence"
   | "margin_erosion_warning"
-  | "category_volatility_alert";
+  | "category_volatility_alert"
+  // Policy activities
+  | "policy_uploaded"
+  | "policy_updated"
+  | "policy_deleted";
 
 export interface NexusEvent {
   organization_id: string;
@@ -223,6 +227,10 @@ const ACTIVITY_TYPE_TO_CATEGORY: Record<ActivityType, ActivityCategory> = {
   market_divergence: 'alerts',
   margin_erosion_warning: 'alerts',
   category_volatility_alert: 'alerts',
+  // Policy
+  policy_uploaded: 'organization',
+  policy_updated: 'organization',
+  policy_deleted: 'organization',
 };
 
 // =============================================================================
@@ -476,6 +484,19 @@ const ACTIVITY_TOAST_CONFIG: Partial<Record<ActivityType, ToastConfig | null>> =
   category_volatility_alert: {
     message: (d) => `${d.category || 'Category'} showing ${d.volatility_percent?.toFixed(1) || 0}% monthly volatility`,
     severity: 'info',
+  },
+  // Policy activities
+  policy_uploaded: {
+    message: (d) => `Policy "${d.policy_title || 'Unknown'}" uploaded (v${d.version || '1.0'})`,
+    severity: 'info',
+  },
+  policy_updated: {
+    message: (d) => `Policy "${d.policy_title || 'Unknown'}" updated (v${d.old_version} → v${d.new_version})`,
+    severity: 'info',
+  },
+  policy_deleted: {
+    message: (d) => `Policy "${d.policy_title || 'Unknown'}" deleted (v${d.version || '1.0'})`,
+    severity: 'warning',
   },
 };
 

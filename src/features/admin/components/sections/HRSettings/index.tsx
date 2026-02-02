@@ -9,16 +9,12 @@ import {
   Award,
   Info,
   ChevronUp,
-  ChevronDown,
   Save,
   Loader2,
   Upload,
-  Plus,
   Settings,
   ExternalLink,
-  PenTool,
-  Bell,
-  Users,
+  AlertTriangle,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
@@ -26,22 +22,26 @@ import { nexus } from "@/lib/nexus";
 import toast from "react-hot-toast";
 import { LoadingLogo } from "@/features/shared/components";
 import { SECURITY_LEVELS } from "@/config/security";
-import { DEFAULT_HR_CONFIG, type HRConfig } from "@/types/modules";
+import { DEFAULT_HR_CONFIG, type HRConfig, type PolicyTemplate } from "@/types/modules";
+import { PolicyCard } from "./components/PolicyCard";
+import { PolicyUploadForm } from "./components/PolicyUploadForm";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 
 // =============================================================================
 // HR SETTINGS - L5 Module Configuration
 // =============================================================================
-// Configuration hub for HR & Policies module. Manage policy templates,
-// job descriptions, onboarding checklists, and compliance tracking.
+// Reference: VendorInvoiceManager.tsx - L5 Design Patterns
+// Location: Admin → Modules → HR & Policies
+// Tab Identity: indigo (Scale icon)
 // =============================================================================
 
-type TabId = "policies" | "job_descriptions" | "onboarding" | "compliance";
+type TabId = "policies" | "job_descriptions" | "onboarding" | "compliance" | "settings";
 
 interface Tab {
   id: TabId;
   label: string;
   icon: React.ElementType;
-  description: string;
+  color: string;
   comingSoon?: boolean;
 }
 
@@ -50,33 +50,40 @@ const TABS: Tab[] = [
     id: "policies",
     label: "Policies & Procedures",
     icon: FileText,
-    description: "Upload and manage company policies with acknowledgment tracking",
+    color: "primary",
   },
   {
     id: "job_descriptions",
     label: "Job Descriptions",
     icon: Briefcase,
-    description: "Define roles, responsibilities, and requirements",
+    color: "amber",
     comingSoon: true,
   },
   {
     id: "onboarding",
     label: "Onboarding",
     icon: ClipboardList,
-    description: "New hire checklists and document requirements",
+    color: "green",
     comingSoon: true,
   },
   {
     id: "compliance",
     label: "Certifications",
     icon: Award,
-    description: "Track required certifications and expiry dates",
+    color: "rose",
     comingSoon: true,
+  },
+  {
+    id: "settings",
+    label: "Settings",
+    icon: Settings,
+    color: "purple",
   },
 ];
 
 export const HRSettings: React.FC = () => {
   const navigate = useNavigate();
+  const { showDiagnostics } = useDiagnostics();
   const { organizationId, securityLevel, user, isLoading: authLoading } = useAuth();
 
   const [activeTab, setActiveTab] = useState<TabId>("policies");
@@ -88,6 +95,8 @@ export const HRSettings: React.FC = () => {
 
   // HR config state
   const [hrConfig, setHrConfig] = useState<HRConfig>(DEFAULT_HR_CONFIG);
+  const [originalHrConfig, setOriginalHrConfig] = useState<HRConfig>(DEFAULT_HR_CONFIG);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   // Fetch organization data
   useEffect(() => {
@@ -97,17 +106,21 @@ export const HRSettings: React.FC = () => {
       try {
         const { data, error } = await supabase
           .from("organizations")
-          .select("*")
+          .select("id, modules, settings")
           .eq("id", organizationId)
           .single();
 
         if (error) throw error;
         setOrganization(data);
 
-        // Load HR config from modules
-        const modules = data?.modules || {};
-        if (modules.hr?.config) {
-          setHrConfig(modules.hr.config);
+        // Load HR config from modules (with fallback to settings for backward compatibility)
+        const modules = (data as any)?.modules || {};
+        const settings = (data as any)?.settings || {};
+        const hrConfigData = modules.hr?.config || settings.hr?.config;
+
+        if (hrConfigData) {
+          setHrConfig(hrConfigData);
+          setOriginalHrConfig(hrConfigData);
         }
       } catch (error) {
         console.error("Error fetching organization:", error);
@@ -150,6 +163,8 @@ export const HRSettings: React.FC = () => {
       // Update local state
       setOrganization((prev: any) => ({ ...prev, modules: updatedModules }));
       setHasChanges(false);
+      setHasUnsavedChanges(false);
+      setOriginalHrConfig(hrConfig);
 
       // Log to NEXUS
       await nexus({
@@ -180,21 +195,18 @@ export const HRSettings: React.FC = () => {
     );
   }
 
-  const isOmega = securityLevel === SECURITY_LEVELS.OMEGA;
-
   return (
     <div className="space-y-6">
-      {/* Diagnostic Text - Omega only */}
-      {isOmega && (
+      {/* L5 Diagnostic Path */}
+      {showDiagnostics && (
         <div className="text-xs text-gray-500 font-mono">
           src/features/admin/components/sections/HRSettings/index.tsx
         </div>
       )}
 
       {/* ========================================================================
-       * L5 HEADER CARD - Configuration Screen Pattern
+       * L5 HEADER CARD
        * Reference: VendorInvoiceManager.tsx
-       * Tab Identity: indigo
        * ======================================================================== */}
       <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-4">
         <div className="flex flex-col gap-4">
@@ -207,45 +219,42 @@ export const HRSettings: React.FC = () => {
               >
                 <ArrowLeft className="w-5 h-5" />
               </button>
-              <div className="w-10 h-10 rounded-lg bg-indigo-500/20 flex items-center justify-center">
-                <Scale className="w-5 h-5 text-indigo-400" />
+              <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                <Scale className="w-5 h-5 text-purple-400" />
               </div>
               <div>
                 <h1 className="text-xl sm:text-2xl font-bold text-white">
-                  HR & Policies Configuration
+                  HR & Policies
                 </h1>
                 <p className="text-gray-400 text-sm">
-                  Module settings for policies, job descriptions, and compliance
+                  Manage policies, job descriptions, and compliance tracking
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-              {/* Link to Compliance Dashboard */}
               <button
                 onClick={() => navigate("/admin/policies")}
-                className="btn-ghost text-indigo-400 hover:text-indigo-300 border border-indigo-500/30"
+                className="btn-ghost text-purple-400 hover:text-purple-300 border border-purple-500/30"
               >
                 <ExternalLink className="w-4 h-4 mr-2" />
-                View Compliance
+                Compliance Dashboard
               </button>
-
-              {/* Save Button */}
               <button
                 onClick={handleSave}
                 disabled={!hasChanges || isSaving}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
+                className={`btn ${
                   hasChanges
-                    ? "bg-indigo-600 hover:bg-indigo-500 text-white"
+                    ? "btn-primary"
                     : "bg-gray-700 text-gray-400 cursor-not-allowed"
                 }`}
               >
                 {isSaving ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <Save className="w-4 h-4" />
+                  <Save className="w-4 h-4 slide-in-from-left-2" />
                 )}
-                Save
+                <span>Save</span>
               </button>
             </div>
           </div>
@@ -257,48 +266,36 @@ export const HRSettings: React.FC = () => {
               className="expandable-info-header w-full justify-between"
             >
               <div className="flex items-center gap-2">
-                <Info className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                <Info className="w-4 h-4 text-purple-400 flex-shrink-0" />
                 <span className="text-sm font-medium text-gray-300">
-                  About HR Module Configuration
+                  About HR & Policies Module
                 </span>
               </div>
-              <ChevronUp className={`w-4 h-4 text-gray-400 transition-transform ${isInfoExpanded ? '' : 'rotate-180'}`} />
+              <ChevronUp className="w-4 h-4 text-gray-400" />
             </button>
             <div className="expandable-info-content">
               <div className="p-4 pt-2 space-y-3">
                 <p className="text-sm text-gray-400">
-                  Configure <span className="font-semibold">default settings</span> for your HR & Policies module.
-                  These settings apply organization-wide and affect how policies are managed,
-                  acknowledged, and tracked.
+                  Centralize your HR documentation with policy acknowledgment tracking,
+                  job descriptions, onboarding checklists, and certification compliance.
+                  Every acknowledgment is timestamped and audit-ready.
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                   <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-indigo-400/80" />
-                      <span className="text-sm font-medium text-gray-300">Policies</span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">Acknowledgment & recertification defaults</p>
+                    <span className="text-sm font-medium text-primary-400">Policies</span>
+                    <p className="text-xs text-gray-500 mt-1">Upload & track acknowledgments</p>
                   </div>
                   <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
-                    <div className="flex items-center gap-2">
-                      <Briefcase className="w-4 h-4 text-indigo-400/80" />
-                      <span className="text-sm font-medium text-gray-300">Job Descriptions</span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">Role templates & requirements</p>
+                    <span className="text-sm font-medium text-amber-400">Job Descriptions</span>
+                    <p className="text-xs text-gray-500 mt-1">Define roles & responsibilities</p>
                   </div>
                   <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
-                    <div className="flex items-center gap-2">
-                      <ClipboardList className="w-4 h-4 text-indigo-400/80" />
-                      <span className="text-sm font-medium text-gray-300">Onboarding</span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">New hire checklists & workflows</p>
+                    <span className="text-sm font-medium text-green-400">Onboarding</span>
+                    <p className="text-xs text-gray-500 mt-1">New hire checklists</p>
                   </div>
                   <div className="p-3 bg-gray-800/30 rounded-lg border border-gray-700/30">
-                    <div className="flex items-center gap-2">
-                      <Award className="w-4 h-4 text-indigo-400/80" />
-                      <span className="text-sm font-medium text-gray-300">Certifications</span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">Expiry tracking & compliance</p>
+                    <span className="text-sm font-medium text-rose-400">Certifications</span>
+                    <p className="text-xs text-gray-500 mt-1">Track expiry & renewals</p>
                   </div>
                 </div>
               </div>
@@ -307,69 +304,123 @@ export const HRSettings: React.FC = () => {
         </div>
       </div>
 
-      {/* Tab Navigation */}
+      {/* ========================================================================
+       * L5 TABS + CONTENT CARD
+       * ======================================================================== */}
       <div className="bg-[#1a1f2b] rounded-lg shadow-lg">
-        <div className="border-b border-gray-700/50">
-          <div className="flex overflow-x-auto">
-            {TABS.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => !tab.comingSoon && setActiveTab(tab.id)}
-                disabled={tab.comingSoon}
-                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
-                  tab.comingSoon
-                    ? "text-gray-600 cursor-not-allowed border-transparent"
-                    : activeTab === tab.id
-                    ? "text-indigo-400 border-indigo-400"
-                    : "text-gray-400 hover:text-white border-transparent hover:border-gray-600"
-                }`}
-              >
-                <tab.icon className="w-4 h-4" />
-                {tab.label}
-                {tab.comingSoon && (
-                  <span className="text-[10px] text-amber-500/70 font-medium uppercase tracking-wide px-1.5 py-0.5 bg-amber-500/10 rounded">
-                    Soon
-                  </span>
-                )}
-              </button>
-            ))}
+        {/* Tab Navigation */}
+        <div className="border-b border-gray-700">
+          <div className="flex flex-wrap items-center gap-2 p-4">
+            {TABS.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => !tab.comingSoon && setActiveTab(tab.id)}
+                  disabled={tab.comingSoon}
+                  className={`tab ${tab.color} ${isActive ? "active" : ""} ${
+                    tab.comingSoon ? "opacity-50 cursor-not-allowed" : ""
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  <span>{tab.label}</span>
+                  {tab.comingSoon && (
+                    <span className="ml-1 text-[10px] font-medium uppercase tracking-wide px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded">
+                      Soon
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 
         {/* Tab Content */}
         <div className="p-6">
-          {activeTab === "policies" && (
-            <PoliciesTabContent
-              config={hrConfig}
-              onConfigChange={(updates) => {
-                setHrConfig((prev) => ({ ...prev, ...updates }));
-                setHasChanges(true);
-              }}
-            />
-          )}
+          {activeTab === "policies" && <PoliciesTabContent />}
 
           {activeTab === "job_descriptions" && (
             <ComingSoonContent
+              icon={Briefcase}
               title="Job Descriptions"
-              description="Define roles and responsibilities for your team positions."
+              description="Define roles, responsibilities, and requirements for each position. Link to team members for clarity."
+              color="amber"
             />
           )}
 
           {activeTab === "onboarding" && (
             <ComingSoonContent
+              icon={ClipboardList}
               title="Onboarding Checklists"
-              description="Create standardized onboarding workflows for new team members."
+              description="Create standardized onboarding workflows with document requirements, training tasks, and orientation steps."
+              color="green"
             />
           )}
 
           {activeTab === "compliance" && (
             <ComingSoonContent
+              icon={Award}
               title="Certification Tracking"
-              description="Track required certifications like Food Handler, First Aid, and Smart Serve."
+              description="Track Food Handler, First Aid, Smart Serve, and other required certifications with automatic expiry alerts."
+              color="rose"
+            />
+          )}
+
+          {activeTab === "settings" && (
+            <SettingsTabContent
+              config={hrConfig}
+              onConfigChange={(updates) => {
+                setHrConfig((prev) => ({ ...prev, ...updates }));
+                setHasChanges(true);
+                setHasUnsavedChanges(true);
+              }}
             />
           )}
         </div>
       </div>
+
+      {/* Floating Action Bar - Unsaved Changes */}
+      {hasUnsavedChanges && (
+        <div className="floating-action-bar warning">
+          <div className="floating-action-bar-inner">
+            <div className="floating-action-bar-content">
+              <AlertTriangle className="w-4 h-4 text-amber-400" />
+              <span className="text-sm text-gray-300">
+                You have unsaved changes
+              </span>
+              <div className="w-px h-6 bg-gray-700" />
+              <button
+                onClick={() => {
+                  setHrConfig(originalHrConfig);
+                  setHasChanges(false);
+                  setHasUnsavedChanges(false);
+                }}
+                className="btn-ghost text-sm py-1.5 px-4"
+              >
+                Discard
+              </button>
+              <button
+                onClick={async () => {
+                  await handleSave();
+                  setHasUnsavedChanges(false);
+                  setOriginalHrConfig(hrConfig);
+                }}
+                disabled={isSaving}
+                className="btn-primary text-sm py-1.5 px-4"
+              >
+                {isSaving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4 slide-in-from-left-2" />
+                )}
+                <span>Save Changes</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -378,291 +429,451 @@ export const HRSettings: React.FC = () => {
 // POLICIES TAB CONTENT
 // =============================================================================
 
-interface PoliciesTabContentProps {
-  config: HRConfig;
-  onConfigChange: (updates: Partial<HRConfig>) => void;
-}
-
-const PoliciesTabContent: React.FC<PoliciesTabContentProps> = ({
-  config,
-  onConfigChange,
-}) => {
+const PoliciesTabContent: React.FC = () => {
   const navigate = useNavigate();
-  const [settingsExpanded, setSettingsExpanded] = useState(false);
-  const [showUploadModal, setShowUploadModal] = useState(false);
+  const { organizationId, securityLevel, user } = useAuth();
+  const [viewMode, setViewMode] = useState<"list" | "upload" | "edit">("list");
+  const [editingPolicy, setEditingPolicy] = useState<PolicyTemplate | null>(null);
+  const [policies, setPolicies] = useState<PolicyTemplate[]>([]);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  // Permission check
+  const canManagePolicies =
+    securityLevel !== undefined && securityLevel <= SECURITY_LEVELS.BRAVO;
+
+  // Fetch policies on mount
+  useEffect(() => {
+    const fetchPolicies = async () => {
+      if (!organizationId) return;
+
+      try {
+        const { data, error } = await supabase
+          .from("organizations")
+          .select("modules, settings")
+          .eq("id", organizationId)
+          .single();
+
+        if (error) throw error;
+
+        // Check modules first, fall back to settings for backward compatibility
+        const modules = (data as any)?.modules || {};
+        const settings = (data as any)?.settings || {};
+        const hrConfig = modules.hr?.config || settings.hr?.config || {};
+        const policiesList = hrConfig.policies || [];
+
+        // Ensure policiesList is always an array
+        setPolicies(Array.isArray(policiesList) ? policiesList : []);
+      } catch (error) {
+        console.error("Error fetching policies:", error);
+        toast.error("Failed to load policies");
+      }
+    };
+
+    fetchPolicies();
+  }, [organizationId, viewMode]);
+
+  // Handle viewing PDF
+  const handleViewPDF = (policy: PolicyTemplate) => {
+    if (policy.documentUrl) {
+      window.open(policy.documentUrl, "_blank");
+    } else {
+      toast.error("No PDF document available");
+    }
+  };
+
+  // Handle edit
+  const handleEdit = (policy: PolicyTemplate) => {
+    setEditingPolicy(policy);
+    setViewMode("edit");
+  };
+
+  // Handle delete
+  const handleDelete = async (policy: PolicyTemplate) => {
+    if (!organizationId) return;
+
+    // Two-stage confirmation
+    if (confirmDelete !== policy.id) {
+      setConfirmDelete(policy.id);
+      setTimeout(() => setConfirmDelete(null), 5000);
+      return;
+    }
+
+    setIsDeleting(policy.id);
+
+    try {
+      // Fetch current organization data
+      const { data: org, error: fetchError } = await supabase
+        .from("organizations")
+        .select("modules")
+        .eq("id", organizationId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Remove policy from array
+      const currentModules = org?.modules || {};
+      const currentHrConfig = currentModules.hr?.config || {};
+      const currentPolicies = currentHrConfig.policies || [];
+
+      const updatedPolicies = currentPolicies.filter(
+        (p: PolicyTemplate) => p.id !== policy.id
+      );
+
+      // Build updated modules object
+      const updatedModules = {
+        ...currentModules,
+        hr: {
+          ...currentModules.hr,
+          config: {
+            ...currentHrConfig,
+            policies: updatedPolicies,
+          },
+        },
+      };
+
+      // Save to database
+      const { error: updateError } = await supabase
+        .from("organizations")
+        .update({
+          modules: updatedModules,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", organizationId);
+
+      if (updateError) throw updateError;
+
+      // NEXUS audit logging
+      if (user) {
+        await nexus({
+          organization_id: organizationId!,
+          user_id: user.id,
+          activity_type: "policy_deleted",
+          details: {
+            policy_id: policy.id,
+            policy_title: policy.title,
+            version: policy.version,
+          },
+        });
+      }
+
+      toast.success(`Policy "${policy.title}" deleted`);
+      setPolicies(updatedPolicies);
+      setConfirmDelete(null);
+    } catch (error: any) {
+      console.error("Error deleting policy:", error);
+      toast.error(`Failed to delete policy: ${error.message}`);
+    } finally {
+      setIsDeleting(null);
+    }
+  };
+
+  // Handle save callback
+  const handleSaveComplete = () => {
+    setViewMode("list");
+    setEditingPolicy(null);
+  };
+
+  // Handle cancel callback
+  const handleCancel = () => {
+    setViewMode("list");
+    setEditingPolicy(null);
+  };
 
   return (
     <div className="space-y-6">
-      {/* Quick Actions */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-medium text-white">Policy Library</h3>
-          <p className="text-sm text-gray-400">
-            Upload and manage company policy documents
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowUploadModal(true)}
-            className="btn-primary bg-indigo-600 hover:bg-indigo-500"
-          >
-            <Upload className="w-4 h-4 mr-2" />
-            Upload Policy
-          </button>
-        </div>
-      </div>
-
-      {/* Policy List Placeholder */}
-      <div className="border border-dashed border-gray-700 rounded-lg p-8 text-center">
-        <FileText className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-        <h3 className="text-lg font-medium text-gray-300 mb-1">
-          No Policies Yet
-        </h3>
-        <p className="text-sm text-gray-500 mb-4">
-          Upload your first policy document to get started with acknowledgment tracking.
-        </p>
-        <button
-          onClick={() => setShowUploadModal(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-colors"
-        >
-          <Upload className="w-4 h-4" />
-          Upload Your First Policy
-        </button>
-      </div>
-
-      {/* Compliance Dashboard Link */}
-      <div className="flex items-start gap-3 p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-lg">
-        <Info className="w-5 h-5 text-indigo-400 flex-shrink-0 mt-0.5" />
-        <div className="flex-1">
-          <h3 className="text-sm font-medium text-indigo-300">
-            Track Team Compliance
-          </h3>
-          <p className="text-sm text-gray-400 mt-1">
-            View acknowledgment status, overdue recertifications, and team compliance metrics in the{" "}
-            <button
-              onClick={() => navigate("/admin/policies")}
-              className="text-indigo-400 hover:text-indigo-300 underline underline-offset-2"
-            >
-              Compliance Dashboard
-            </button>.
-          </p>
-        </div>
-      </div>
-
-      {/* Settings Section */}
-      <div className="border border-gray-700/50 rounded-lg">
-        <button
-          onClick={() => setSettingsExpanded(!settingsExpanded)}
-          className="w-full flex items-center justify-between p-4 text-left"
-        >
-          <div className="flex items-center gap-3">
-            <Settings className="w-5 h-5 text-gray-400" />
-            <div>
-              <h3 className="text-sm font-medium text-white">Policy Settings</h3>
-              <p className="text-xs text-gray-500">
-                Configure defaults for acknowledgments and reminders
-              </p>
+      {viewMode === "list" ? (
+        <>
+          {/* Subheader */}
+          <div className="subheader">
+            <div className="subheader-row">
+              <div className="subheader-left">
+                <div className="subheader-icon-box primary">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="subheader-title">Policy Library</h3>
+                  <p className="subheader-subtitle">
+                    Upload and manage company policy documents
+                  </p>
+                </div>
+              </div>
+              {canManagePolicies && (
+                <div className="subheader-right">
+                  <span className="subheader-pill">
+                    <span className="subheader-pill-value">{policies.length}</span>
+                    <span className="subheader-pill-label">
+                      {policies.length === 1 ? "Policy" : "Policies"}
+                    </span>
+                  </span>
+                  <div className="subheader-divider" />
+                  <button
+                    onClick={() => setViewMode("upload")}
+                    className="btn-primary"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>Upload Policy</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
-          {settingsExpanded ? (
-            <ChevronUp className="w-5 h-5 text-gray-400" />
-          ) : (
-            <ChevronDown className="w-5 h-5 text-gray-400" />
-          )}
-        </button>
 
-        {settingsExpanded && (
-          <div className="p-4 pt-0 space-y-4 border-t border-gray-700/50">
-            {/* Default Recertification Interval */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Default Recertification Interval
-              </label>
-              <select
-                value={config.policies.defaultRecertificationInterval}
-                onChange={(e) =>
-                  onConfigChange({
-                    policies: {
-                      ...config.policies,
-                      defaultRecertificationInterval: e.target.value as any,
-                    },
-                  })
-                }
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              >
-                <option value="none">One-time (no recertification)</option>
-                <option value="30_days">Every 30 days</option>
-                <option value="90_days">Every 90 days</option>
-                <option value="180_days">Every 6 months</option>
-                <option value="annual">Annual</option>
-                <option value="biennial">Every 2 years</option>
-              </select>
-              <p className="text-xs text-gray-500 mt-1">
-                New policies will use this interval by default. Can be overridden per policy.
-              </p>
+          {/* Policy Grid or Empty State */}
+          {!Array.isArray(policies) || policies.length === 0 ? (
+            <div className="card p-8">
+              <div className="flex flex-col items-center justify-center text-center">
+                <div className="w-14 h-14 rounded-xl bg-gray-700/50 flex items-center justify-center mb-4">
+                  <FileText className="w-7 h-7 text-gray-500" />
+                </div>
+                <h3 className="text-lg font-medium text-white mb-2">
+                  No Policies Yet
+                </h3>
+                <p className="text-gray-400 text-sm max-w-md mb-6">
+                  Upload your first policy document to begin tracking team
+                  acknowledgments and compliance.
+                </p>
+                {canManagePolicies && (
+                  <button
+                    onClick={() => setViewMode("upload")}
+                    className="btn-primary"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>Upload Your First Policy</span>
+                  </button>
+                )}
+              </div>
             </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {policies.map((policy) => (
+                <PolicyCard
+                  key={policy.id}
+                  policy={policy}
+                  onView={() => handleViewPDF(policy)}
+                  onEdit={() => handleEdit(policy)}
+                  onDelete={() => handleDelete(policy)}
+                  isDeleting={isDeleting === policy.id}
+                  confirmDelete={confirmDelete === policy.id}
+                />
+              ))}
+            </div>
+          )}
 
-            {/* Digital Signatures Toggle */}
-            <div className="flex items-center justify-between">
+          {/* Compliance Dashboard Link */}
+          <div className="p-4 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+            <div className="flex items-start gap-3">
+              <Info className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
               <div>
-                <label className="block text-sm font-medium text-gray-300">
-                  Digital Signatures
-                </label>
-                <p className="text-xs text-gray-500">
-                  Require signature capture when acknowledging policies
+                <h4 className="text-sm font-medium text-purple-300">
+                  Track Team Compliance
+                </h4>
+                <p className="text-sm text-gray-400 mt-1">
+                  View acknowledgment status, overdue recertifications, and team
+                  compliance metrics in the{" "}
+                  <button
+                    onClick={() => navigate("/admin/policies")}
+                    className="text-purple-400 hover:text-purple-300 underline underline-offset-2"
+                  >
+                    Compliance Dashboard
+                  </button>
+                  .
                 </p>
               </div>
-              <button
-                onClick={() =>
-                  onConfigChange({
-                    policies: {
-                      ...config.policies,
-                      digitalSignaturesEnabled: !config.policies.digitalSignaturesEnabled,
-                    },
-                  })
-                }
-                className={`relative w-11 h-6 rounded-full transition-colors ${
-                  config.policies.digitalSignaturesEnabled
-                    ? "bg-indigo-600"
-                    : "bg-gray-700"
-                }`}
-              >
-                <span
-                  className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
-                    config.policies.digitalSignaturesEnabled
-                      ? "translate-x-5"
-                      : "translate-x-0"
-                  }`}
-                />
-              </button>
-            </div>
-
-            {/* Reminder Days */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Reminder Schedule (days before due)
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {[30, 14, 7, 3, 1].map((day) => {
-                  const isSelected = config.policies.reminderDaysBefore.includes(day);
-                  return (
-                    <button
-                      key={day}
-                      onClick={() => {
-                        const newDays = isSelected
-                          ? config.policies.reminderDaysBefore.filter((d) => d !== day)
-                          : [...config.policies.reminderDaysBefore, day].sort((a, b) => b - a);
-                        onConfigChange({
-                          policies: {
-                            ...config.policies,
-                            reminderDaysBefore: newDays,
-                          },
-                        });
-                      }}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                        isSelected
-                          ? "bg-indigo-600 text-white"
-                          : "bg-gray-700 text-gray-300 hover:bg-gray-600"
-                      }`}
-                    >
-                      {day} {day === 1 ? "day" : "days"}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Team members will receive reminders at these intervals before acknowledgment is due.
-              </p>
             </div>
           </div>
-        )}
-      </div>
-
-      {/* Upload Modal */}
-      {showUploadModal && (
-        <UploadPolicyModal onClose={() => setShowUploadModal(false)} />
-      )}
+        </>
+      ) : viewMode === "upload" ? (
+        <PolicyUploadForm onCancel={handleCancel} onSave={handleSaveComplete} />
+      ) : viewMode === "edit" && editingPolicy ? (
+        <PolicyUploadForm
+          editingPolicy={editingPolicy}
+          onCancel={handleCancel}
+          onSave={handleSaveComplete}
+        />
+      ) : null}
     </div>
   );
 };
 
 // =============================================================================
-// UPLOAD POLICY MODAL (Placeholder)
+// SETTINGS TAB CONTENT
 // =============================================================================
 
-interface UploadPolicyModalProps {
-  onClose: () => void;
+interface SettingsTabContentProps {
+  config: HRConfig;
+  onConfigChange: (updates: Partial<HRConfig>) => void;
 }
 
-const UploadPolicyModal: React.FC<UploadPolicyModalProps> = ({ onClose }) => (
-  <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-    <div className="fixed inset-0 bg-black/60" onClick={onClose} />
-    <div className="relative bg-[#1a1f2b] rounded-xl shadow-2xl w-full max-w-lg p-6">
-      <h2 className="text-xl font-bold text-white mb-4">Upload Policy</h2>
-      <p className="text-gray-400 mb-6">
-        Policy upload functionality coming next. This will include:
-      </p>
-      <ul className="text-sm text-gray-500 space-y-2 mb-6">
-        <li className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded-full bg-emerald-500/20 flex items-center justify-center">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+const SettingsTabContent: React.FC<SettingsTabContentProps> = ({
+  config,
+  onConfigChange,
+}) => {
+  return (
+    <div className="space-y-6">
+      {/* Subheader */}
+      <div className="subheader">
+        <div className="subheader-row">
+          <div className="subheader-left">
+            <div className="subheader-icon-box purple">
+              <Settings className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="subheader-title">Policy Settings</h3>
+              <p className="subheader-subtitle">
+                Configure defaults for acknowledgments and reminders
+              </p>
+            </div>
           </div>
-          PDF upload with drag & drop
-        </li>
-        <li className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded-full bg-emerald-500/20 flex items-center justify-center">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+        </div>
+      </div>
+
+      {/* Settings Card */}
+      <div className="card">
+        <div className="p-6 space-y-6">
+          {/* Default Recertification Interval */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Default Recertification Interval
+            </label>
+            <select
+              value={config.policies?.defaultRecertificationInterval || 'none'}
+              onChange={(e) =>
+                onConfigChange({
+                  policies: {
+                    ...config.policies,
+                    defaultRecertificationInterval: e.target.value as any,
+                  },
+                })
+              }
+              className="input w-full max-w-xs"
+            >
+              <option value="none">One-time (no recertification)</option>
+              <option value="30_days">Every 30 days</option>
+              <option value="90_days">Every 90 days</option>
+              <option value="180_days">Every 6 months</option>
+              <option value="annual">Annual</option>
+              <option value="biennial">Every 2 years</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              New policies will use this interval by default.
+            </p>
           </div>
-          Title, description, category selection
-        </li>
-        <li className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded-full bg-emerald-500/20 flex items-center justify-center">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+
+          {/* Digital Signatures Toggle */}
+          <div className="flex items-center justify-between max-w-xs">
+            <div>
+              <label className="block text-sm font-medium text-gray-300">
+                Digital Signatures
+              </label>
+              <p className="text-xs text-gray-500">
+                Require signature when acknowledging
+              </p>
+            </div>
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={config.policies?.digitalSignaturesEnabled || false}
+                onChange={(e) =>
+                  onConfigChange({
+                    policies: {
+                      ...config.policies,
+                      digitalSignaturesEnabled: e.target.checked,
+                    },
+                  })
+                }
+              />
+              <span className="toggle-switch-track" />
+            </label>
           </div>
-          Acknowledgment requirements
-        </li>
-        <li className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded-full bg-emerald-500/20 flex items-center justify-center">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+
+          {/* Reminder Days */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Reminder Schedule (days before due)
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {[30, 14, 7, 3, 1].map((day) => {
+                const isSelected =
+                  (config.policies?.reminderDaysBefore || []).includes(day);
+                return (
+                  <button
+                    key={day}
+                    onClick={() => {
+                      const newDays = isSelected
+                        ? (config.policies?.reminderDaysBefore || []).filter(
+                            (d) => d !== day
+                          )
+                        : [...(config.policies?.reminderDaysBefore || []), day].sort(
+                            (a, b) => b - a
+                          );
+                      onConfigChange({
+                        policies: {
+                          ...config.policies,
+                          reminderDaysBefore: newDays,
+                        },
+                      });
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      isSelected
+                        ? "bg-primary-500/30 text-primary-300 border border-primary-500/50"
+                        : "bg-gray-700 text-gray-300 hover:bg-gray-600 border border-transparent"
+                    }`}
+                  >
+                    {day} {day === 1 ? "day" : "days"}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              Team members receive reminders at these intervals before
+              acknowledgment is due.
+            </p>
           </div>
-          Recertification schedule
-        </li>
-        <li className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded-full bg-emerald-500/20 flex items-center justify-center">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-          </div>
-          Role-based applicability
-        </li>
-      </ul>
-      <button
-        onClick={onClose}
-        className="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
-      >
-        Close
-      </button>
+        </div>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 // =============================================================================
 // COMING SOON PLACEHOLDER
 // =============================================================================
 
 interface ComingSoonContentProps {
+  icon: React.ElementType;
   title: string;
   description: string;
+  color: "amber" | "green" | "rose" | "purple";
 }
 
 const ComingSoonContent: React.FC<ComingSoonContentProps> = ({
+  icon: Icon,
   title,
   description,
-}) => (
-  <div className="text-center py-12">
-    <div className="w-16 h-16 rounded-full bg-gray-800 flex items-center justify-center mx-auto mb-4">
-      <Settings className="w-8 h-8 text-gray-600" />
+  color,
+}) => {
+  const colorClasses = {
+    amber: "bg-amber-500/20 text-amber-400",
+    green: "bg-green-500/20 text-green-400",
+    rose: "bg-rose-500/20 text-rose-400",
+    purple: "bg-purple-500/20 text-purple-400",
+  };
+
+  return (
+    <div className="card p-8">
+      <div className="flex flex-col items-center justify-center text-center">
+        <div
+          className={`w-16 h-16 rounded-xl flex items-center justify-center mb-4 ${colorClasses[color]}`}
+        >
+          <Icon className="w-8 h-8" />
+        </div>
+        <h3 className="text-xl font-semibold text-white mb-2">{title}</h3>
+        <p className="text-gray-400 max-w-md mb-4">{description}</p>
+        <span className="px-3 py-1 rounded-full text-xs font-medium uppercase tracking-wide bg-amber-500/20 text-amber-400">
+          Coming Soon
+        </span>
+      </div>
     </div>
-    <h3 className="text-xl font-semibold text-white mb-2">{title}</h3>
-    <p className="text-gray-400 max-w-md mx-auto">{description}</p>
-    <p className="text-amber-500/70 text-sm mt-4">Coming Soon</p>
-  </div>
-);
+  );
+};

@@ -250,34 +250,93 @@ export type RecertificationInterval =
   | 'biennial'    // 730 days
   | 'custom';     // Custom days
 
+/** Review schedule presets */
+export type ReviewSchedule =
+  | 'quarterly'   // Every 3 months
+  | 'semi_annual' // Every 6 months
+  | 'annual'      // Yearly
+  | 'biennial'    // Every 2 years
+  | 'as_needed';  // No fixed schedule
+
 /** Policy definition stored in config */
 export interface PolicyTemplate {
   id: string;
   title: string;
   description: string;
-  category: PolicyCategory;
+  category: string;  // User-defined category ID from policyCategories config
+  
+  // ==========================================================================
+  // DOCUMENT
+  // ==========================================================================
   /** Storage path to PDF in Supabase */
   documentUrl: string | null;
   /** Version string (e.g., "1.0", "2.1") */
   version: string;
-  /** Effective date of this version */
+  
+  // ==========================================================================
+  // POLICY DATES (distinct from system timestamps)
+  // ==========================================================================
+  /** When policy takes effect */
   effectiveDate: string;
+  /** When policy was first written/prepared */
+  preparedDate: string;
+  /** When policy content was last revised */
+  lastRevisionDate: string;
+  
+  // ==========================================================================
+  // AUTHORSHIP
+  // ==========================================================================
+  /** Name of person who prepared/authored the policy */
+  preparedBy: string;
+  /** Title/role of the author (e.g., "Chef/Owner", "HR Manager") */
+  authorTitle?: string;
+  
+  // ==========================================================================
+  // REVIEW SCHEDULE
+  // ==========================================================================
+  /** How often policy should be reviewed */
+  reviewSchedule: ReviewSchedule;
+  /** Calculated next review date (lastRevisionDate + schedule) */
+  nextReviewDate?: string;
+  
+  // ==========================================================================
+  // ACKNOWLEDGMENT & RECERTIFICATION
+  // ==========================================================================
   /** Whether team members must acknowledge this policy */
   requiresAcknowledgment: boolean;
-  /** Recertification settings */
+  /** Recertification settings (for team member re-acknowledgment) */
   recertification: {
     required: boolean;
     interval: RecertificationInterval;
     customDays?: number;
   };
-  /** Which roles/positions must acknowledge (empty = all) */
-  applicableRoles: string[];
+  
+  // ==========================================================================
+  // APPLICABILITY (who must acknowledge)
+  // ==========================================================================
+  /** Departments that must acknowledge (empty = not filtered by dept) */
+  applicableDepartments: string[];
+  /** Scheduled roles that must acknowledge (empty = not filtered by role) */
+  applicableScheduledRoles: string[];
+  /** Kitchen stations that must acknowledge (empty = not filtered by station) */
+  applicableKitchenStations: string[];
+  
+  // ==========================================================================
+  // STATUS
+  // ==========================================================================
   /** Is this policy currently active */
   isActive: boolean;
-  /** Created/updated metadata */
+  
+  // ==========================================================================
+  // SYSTEM METADATA (auto-managed)
+  // ==========================================================================
+  /** When record was created in system */
   createdAt: string;
+  /** User ID who uploaded to system */
   createdBy: string;
+  /** When record was last modified in system */
   updatedAt: string;
+  /** User ID who last modified */
   updatedBy: string;
 }
 
@@ -304,14 +363,38 @@ export interface OnboardingItem {
   order: number;
 }
 
+/** Policy category definition (user-configurable) */
+export interface PolicyCategoryConfig {
+  id: string;
+  label: string;
+  icon: string;       // Lucide icon name
+  color: string;      // Tailwind color (e.g., 'emerald', 'rose')
+  isDefault: boolean; // Our suggestions marked true, user-added = false
+  sortOrder: number;
+}
+
+/** Default policy categories (used if none configured) */
+export const DEFAULT_POLICY_CATEGORIES: PolicyCategoryConfig[] = [
+  { id: 'health_safety', label: 'Health & Safety', icon: 'Shield', color: 'emerald', isDefault: true, sortOrder: 1 },
+  { id: 'employment_hr', label: 'Employment & HR', icon: 'Users', color: 'blue', isDefault: true, sortOrder: 2 },
+  { id: 'food_safety', label: 'Food Safety / HACCP', icon: 'Utensils', color: 'amber', isDefault: true, sortOrder: 3 },
+  { id: 'operations', label: 'Operations', icon: 'Settings', color: 'slate', isDefault: true, sortOrder: 4 },
+  { id: 'workplace_conduct', label: 'Workplace Conduct', icon: 'Scale', color: 'indigo', isDefault: true, sortOrder: 5 },
+  { id: 'technology', label: 'Technology & Privacy', icon: 'Lock', color: 'violet', isDefault: true, sortOrder: 6 },
+  { id: 'training', label: 'Training & Development', icon: 'GraduationCap', color: 'cyan', isDefault: true, sortOrder: 7 },
+  { id: 'general', label: 'General', icon: 'FileText', color: 'gray', isDefault: true, sortOrder: 99 },
+];
+
 export interface HRConfig {
   /** Policy management settings */
   policies: {
     enabled: boolean;
-    /** Custom categories beyond defaults */
-    customCategories: { id: string; label: string; color: string }[];
+    /** User-configurable policy categories */
+    policyCategories: PolicyCategoryConfig[];
     /** Default recertification interval for new policies */
     defaultRecertificationInterval: RecertificationInterval;
+    /** Default review schedule for new policies */
+    defaultReviewSchedule: ReviewSchedule;
     /** Reminder days before recertification due */
     reminderDaysBefore: number[];
     /** Allow digital signatures */
@@ -513,8 +596,9 @@ export const DEFAULT_COMMUNICATIONS_CONFIG: CommunicationsConfig = {
 export const DEFAULT_HR_CONFIG: HRConfig = {
   policies: {
     enabled: true,
-    customCategories: [],
+    policyCategories: DEFAULT_POLICY_CATEGORIES,
     defaultRecertificationInterval: 'annual',
+    defaultReviewSchedule: 'annual',
     reminderDaysBefore: [30, 14, 7, 1],
     digitalSignaturesEnabled: true,
   },
