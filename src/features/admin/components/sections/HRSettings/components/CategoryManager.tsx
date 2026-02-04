@@ -338,9 +338,9 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({
   const handleImageUpload = async (file: File): Promise<string> => {
     if (!organizationId) throw new Error("No organization context");
 
-    // Compress & convert to WebP (256px max, ~15KB target for category covers)
+    // Compress & convert to WebP (512px max — hero areas render 400px+ wide)
     const optimized = await optimizeImage(file, {
-      maxSize: 256,
+      maxSize: 512,
       quality: 0.82,
       outputName: form.id,
     });
