@@ -22,9 +22,10 @@ import { nexus } from "@/lib/nexus";
 import toast from "react-hot-toast";
 import { LoadingLogo } from "@/features/shared/components";
 import { SECURITY_LEVELS } from "@/config/security";
-import { DEFAULT_HR_CONFIG, type HRConfig, type PolicyTemplate } from "@/types/modules";
+import { DEFAULT_HR_CONFIG, DEFAULT_POLICY_CATEGORIES, type HRConfig, type PolicyTemplate } from "@/types/modules";
 import { PolicyCard } from "./components/PolicyCard";
 import { PolicyUploadForm } from "./components/PolicyUploadForm";
+import { CategoryManager } from "./components/CategoryManager";
 import { useDiagnostics } from "@/hooks/useDiagnostics";
 
 // =============================================================================
@@ -136,17 +137,40 @@ export const HRSettings: React.FC = () => {
   }, [organizationId, authLoading]);
 
   // Save configuration
+  // IMPORTANT: Re-fetch from DB before saving to avoid stomping on policyList
+  // that PolicyUploadForm may have written since this component mounted.
   const handleSave = async () => {
     if (!organizationId || !user) return;
 
     setIsSaving(true);
     try {
-      const modules = organization?.modules || {};
+      // Fresh read — PolicyUploadForm saves policyList directly to DB,
+      // so our local `organization` state may be stale.
+      const { data: freshOrg, error: fetchError } = await supabase
+        .from("organizations")
+        .select("modules")
+        .eq("id", organizationId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const freshModules = freshOrg?.modules || {};
+      const freshHrConfig = freshModules.hr?.config || {};
+
+      // Merge: overlay our settings state, but ALWAYS preserve policyList
+      // from fresh DB read (PolicyUploadForm writes policyList directly to DB,
+      // so our local hrConfig copy may be stale).
+      const mergedConfig = {
+        ...freshHrConfig,  // Base: everything currently in DB
+        ...hrConfig,       // Overlay: local settings changes (policies obj, jobDescriptions, etc.)
+        policyList: freshHrConfig.policyList ?? hrConfig.policyList,  // Fresh wins
+      };
+
       const updatedModules = {
-        ...modules,
+        ...freshModules,
         hr: {
-          ...modules.hr,
-          config: hrConfig,
+          ...freshModules.hr,
+          config: mergedConfig,
         },
       };
 
@@ -435,6 +459,7 @@ const PoliciesTabContent: React.FC = () => {
   const [viewMode, setViewMode] = useState<"list" | "upload" | "edit">("list");
   const [editingPolicy, setEditingPolicy] = useState<PolicyTemplate | null>(null);
   const [policies, setPolicies] = useState<PolicyTemplate[]>([]);
+  const [policyCategories, setPolicyCategories] = useState<import("@/types/modules").PolicyCategoryConfig[]>(DEFAULT_POLICY_CATEGORIES);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
@@ -460,10 +485,61 @@ const PoliciesTabContent: React.FC = () => {
         const modules = (data as any)?.modules || {};
         const settings = (data as any)?.settings || {};
         const hrConfig = modules.hr?.config || settings.hr?.config || {};
-        const policiesList = hrConfig.policies || [];
 
-        // Ensure policiesList is always an array
-        setPolicies(Array.isArray(policiesList) ? policiesList : []);
+        // Load dynamic categories for PolicyCard display
+        const cats = hrConfig.policies?.policyCategories;
+        if (cats && Array.isArray(cats) && cats.length > 0) {
+          setPolicyCategories(cats);
+        }
+
+        // ---------------------------------------------------------------
+        // READ POLICIES from policyList (correct location).
+        // Migration: if policyList is empty, rescue data from the old
+        // "policies" key where PolicyUploadForm used to save them.
+        // That key is supposed to be the settings object, but older
+        // saves put the array there, and category edits mangled it
+        // into {0: {policy}, policyCategories: [...]}.
+        // ---------------------------------------------------------------
+        let policyArray: PolicyTemplate[] = [];
+
+        const policyListExists = Array.isArray(hrConfig.policyList) && hrConfig.policyList.length > 0;
+
+        if (policyListExists) {
+          // New canonical location
+          policyArray = hrConfig.policyList;
+        } else {
+          // Migration: check the old "policies" key
+          const legacy = hrConfig.policies;
+          if (Array.isArray(legacy)) {
+            policyArray = legacy;
+          } else if (legacy && typeof legacy === "object") {
+            // Mangled object — extract anything that looks like a policy
+            policyArray = Object.values(legacy).filter(
+              (p: any) => p && typeof p === "object" && p.id && p.title
+            ) as PolicyTemplate[];
+          }
+
+          // NOTE: If reading from legacy location, run SQL migration
+          // 20260203_migrate_policies_to_policylist.sql to fix permanently.
+          // This read fallback keeps the UI working until that migration runs.
+          if (policyArray.length > 0) {
+            console.warn(
+              `[HR] Read ${policyArray.length} policy(ies) from legacy location. ` +
+              `Run SQL migration 20260203_migrate_policies_to_policylist.sql to fix permanently.`
+            );
+          }
+        }
+
+        // Validate shape & deduplicate by id
+        const seen = new Set<string>();
+        setPolicies(
+          policyArray.filter((p: any) => {
+            if (!p || typeof p !== "object" || !p.id || !p.title) return false;
+            if (seen.has(p.id)) return false;
+            seen.add(p.id);
+            return true;
+          })
+        );
       } catch (error) {
         console.error("Error fetching policies:", error);
         toast.error("Failed to load policies");
@@ -511,23 +587,34 @@ const PoliciesTabContent: React.FC = () => {
 
       if (fetchError) throw fetchError;
 
-      // Remove policy from array
+      // Remove policy from policyList (canonical location)
       const currentModules = org?.modules || {};
       const currentHrConfig = currentModules.hr?.config || {};
-      const currentPolicies = currentHrConfig.policies || [];
+
+      // Read from policyList, with migration fallback from old "policies" key
+      let currentPolicies: PolicyTemplate[] = [];
+      if (Array.isArray(currentHrConfig.policyList)) {
+        currentPolicies = currentHrConfig.policyList;
+      } else if (Array.isArray(currentHrConfig.policies)) {
+        currentPolicies = currentHrConfig.policies;
+      } else if (currentHrConfig.policies && typeof currentHrConfig.policies === "object") {
+        currentPolicies = Object.values(currentHrConfig.policies).filter(
+          (p: any) => p && typeof p === "object" && p.id && p.title
+        ) as PolicyTemplate[];
+      }
 
       const updatedPolicies = currentPolicies.filter(
         (p: PolicyTemplate) => p.id !== policy.id
       );
 
-      // Build updated modules object
+      // Build updated modules — save to policyList, leave policies (settings) untouched
       const updatedModules = {
         ...currentModules,
         hr: {
           ...currentModules.hr,
           config: {
             ...currentHrConfig,
-            policies: updatedPolicies,
+            policyList: updatedPolicies,
           },
         },
       };
@@ -650,6 +737,7 @@ const PoliciesTabContent: React.FC = () => {
                 <PolicyCard
                   key={policy.id}
                   policy={policy}
+                  categories={policyCategories}
                   onView={() => handleViewPDF(policy)}
                   onEdit={() => handleEdit(policy)}
                   onDelete={() => handleDelete(policy)}
@@ -709,6 +797,22 @@ const SettingsTabContent: React.FC<SettingsTabContentProps> = ({
   config,
   onConfigChange,
 }) => {
+  // Category state — seed with sensible defaults if user hasn't customized yet.
+  // L6: Ship smart, let them make it theirs.
+  const currentCategories =
+    config.policies?.policyCategories && config.policies.policyCategories.length > 0
+      ? config.policies.policyCategories
+      : DEFAULT_POLICY_CATEGORIES;
+
+  const handleCategoriesChange = (updated: import("@/types/modules").PolicyCategoryConfig[]) => {
+    onConfigChange({
+      policies: {
+        ...config.policies,
+        policyCategories: updated,
+      },
+    });
+  };
+
   return (
     <div className="space-y-6">
       {/* Subheader */}
@@ -727,6 +831,14 @@ const SettingsTabContent: React.FC<SettingsTabContentProps> = ({
           </div>
         </div>
       </div>
+
+      {/* ============================================================= */}
+      {/* CATEGORY MANAGEMENT                                           */}
+      {/* ============================================================= */}
+      <CategoryManager
+        categories={currentCategories}
+        onCategoriesChange={handleCategoriesChange}
+      />
 
       {/* Settings Card */}
       <div className="card">

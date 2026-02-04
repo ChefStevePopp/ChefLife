@@ -237,6 +237,18 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
   // Track if categories are loading
   const [isCategoriesLoading, setIsCategoriesLoading] = useState(true);
 
+  // Safety net: if the policy's category doesn't exist in available options,
+  // fall back to "general" so the user can re-categorize and save.
+  // Futureproofing — users don't have DB access to fix orphaned category IDs.
+  useEffect(() => {
+    if (!isCategoriesLoading && policyCategories.length > 0) {
+      const categoryExists = policyCategories.some((c) => c.id === category);
+      if (!categoryExists) {
+        setCategory("general");
+      }
+    }
+  }, [isCategoriesLoading, policyCategories, category]);
+
   // ---------------------------------------------------------------------------
   // INITIAL STATE SNAPSHOT (for dirty tracking)
   // ---------------------------------------------------------------------------
@@ -575,9 +587,23 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
       const currentModules = org?.modules || {};
       const currentSettings = org?.settings || {};
       const currentHrConfig = currentModules.hr?.config || currentSettings.hr?.config || {};
-      const currentPolicies = Array.isArray(currentHrConfig.policies)
-        ? currentHrConfig.policies
-        : [];
+
+      // ---------------------------------------------------------------
+      // READ from policyList (canonical), with migration from old
+      // "policies" key where data was previously (incorrectly) stored.
+      // ---------------------------------------------------------------
+      let currentPolicies: PolicyTemplate[] = [];
+      if (Array.isArray(currentHrConfig.policyList)) {
+        currentPolicies = currentHrConfig.policyList;
+      } else if (Array.isArray(currentHrConfig.policies)) {
+        // Legacy: policies was an array instead of settings object
+        currentPolicies = currentHrConfig.policies;
+      } else if (currentHrConfig.policies && typeof currentHrConfig.policies === "object") {
+        // Mangled: settings object with policy data mixed in
+        currentPolicies = Object.values(currentHrConfig.policies).filter(
+          (p: any) => p && typeof p === "object" && p.id && p.title
+        ) as PolicyTemplate[];
+      }
 
       let updatedPolicies: PolicyTemplate[];
       if (isEditMode) {
@@ -588,13 +614,14 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
         updatedPolicies = [...currentPolicies, policyData];
       }
 
+      // WRITE to policyList (canonical) — never touch "policies" (settings)
       const updatedModules = {
         ...currentModules,
         hr: {
           ...currentModules.hr,
           config: {
             ...currentHrConfig,
-            policies: updatedPolicies,
+            policyList: updatedPolicies,
           },
         },
       };

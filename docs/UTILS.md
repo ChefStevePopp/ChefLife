@@ -1339,8 +1339,8 @@ Wrap charts in a subtle container:
 
 | Approach | When to Use | Implementation |
 |----------|-------------|----------------|
+| **Upload-time (standard)** | User uploads | `optimizeImage()` utility (see below) |
 | **Manual (one-offs)** | Logos, static assets | cwebp CLI or TinyPNG |
-| **Upload-time** | User uploads | `browser-image-compression` library |
 | **Supabase Transform** | Dynamic sizing | URL params (Pro feature) |
 | **Build-time** | /public assets | `vite-plugin-imagemin` |
 
@@ -1364,36 +1364,64 @@ cwebp -q 85 resized.png -o output.webp
 - `-q 80` for photos
 - `-q 75` for large hero images (size > quality)
 
-### Upload-Time Compression (Recommended for User Uploads)
+### Upload-Time Compression — `optimizeImage()` Utility
+
+**Location:** `src/utils/imageOptimization.ts`
+
+**Added:** February 3, 2026
+
+**⚠️ IMPORTANT:** This is the **standard** for ALL image compression in ChefLife. Zero dependencies — uses native Canvas API + WebP `toBlob`. Do not install `browser-image-compression` or write custom canvas logic — use this utility.
 
 ```typescript
-import imageCompression from 'browser-image-compression';
+import { optimizeImage } from '@/utils/imageOptimization';
 
-const compressImage = async (file: File, maxSizeMB = 0.1, maxWidthOrHeight = 256) => {
-  const options = {
-    maxSizeMB,
-    maxWidthOrHeight,
-    useWebWorker: true,
-    fileType: 'image/webp',
-  };
-  
-  try {
-    const compressedFile = await imageCompression(file, options);
-    return compressedFile;
-  } catch (error) {
-    console.error('Compression failed:', error);
-    return file; // Fallback to original
-  }
-};
+// Basic usage — resize to 256px max, convert to WebP
+const optimized = await optimizeImage(rawFile);
 
-// Usage in ImageUploadModal
-const handleUpload = async (file: File) => {
-  const compressed = await compressImage(file, 0.1, 256);
-  // Upload compressed file to Supabase...
+// With options
+const optimized = await optimizeImage(rawFile, {
+  maxSize: 256,      // Max width OR height in px (aspect ratio preserved). Default: 512
+  quality: 0.82,     // WebP quality 0–1. Default: 0.82
+  outputName: 'my-image',  // Output filename (without .webp). Default: original name
+});
+
+// Returns a File object — drop-in replacement for the raw file
+await supabase.storage.from('Logos').upload(path, optimized);
+```
+
+**Typical output sizes:**
+
+| maxSize | quality | Typical output | Good for |
+|---------|---------|---------------|----------|
+| 256px | 0.82 | ~10-25KB | Logos, icons, category covers |
+| 512px | 0.82 | ~25-60KB | Cards, thumbnails |
+| 1024px | 0.80 | ~60-150KB | Hero images, recipe photos |
+
+**How it works:**
+1. Loads the file into an `HTMLImageElement`
+2. Calculates scaled dimensions (fits within maxSize box, preserves aspect ratio)
+3. Draws to a `<canvas>` at target size
+4. Converts to WebP via `canvas.toBlob('image/webp', quality)`
+5. Returns a new `File` object ready for upload
+
+**Integration with ImageUploadModal:**
+
+Call `optimizeImage()` inside your `onUpload` handler, before uploading to Supabase:
+
+```typescript
+const handleUpload = async (file: File): Promise<string> => {
+  // Compress & convert to WebP
+  const optimized = await optimizeImage(file, { maxSize: 256, quality: 0.82 });
+
+  // Upload optimized file to Supabase
+  const path = `${orgId}/vendors/${vendorId}.webp`;
+  await supabase.storage.from('Logos').upload(path, optimized);
+  const { data } = supabase.storage.from('Logos').getPublicUrl(path);
+  return `${data.publicUrl}?t=${Date.now()}`;
 };
 ```
 
-**Install:** `npm install browser-image-compression`
+**Reference implementation:** `CategoryManager.tsx` in HR Settings (first consumer)
 
 ### Supabase Image Transformation (If Available)
 

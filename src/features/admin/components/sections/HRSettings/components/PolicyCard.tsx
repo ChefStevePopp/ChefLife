@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import {
   FileText,
   Shield,
@@ -14,15 +15,26 @@ import {
   Calendar,
   CheckCircle,
   RefreshCw,
+  Utensils,
+  Lock,
+  GraduationCap,
+  Briefcase,
+  Heart,
+  Star,
+  Flame,
+  Zap,
+  BookOpen,
+  ClipboardList,
+  type LucideIcon,
 } from "lucide-react";
-import type { PolicyTemplate, PolicyCategory } from "@/types/modules";
+import type { PolicyTemplate, PolicyCategoryConfig } from "@/types/modules";
 
 /**
  * PolicyCard - L5 Collapsible Card (following RecipeCardL5 pattern)
  *
  * Features:
  * - Collapsible design (click to expand/collapse)
- * - Category color-coding and icons
+ * - Dynamic category display from PolicyCategoryConfig
  * - Version badge
  * - Expandable details with 2-column grid
  * - Action buttons (View PDF, Edit, Delete) when expanded
@@ -30,6 +42,7 @@ import type { PolicyTemplate, PolicyCategory } from "@/types/modules";
 
 interface PolicyCardProps {
   policy: PolicyTemplate;
+  categories: PolicyCategoryConfig[];
   onView: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -38,22 +51,22 @@ interface PolicyCardProps {
   className?: string;
 }
 
-// Category display config (matching PoliciesManager pattern)
-const CATEGORY_CONFIG: Record<
-  PolicyCategory,
-  { label: string; color: string; icon: React.ElementType }
-> = {
-  food_safety: { label: "Food Safety", color: "emerald", icon: Shield },
-  workplace_safety: { label: "Workplace Safety", color: "amber", icon: AlertTriangle },
-  harassment: { label: "Harassment & Discrimination", color: "rose", icon: Users },
-  attendance: { label: "Attendance", color: "blue", icon: Clock },
-  dress_code: { label: "Dress Code", color: "purple", icon: Users },
-  technology: { label: "Technology Use", color: "cyan", icon: Settings },
-  confidentiality: { label: "Confidentiality", color: "indigo", icon: Shield },
-  general: { label: "General", color: "gray", icon: FileText },
-  custom: { label: "Custom", color: "slate", icon: FileText },
+// ============================================================================
+// ICON RESOLVER - Maps string names from PolicyCategoryConfig to Lucide icons
+// ============================================================================
+const ICON_MAP: Record<string, LucideIcon> = {
+  Shield, AlertTriangle, Users, Clock, Settings, Scale, FileText,
+  Utensils, Lock, GraduationCap, Briefcase, Heart, Star, Flame,
+  Zap, BookOpen, ClipboardList, Eye, Edit3, CheckCircle, RefreshCw,
 };
 
+const resolveIcon = (iconName: string): LucideIcon => {
+  return ICON_MAP[iconName] || FileText;
+};
+
+// ============================================================================
+// COLOR CLASSES - Shared Tailwind color map
+// ============================================================================
 const COLOR_CLASSES: Record<string, { bg: string; text: string; border: string }> = {
   emerald: { bg: "bg-emerald-500/20", text: "text-emerald-400", border: "border-emerald-500/30" },
   amber: { bg: "bg-amber-500/20", text: "text-amber-400", border: "border-amber-500/30" },
@@ -62,12 +75,14 @@ const COLOR_CLASSES: Record<string, { bg: string; text: string; border: string }
   purple: { bg: "bg-purple-500/20", text: "text-purple-400", border: "border-purple-500/30" },
   cyan: { bg: "bg-cyan-500/20", text: "text-cyan-400", border: "border-cyan-500/30" },
   indigo: { bg: "bg-indigo-500/20", text: "text-indigo-400", border: "border-indigo-500/30" },
+  violet: { bg: "bg-violet-500/20", text: "text-violet-400", border: "border-violet-500/30" },
   gray: { bg: "bg-gray-500/20", text: "text-gray-400", border: "border-gray-500/30" },
   slate: { bg: "bg-slate-500/20", text: "text-slate-400", border: "border-slate-500/30" },
 };
 
 export const PolicyCard: React.FC<PolicyCardProps> = ({
   policy,
+  categories,
   onView,
   onEdit,
   onDelete,
@@ -75,11 +90,15 @@ export const PolicyCard: React.FC<PolicyCardProps> = ({
   confirmDelete = false,
   className = "",
 }) => {
+  const { showDiagnostics } = useDiagnostics();
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const categoryConfig = CATEGORY_CONFIG[policy.category] || CATEGORY_CONFIG.general;
-  const CategoryIcon = categoryConfig.icon;
-  const colorClass = COLOR_CLASSES[categoryConfig.color];
+  // Dynamic category lookup from PolicyCategoryConfig
+  const categoryConfig = categories.find((c) => c.id === policy.category);
+  const categoryLabel = categoryConfig?.label || policy.category;
+  const categoryColor = categoryConfig?.color || "gray";
+  const CategoryIcon = resolveIcon(categoryConfig?.icon || "FileText");
+  const colorClass = COLOR_CLASSES[categoryColor] || COLOR_CLASSES.gray;
 
   // Format effective date
   const formatDate = (dateString: string) => {
@@ -93,7 +112,7 @@ export const PolicyCard: React.FC<PolicyCardProps> = ({
 
   // Get recertification interval label
   const getRecertificationLabel = () => {
-    if (!policy.recertification.required) return "None";
+    if (!policy.recertification?.required) return "None";
     const interval = policy.recertification.interval;
     if (interval === "none") return "None";
     if (interval === "30_days") return "30 Days";
@@ -125,6 +144,13 @@ export const PolicyCard: React.FC<PolicyCardProps> = ({
       role="button"
       tabIndex={0}
     >
+      {/* L5 Diagnostic Path */}
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono px-4 pt-2">
+          src/features/admin/components/sections/HRSettings/components/PolicyCard.tsx
+        </div>
+      )}
+
       {/* Header Section - Always Visible */}
       <div className="p-4">
         {/* Category Badge */}
@@ -134,7 +160,7 @@ export const PolicyCard: React.FC<PolicyCardProps> = ({
           >
             <CategoryIcon className={`w-3.5 h-3.5 ${colorClass.text}`} />
             <span className={`text-xs font-medium ${colorClass.text}`}>
-              {categoryConfig.label}
+              {categoryLabel}
             </span>
           </div>
 

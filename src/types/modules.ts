@@ -371,6 +371,7 @@ export interface PolicyCategoryConfig {
   color: string;      // Tailwind color (e.g., 'emerald', 'rose')
   isDefault: boolean; // Our suggestions marked true, user-added = false
   sortOrder: number;
+  imageUrl?: string | null; // Optional cover/category image (Supabase storage)
 }
 
 /** Default policy categories (used if none configured) */
@@ -386,6 +387,8 @@ export const DEFAULT_POLICY_CATEGORIES: PolicyCategoryConfig[] = [
 ];
 
 export interface HRConfig {
+  /** Actual policy documents (PolicyTemplate array) */
+  policyList?: PolicyTemplate[];
   /** Policy management settings */
   policies: {
     enabled: boolean;
