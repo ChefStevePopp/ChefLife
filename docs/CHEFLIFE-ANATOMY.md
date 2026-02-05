@@ -2,9 +2,9 @@
 ## A Living Restaurant System
 
 **Document Created:** January 8, 2026
-**Last Updated:** February 1, 2026
+**Last Updated:** February 5, 2026
 **Authors:** Steve Popp (Creator) & Claude (Architecture Partner)
-**Version:** 2.0 - Allergen Manager Core Module
+**Version:** 2.1 - Compliance Shield + Type System Architecture
 
 ---
 
@@ -582,6 +582,211 @@ Like any body, ChefLife can show signs of health or illness:
 
 ---
 
+### 📋 HR & POLICIES — The Compliance Shield
+**Location:** HR Settings, Policies Manager, Policy Upload Form  
+**Function:** Protects the body from regulatory harm. Ensures the team knows the rules.
+
+Every restaurant operates under layers of regulation — food safety, workplace conduct, employment law, accessibility. The Compliance Shield ensures:
+- Every policy is documented, versioned, and tracked
+- Every team member reads what they need to read
+- Every acknowledgment is a legal receipt
+- Every update flows to the right people at the right urgency
+
+**Without the shield:** One missed WHMIS update, one unsigned harassment policy, one expired food handler certification — and the body is exposed. Fines. Lawsuits. Shutdowns.
+
+**With the shield:** The restaurant can prove — to inspectors, to lawyers, to insurance companies — that the right people read the right document at the right time.
+
+**Architecture:**
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    HR & POLICIES — THE COMPLIANCE SHIELD                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  POLICY LIFECYCLE                                                           │
+│  ════════════════                                                           │
+│  Draft → Published → Acknowledged → Recertified → Archived                 │
+│                                                                             │
+│  VERSIONING — COMMUNICATION HIERARCHY                                       │
+│  ════════════════════════════════════                                       │
+│  Same MAJOR.MINOR.PATCH pattern used for both Policies and Recipes.        │
+│                                                                             │
+│  Patch  (1.0.0 → 1.0.1)  "Note on the board"                              │
+│  ─────────────────────────────────────────────                              │
+│  Typo fix, formatting correction. Nobody re-reads.                         │
+│  Same row updated. No notification. Trust management.                      │
+│                                                                             │
+│  Minor  (1.0.x → 1.1.0)  "Pre-shift mention"                              │
+│  ─────────────────────────────────────────────                              │
+│  New section, updated info. Worth a read.                                  │
+│  NEXUS flags it for the team. Optional review broadcast.                   │
+│                                                                             │
+│  Major  (1.x.x → 2.0.0)  "All-hands meeting"                              │
+│  ─────────────────────────────────────────────                              │
+│  New regulations, changed procedures. Everyone re-reads, everyone signs.   │
+│  Archives old version. Creates new draft. Re-acknowledgment required.      │
+│                                                                             │
+│                                                                             │
+│  ACKNOWLEDGMENT FLOW (Phase 3)                                              │
+│  ═════════════════════════════                                              │
+│  Admin publishes policy                                                     │
+│       │                                                                     │
+│       ▼                                                                     │
+│  NEXUS routes `policy_ack_required` to applicable team members             │
+│       │                                                                     │
+│       ▼                                                                     │
+│  Team member opens policy in ChefLife (PDF viewer)                         │
+│       │                                                                     │
+│       ▼                                                                     │
+│  Reads, scrolls, taps "I have read and understand"                         │
+│       │                                                                     │
+│       ▼                                                                     │
+│  `policy_acknowledgments` row created — legal receipt:                     │
+│  ├── Who (team_member_id)                                                   │
+│  ├── What (policy_id + policy_version)                                     │
+│  ├── When (acknowledged_at timestamp)                                      │
+│  ├── Where (ip_address + user_agent)                                       │
+│  └── Proof (optional digital signature)                                    │
+│       │                                                                     │
+│       ▼                                                                     │
+│  NEXUS logs `policy_ack_completed`                                         │
+│  Admin dashboard updates compliance counts in real time                    │
+│                                                                             │
+│                                                                             │
+│  CATEGORY SYSTEM                                                            │
+│  ═══════════════                                                            │
+│  User-configurable categories (not hardcoded):                             │
+│  Health & Safety │ Employment & HR │ Food Safety/HACCP │ Operations        │
+│  Workplace Conduct │ Technology & Privacy │ Training │ General             │
+│                                                                             │
+│  Each category has: icon, color, cover image, sort order                   │
+│  CategoryManager: L5/L6 CRUD with drag-reorder and image upload            │
+│                                                                             │
+│                                                                             │
+│  APPLICABILITY (who must acknowledge)                                      │
+│  ════════════════════════════════════                                       │
+│  Three filters — empty means "everyone":                                   │
+│  ├── Departments (Front of House, Kitchen, Bar, Management)                │
+│  ├── Scheduled Roles (Line Cook, Server, Dishwasher, etc.)                 │
+│  └── Kitchen Stations (Grill, Fry, Prep, etc.)                             │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Why the Shield is Core:**
+
+Insurance companies ask: "Can you prove your team was trained?"  
+Labour boards ask: "Can you prove they acknowledged the policy?"  
+Health inspectors ask: "Can you prove the food handler cert is current?"  
+
+The answer should always be: "Yes. Here's the timestamped receipt."
+
+---
+
+### 🏗️ The Type System — Built for 1,000 Organizations
+
+ChefLife is architected for scale from day one. Not MVP. Not "we'll fix it later." The type system reflects a deliberate discipline: **one source of truth per domain, documented migration paths, and no duplicate definitions.**
+
+This matters because when you sell to 1,000 restaurants, a type mismatch doesn't crash one app — it corrupts 1,000 databases.
+
+**The Rule: Every domain gets one canonical types file.**
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    TYPE SYSTEM ARCHITECTURE                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  CANONICAL SOURCE FILES (single source of truth)                           │
+│  ═══════════════════════════════════════════════                            │
+│  types/policies.ts      → Policy, PolicyAcknowledgment, versioning         │
+│  types/modules.ts       → Module configs, base patterns, HR config         │
+│  types/ingredients.ts   → MasterIngredient, Triangle Model types           │
+│  types/recipes.ts       → Recipe, RecipeIngredient, production             │
+│                                                                             │
+│                                                                             │
+│  THE PATTERN: DB → Types → Service → Hook → Component                      │
+│  ════════════════════════════════════════════════════                       │
+│                                                                             │
+│  ┌────────────────┐     ┌──────────────────┐     ┌────────────────┐        │
+│  │   Postgres      │     │  types/*.ts       │     │  lib/*-service │        │
+│  │   (snake_case)  │────►│  (snake_case)     │────►│  (typed CRUD)  │        │
+│  │                 │     │  Single source    │     │                │        │
+│  └────────────────┘     └──────────────────┘     └───────┬────────┘        │
+│                                                           │                 │
+│                                                           ▼                 │
+│                          ┌────────────────┐     ┌────────────────┐          │
+│                          │  components     │◄────│  hooks         │          │
+│                          │  (consume type) │     │  (state mgmt)  │          │
+│                          └────────────────┘     └────────────────┘          │
+│                                                                             │
+│                                                                             │
+│  NAMING CONVENTION                                                          │
+│  ════════════════                                                           │
+│  Database columns:    snake_case  (effective_date, category_id)             │
+│  TypeScript types:    snake_case  (matches DB — no mapping layer)          │
+│  Component props:     camelCase   (React convention)                       │
+│                                                                             │
+│  Why snake_case in types? Because Supabase returns snake_case from         │
+│  .select() queries. Mapping between cases is a bug factory. If the         │
+│  type matches the wire format, there is zero serialization risk.           │
+│                                                                             │
+│                                                                             │
+│  MIGRATION DISCIPLINE                                                       │
+│  ═══════════════════                                                        │
+│  When a domain migrates (e.g., JSONB → relational table):                  │
+│                                                                             │
+│  1. New canonical type created in domain file (e.g., Policy)               │
+│  2. Old type marked @deprecated with migration path comment                │
+│  3. Shared enums centralized in new file, re-exported from old file        │
+│  4. Bridge hook maps old shape ↔ new shape during transition               │
+│  5. Once all consumers migrate, bridge + old type removed                  │
+│                                                                             │
+│  Example: Policy migration (Session 71)                                    │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │  BEFORE (JSONB era)              AFTER (Relational era)             │   │
+│  │  ────────────────────            ─────────────────────              │   │
+│  │  PolicyTemplate (camelCase)  →   Policy (snake_case) ← canonical   │   │
+│  │  in modules.ts                   in policies.ts                     │   │
+│  │                                                                     │   │
+│  │  RecertificationInterval     →   RecertificationInterval            │   │
+│  │  in modules.ts                   in policies.ts ← canonical         │   │
+│  │                                  re-exported from modules.ts        │   │
+│  │                                                                     │   │
+│  │  PolicyRow (duplicate)       →   export type PolicyRow = Policy     │   │
+│  │  in usePolicies.ts               (alias, will be removed)           │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│                                                                             │
+│  SHARED ENUMS RULE                                                          │
+│  ════════════════                                                           │
+│  If two modules share an enum (e.g., ReviewSchedule used by both           │
+│  Policies and Recipes), it lives in the module that owns the DB table.     │
+│  Other modules import from there.                                          │
+│                                                                             │
+│  ReviewSchedule          → owned by policies.ts (policies table)           │
+│  RecertificationInterval → owned by policies.ts (policies table)           │
+│  VersionBumpType         → owned by policies.ts (used by recipes too)      │
+│                                                                             │
+│                                                                             │
+│  THE "NO WHAT-THE-HELL" TEST                                               │
+│  ═══════════════════════════                                                │
+│  A developer opening the codebase for the first time should be able to:    │
+│  1. Find the canonical type for any domain in under 30 seconds             │
+│  2. See @deprecated markers with migration paths on any legacy type        │
+│  3. Understand WHY something was done, not just WHAT was done              │
+│  4. Never encounter two definitions of the same thing without              │
+│     a clear comment explaining which one is canonical                      │
+│                                                                             │
+│  If a future developer says "What the hell?" — we failed.                  │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Why this discipline matters:**
+
+ChefLife is not built by a team of 50 engineers who can tap each other on the shoulder. It's built in conversation sessions — asynchronous, context-switching, sometimes weeks apart. The type system is the institutional memory that survives between sessions. If it's wrong, every session starts by untangling the last one's mess. If it's right, every session builds on solid ground.
+
+---
+
 ## The Philosophy
 
 ### People Over Profit
@@ -1003,9 +1208,9 @@ That's the vision. That's the mission. That's ChefLife.
 
 ---
 
-**Document Version:** 2.0
+**Document Version:** 2.1
 **Status:** Living Document
-**Last Update:** February 1, 2026 - Allergen Manager Core Module (The Immune System)
+**Last Update:** February 5, 2026 - Compliance Shield + Type System Architecture
 **Next Update:** As the body grows
 
 ---
@@ -1025,3 +1230,4 @@ That's the vision. That's the mission. That's ChefLife.
 | 1.8 | Jan 21, 2026 | **Food Relationships** - The Taxonomy/DNA organ. Major Groups → Categories → Sub-Categories hierarchy. L5 build with Guided Mode, character counters, empty state management. |
 | 1.9 | Jan 22, 2026 | **Recipe Module Architecture** - 11-tab editor detail, tab-level change tracking, dynamic Recipe Type from taxonomy, admin-container responsive layout. |
 | 2.0 | Feb 1, 2026 | **Allergen Manager Core Module** - 5th core module extracted from Recipe Settings. Three-state allergen system (Contains/May Contain/None), environmental tracking at stations, L5 Vitals Page accordion pattern, white-label icon customization (planned), multi-jurisdiction compliance (Natasha's Law, FDA, Health Canada, FSANZ). The Immune System organ. |
+| 2.1 | Feb 5, 2026 | **HR & Policies (The Compliance Shield)** + **Type System Architecture**. Policy lifecycle (draft/published/archived), MAJOR.MINOR.PATCH versioning with restaurant communication hierarchy, acknowledgment flow design, configurable categories. Type system discipline documented: single source of truth per domain, snake_case convention, migration discipline, shared enum ownership rules, the "No What-The-Hell" test. Built for 1,000 organizations. |

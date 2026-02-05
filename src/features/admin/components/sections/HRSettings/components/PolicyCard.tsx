@@ -33,22 +33,28 @@ import {
   Award,
   Bell,
   Wrench,
+  Archive,
+  FilePenLine,
   type LucideIcon,
 } from "lucide-react";
-import type { PolicyTemplate, PolicyCategoryConfig } from "@/types/modules";
+import type { Policy } from "@/types/policies";
+import type { PolicyCategoryConfig } from "@/types/modules";
 
 /**
- * PolicyCard — L5/L6 Visual Entity Card
+ * PolicyCard — L5/L6 Visual Entity Card (Phase 1 Relational)
  *
  * Baseball-card treatment matching CategoryManager's visual language:
  * - Hero area with category cover image (or gradient + icon fallback)
- * - Category badge + version overlaid on hero
+ * - Category badge + version + status overlaid on hero
  * - Title, date, and status below hero
  * - Collapsible details with acknowledgment info, applicability, actions
+ *
+ * Phase 1 change: reads from Policy (relational snake_case) instead of
+ * PolicyTemplate (JSONB camelCase). Visual output is identical.
  */
 
 interface PolicyCardProps {
-  policy: PolicyTemplate;
+  policy: Policy;
   categories: PolicyCategoryConfig[];
   onView: () => void;
   onEdit: () => void;
@@ -101,6 +107,15 @@ const COLOR_CLASSES: Record<string, { bg: string; text: string; border: string; 
 const safeColor = (color: string) => COLOR_CLASSES[color] || COLOR_CLASSES.gray;
 
 // =============================================================================
+// STATUS CONFIG
+// =============================================================================
+const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; border: string; Icon: LucideIcon }> = {
+  draft:     { label: "Draft",     bg: "bg-gray-500/20",    text: "text-gray-300",    border: "border-gray-500/30",    Icon: FilePenLine },
+  published: { label: "Active",    bg: "bg-emerald-500/20", text: "text-emerald-400", border: "border-emerald-500/30", Icon: CheckCircle },
+  archived:  { label: "Archived",  bg: "bg-amber-500/20",   text: "text-amber-400",   border: "border-amber-500/30",   Icon: Archive },
+};
+
+// =============================================================================
 // COMPONENT
 // =============================================================================
 
@@ -120,17 +135,24 @@ export const PolicyCard: React.FC<PolicyCardProps> = ({
   // ---------------------------------------------------------------------------
   // CATEGORY RESOLUTION
   // ---------------------------------------------------------------------------
-  const categoryConfig = categories.find((c) => c.id === policy.category);
-  const categoryLabel = categoryConfig?.label || policy.category;
+  const categoryConfig = categories.find((c) => c.id === policy.category_id);
+  const categoryLabel = categoryConfig?.label || policy.category_id;
   const categoryColor = categoryConfig?.color || "gray";
   const categoryImageUrl = categoryConfig?.imageUrl || null;
   const CategoryIcon = resolveIcon(categoryConfig?.icon || "FileText");
   const colors = safeColor(categoryColor);
 
   // ---------------------------------------------------------------------------
+  // STATUS RESOLUTION
+  // ---------------------------------------------------------------------------
+  const statusCfg = STATUS_CONFIG[policy.status] || STATUS_CONFIG.draft;
+  const StatusIcon = statusCfg.Icon;
+
+  // ---------------------------------------------------------------------------
   // HELPERS
   // ---------------------------------------------------------------------------
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return "—";
     const date = new Date(dateString);
     return date.toLocaleDateString("en-US", {
       month: "short",
@@ -140,18 +162,18 @@ export const PolicyCard: React.FC<PolicyCardProps> = ({
   };
 
   const getRecertificationLabel = () => {
-    if (!policy.recertification?.required) return "None";
-    const interval = policy.recertification.interval;
-    if (interval === "none") return "None";
-    if (interval === "30_days") return "30 Days";
-    if (interval === "90_days") return "90 Days";
-    if (interval === "180_days") return "180 Days";
-    if (interval === "annual") return "Annual";
-    if (interval === "biennial") return "Biennial";
-    if (interval === "custom" && policy.recertification.customDays) {
-      return `${policy.recertification.customDays} Days`;
+    if (!policy.recertification_required) return null;
+    const interval = policy.recertification_interval;
+    if (interval === "none") return null;
+    if (interval === "30_days") return "every 30 days";
+    if (interval === "90_days") return "every 90 days";
+    if (interval === "180_days") return "every 180 days";
+    if (interval === "annual") return "annually";
+    if (interval === "biennial") return "every 2 years";
+    if (interval === "custom" && policy.recertification_custom_days) {
+      return `every ${policy.recertification_custom_days} days`;
     }
-    return "None";
+    return null;
   };
 
   const handleCardClick = (e: React.MouseEvent) => {
@@ -219,12 +241,10 @@ export const PolicyCard: React.FC<PolicyCardProps> = ({
           <span className="text-[11px] px-2 py-0.5 rounded-md bg-black/50 backdrop-blur-sm text-gray-300 border border-gray-600/50 font-medium tabular-nums">
             v{policy.version}
           </span>
-          {policy.isActive && (
-            <span className="px-2 py-0.5 rounded-md bg-green-500/20 backdrop-blur-sm text-green-400 border border-green-500/30 flex items-center gap-1">
-              <CheckCircle className="w-2.5 h-2.5" />
-              <span className="text-[11px] font-medium">Active</span>
-            </span>
-          )}
+          <span className={`px-2 py-0.5 rounded-md ${statusCfg.bg} backdrop-blur-sm ${statusCfg.text} border ${statusCfg.border} flex items-center gap-1`}>
+            <StatusIcon className="w-2.5 h-2.5" />
+            <span className="text-[11px] font-medium">{statusCfg.label}</span>
+          </span>
         </div>
 
         {/* Expand chevron — bottom-right of hero */}
@@ -251,19 +271,19 @@ export const PolicyCard: React.FC<PolicyCardProps> = ({
         <div className="flex items-center gap-4 text-xs text-gray-400">
           <span className="flex items-center gap-1.5">
             <Calendar className="w-3.5 h-3.5" />
-            Effective {formatDate(policy.effectiveDate)}
+            Effective {formatDate(policy.effective_date)}
           </span>
-          {policy.requiresAcknowledgment && (
+          {policy.requires_acknowledgment && (
             <span className="flex items-center gap-1">
-              <CheckCircle className="w-3 h-3 text-amber-400" />
-              <span className="text-amber-400/80">Ack required</span>
+              <ClipboardCheck className="w-3 h-3 text-amber-400" />
+              <span className="text-amber-400/80">Requires completion</span>
             </span>
           )}
         </div>
-        {policy.recertification?.required && (
+        {getRecertificationLabel() && (
           <span className="flex items-center gap-1 text-xs text-cyan-400/70">
             <RefreshCw className="w-3 h-3" />
-            {getRecertificationLabel()}
+            Renews {getRecertificationLabel()}
           </span>
         )}
       </div>
@@ -288,12 +308,12 @@ export const PolicyCard: React.FC<PolicyCardProps> = ({
             <div>
               <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5 border-t border-gray-700/30 pt-2.5">
                 <span className="w-5 h-5 rounded-md bg-slate-700/50 flex items-center justify-center">
-                  <CheckCircle className="w-3 h-3 text-slate-400" />
+                  <ClipboardCheck className="w-3 h-3 text-slate-400" />
                 </span>
-                Acknowledgment
+                Completion
               </div>
-              <p className={`text-sm mt-1.5 ${policy.requiresAcknowledgment ? "text-green-400" : "text-gray-500"}`}>
-                {policy.requiresAcknowledgment ? "Required" : "Not Required"}
+              <p className={`text-sm mt-1.5 ${policy.requires_acknowledgment ? "text-emerald-400" : "text-gray-500"}`}>
+                {policy.requires_acknowledgment ? "Required" : "Not Required"}
               </p>
             </div>
 
@@ -303,9 +323,13 @@ export const PolicyCard: React.FC<PolicyCardProps> = ({
                 <span className="w-5 h-5 rounded-md bg-slate-700/50 flex items-center justify-center">
                   <RefreshCw className="w-3 h-3 text-slate-400" />
                 </span>
-                Recertification
+                Renewal
               </div>
-              <p className="text-sm text-gray-300 mt-1.5">{getRecertificationLabel()}</p>
+              <p className="text-sm text-gray-300 mt-1.5">
+                {getRecertificationLabel()
+                  ? getRecertificationLabel()!.charAt(0).toUpperCase() + getRecertificationLabel()!.slice(1)
+                  : "Not required"}
+              </p>
             </div>
 
             {/* Applicability */}
@@ -317,24 +341,24 @@ export const PolicyCard: React.FC<PolicyCardProps> = ({
                 Applies To
               </div>
               <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                {(policy.applicableDepartments?.length === 0 &&
-                  policy.applicableScheduledRoles?.length === 0 &&
-                  policy.applicableKitchenStations?.length === 0) ? (
+                {(policy.applicable_departments?.length === 0 &&
+                  policy.applicable_scheduled_roles?.length === 0 &&
+                  policy.applicable_kitchen_stations?.length === 0) ? (
                   <span className="text-sm text-gray-300">All Team Members</span>
                 ) : (
                   <>
-                    {policy.applicableDepartments?.map((dept) => (
-                      <span key={dept} className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/20">
+                    {policy.applicable_departments?.map((dept) => (
+                      <span key={dept} className="text-[11px] px-2 py-0.5 rounded-full bg-gray-700/50 text-gray-400 border border-gray-600/30">
                         {dept}
                       </span>
                     ))}
-                    {policy.applicableScheduledRoles?.map((role) => (
-                      <span key={role} className="text-[11px] px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/20">
+                    {policy.applicable_scheduled_roles?.map((role) => (
+                      <span key={role} className="text-[11px] px-2 py-0.5 rounded-full bg-gray-700/50 text-gray-400 border border-gray-600/30">
                         {role}
                       </span>
                     ))}
-                    {policy.applicableKitchenStations?.map((station) => (
-                      <span key={station} className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                    {policy.applicable_kitchen_stations?.map((station) => (
+                      <span key={station} className="text-[11px] px-2 py-0.5 rounded-full bg-gray-700/50 text-gray-400 border border-gray-600/30">
                         {station}
                       </span>
                     ))}
@@ -345,33 +369,29 @@ export const PolicyCard: React.FC<PolicyCardProps> = ({
           </div>
 
           {/* Authorship & Dates */}
-          {(policy.preparedBy || policy.lastRevisionDate) && (
+          {(policy.prepared_by || policy.last_revision_date) && (
             <div className="flex items-center gap-4 text-xs text-gray-500 border-t border-gray-700/30 pt-2.5">
-              {policy.preparedBy && (
-                <span>Prepared by {policy.preparedBy}{policy.authorTitle ? `, ${policy.authorTitle}` : ""}</span>
+              {policy.prepared_by && (
+                <span>Prepared by {policy.prepared_by}{policy.author_title ? `, ${policy.author_title}` : ""}</span>
               )}
-              {policy.lastRevisionDate && (
-                <span>Last revised {formatDate(policy.lastRevisionDate)}</span>
+              {policy.last_revision_date && (
+                <span>Last revised {formatDate(policy.last_revision_date)}</span>
               )}
             </div>
           )}
 
-          {/* Action Buttons */}
+          {/* Action Buttons — View, Edit, Delete only. Lifecycle lives in PolicyUploadForm. */}
           <div className="pt-1 flex gap-2 border-t border-gray-700/30">
             <button
               onClick={(e) => { e.stopPropagation(); onView(); }}
-              className="flex-1 flex justify-center items-center gap-2 px-3 py-2
-                         bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg
-                         transition-colors text-sm font-medium"
+              className="btn-soft-primary flex-1 justify-center py-2"
             >
               <Eye className="w-4 h-4" />
               View PDF
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); onEdit(); }}
-              className="flex-1 flex justify-center items-center gap-2 px-3 py-2
-                         bg-gray-700/70 hover:bg-gray-600 text-gray-300 hover:text-white
-                         rounded-lg transition-colors text-sm font-medium"
+              className="btn-ghost flex-1 justify-center py-2"
             >
               <Edit3 className="w-4 h-4" />
               Edit
@@ -383,7 +403,7 @@ export const PolicyCard: React.FC<PolicyCardProps> = ({
                          transition-colors text-sm font-medium border
                          ${confirmDelete
                            ? "bg-rose-600/40 border-rose-500/60 text-rose-300 animate-pulse"
-                           : "bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 hover:text-rose-300 border-rose-500/30"
+                           : "bg-gray-700/50 hover:bg-rose-500/15 text-gray-500 hover:text-rose-400 border-gray-700 hover:border-rose-500/30"
                          } ${isDeleting ? "opacity-50 cursor-not-allowed" : ""}`}
             >
               {isDeleting ? (

@@ -24,7 +24,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { LoadingLogo } from "@/features/shared/components";
 import { SECURITY_LEVELS } from "@/config/security";
-import type { PolicyCategory } from "@/types/modules";
+// PolicyCategory import removed — categories are now configurable strings.
+// See @/types/policies for canonical types, @/types/modules for PolicyCategoryConfig.
 
 // =============================================================================
 // POLICIES MANAGER - L5 Compliance Dashboard
@@ -37,7 +38,7 @@ import type { PolicyCategory } from "@/types/modules";
 interface PolicyWithCompliance {
   id: string;
   title: string;
-  category: PolicyCategory;
+  category: string;  // category_id from configurable PolicyCategoryConfig
   version: string;
   effective_date: string;
   requires_acknowledgment: boolean;
@@ -51,7 +52,9 @@ interface PolicyWithCompliance {
 }
 
 // Category display config
-const CATEGORY_CONFIG: Record<PolicyCategory, { label: string; color: string; icon: React.ElementType }> = {
+// TODO: Replace hardcoded map with org's policyCategories config (PolicyCategoryConfig[]).
+// This map predates the configurable category system. See DEFAULT_POLICY_CATEGORIES in modules.ts.
+const CATEGORY_CONFIG: Record<string, { label: string; color: string; icon: React.ElementType }> = {
   food_safety: { label: "Food Safety", color: "emerald", icon: Shield },
   workplace_safety: { label: "Workplace Safety", color: "amber", icon: AlertTriangle },
   harassment: { label: "Harassment & Discrimination", color: "rose", icon: Users },

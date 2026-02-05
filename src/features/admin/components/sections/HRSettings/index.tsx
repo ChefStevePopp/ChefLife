@@ -22,7 +22,9 @@ import { nexus } from "@/lib/nexus";
 import toast from "react-hot-toast";
 import { LoadingLogo } from "@/features/shared/components";
 import { SECURITY_LEVELS } from "@/config/security";
-import { DEFAULT_HR_CONFIG, DEFAULT_POLICY_CATEGORIES, type HRConfig, type PolicyTemplate } from "@/types/modules";
+import { DEFAULT_HR_CONFIG, DEFAULT_POLICY_CATEGORIES, type HRConfig } from "@/types/modules";
+import type { Policy, PolicyStatus } from "@/types/policies";
+import { fetchPolicies as fetchPoliciesFromDB, deletePolicy as deletePolicyFromDB, publishPolicy, archivePolicy, majorRevisionPolicy } from "@/lib/policy-data-service";
 import { PolicyCard } from "./components/PolicyCard";
 import { PolicyUploadForm } from "./components/PolicyUploadForm";
 import { CategoryManager } from "./components/CategoryManager";
@@ -157,13 +159,12 @@ export const HRSettings: React.FC = () => {
       const freshModules = freshOrg?.modules || {};
       const freshHrConfig = freshModules.hr?.config || {};
 
-      // Merge: overlay our settings state, but ALWAYS preserve policyList
-      // from fresh DB read (PolicyUploadForm writes policyList directly to DB,
-      // so our local hrConfig copy may be stale).
+      // Merge: overlay our settings state onto fresh DB read.
+      // Phase 1: Policies now live in their own table — no policyList merge needed.
+      // Only category config and settings flow through JSONB.
       const mergedConfig = {
         ...freshHrConfig,  // Base: everything currently in DB
         ...hrConfig,       // Overlay: local settings changes (policies obj, jobDescriptions, etc.)
-        policyList: freshHrConfig.policyList ?? hrConfig.policyList,  // Fresh wins
       };
 
       const updatedModules = {
@@ -453,12 +454,22 @@ export const HRSettings: React.FC = () => {
 // POLICIES TAB CONTENT
 // =============================================================================
 
+type StatusFilter = 'all' | PolicyStatus;
+
+const STATUS_FILTERS: { id: StatusFilter; label: string; color: string }[] = [
+  { id: 'all',       label: 'All',       color: 'gray' },
+  { id: 'published', label: 'Active',     color: 'emerald' },
+  { id: 'draft',     label: 'Drafts',     color: 'gray' },
+  { id: 'archived',  label: 'Archived',   color: 'amber' },
+];
+
 const PoliciesTabContent: React.FC = () => {
   const navigate = useNavigate();
   const { organizationId, securityLevel, user } = useAuth();
   const [viewMode, setViewMode] = useState<"list" | "upload" | "edit">("list");
-  const [editingPolicy, setEditingPolicy] = useState<PolicyTemplate | null>(null);
-  const [policies, setPolicies] = useState<PolicyTemplate[]>([]);
+  const [editingPolicy, setEditingPolicy] = useState<Policy | null>(null);
+  const [policies, setPolicies] = useState<Policy[]>([]);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [policyCategories, setPolicyCategories] = useState<import("@/types/modules").PolicyCategoryConfig[]>(DEFAULT_POLICY_CATEGORIES);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -467,106 +478,62 @@ const PoliciesTabContent: React.FC = () => {
   const canManagePolicies =
     securityLevel !== undefined && securityLevel <= SECURITY_LEVELS.BRAVO;
 
-  // Fetch policies on mount
+  // -----------------------------------------------------------------------
+  // FETCH POLICIES — Phase 1 Relational
+  // Policies from `policies` table, categories from JSONB (ADR-002)
+  // -----------------------------------------------------------------------
   useEffect(() => {
-    const fetchPolicies = async () => {
+    const loadData = async () => {
       if (!organizationId) return;
 
       try {
+        // 1. Fetch policies from relational table
+        const policyRows = await fetchPoliciesFromDB(organizationId);
+        setPolicies(policyRows);
+
+        // 2. Fetch categories from JSONB (ADR-002: categories stay in JSONB)
         const { data, error } = await supabase
           .from("organizations")
-          .select("modules, settings")
+          .select("modules")
           .eq("id", organizationId)
           .single();
 
-        if (error) throw error;
-
-        // Check modules first, fall back to settings for backward compatibility
-        const modules = (data as any)?.modules || {};
-        const settings = (data as any)?.settings || {};
-        const hrConfig = modules.hr?.config || settings.hr?.config || {};
-
-        // Load dynamic categories for PolicyCard display
-        const cats = hrConfig.policies?.policyCategories;
-        if (cats && Array.isArray(cats) && cats.length > 0) {
-          setPolicyCategories(cats);
-        }
-
-        // ---------------------------------------------------------------
-        // READ POLICIES from policyList (correct location).
-        // Migration: if policyList is empty, rescue data from the old
-        // "policies" key where PolicyUploadForm used to save them.
-        // That key is supposed to be the settings object, but older
-        // saves put the array there, and category edits mangled it
-        // into {0: {policy}, policyCategories: [...]}.
-        // ---------------------------------------------------------------
-        let policyArray: PolicyTemplate[] = [];
-
-        const policyListExists = Array.isArray(hrConfig.policyList) && hrConfig.policyList.length > 0;
-
-        if (policyListExists) {
-          // New canonical location
-          policyArray = hrConfig.policyList;
-        } else {
-          // Migration: check the old "policies" key
-          const legacy = hrConfig.policies;
-          if (Array.isArray(legacy)) {
-            policyArray = legacy;
-          } else if (legacy && typeof legacy === "object") {
-            // Mangled object — extract anything that looks like a policy
-            policyArray = Object.values(legacy).filter(
-              (p: any) => p && typeof p === "object" && p.id && p.title
-            ) as PolicyTemplate[];
-          }
-
-          // NOTE: If reading from legacy location, run SQL migration
-          // 20260203_migrate_policies_to_policylist.sql to fix permanently.
-          // This read fallback keeps the UI working until that migration runs.
-          if (policyArray.length > 0) {
-            console.warn(
-              `[HR] Read ${policyArray.length} policy(ies) from legacy location. ` +
-              `Run SQL migration 20260203_migrate_policies_to_policylist.sql to fix permanently.`
-            );
+        if (!error && data) {
+          const hrConfig = (data as any)?.modules?.hr?.config || {};
+          const cats = hrConfig.policies?.policyCategories;
+          if (cats && Array.isArray(cats) && cats.length > 0) {
+            setPolicyCategories(cats);
           }
         }
-
-        // Validate shape & deduplicate by id
-        const seen = new Set<string>();
-        setPolicies(
-          policyArray.filter((p: any) => {
-            if (!p || typeof p !== "object" || !p.id || !p.title) return false;
-            if (seen.has(p.id)) return false;
-            seen.add(p.id);
-            return true;
-          })
-        );
       } catch (error) {
         console.error("Error fetching policies:", error);
         toast.error("Failed to load policies");
       }
     };
 
-    fetchPolicies();
+    loadData();
   }, [organizationId, viewMode]);
 
   // Handle viewing PDF
-  const handleViewPDF = (policy: PolicyTemplate) => {
-    if (policy.documentUrl) {
-      window.open(policy.documentUrl, "_blank");
+  const handleViewPDF = (policy: Policy) => {
+    if (policy.document_url) {
+      window.open(policy.document_url, "_blank");
     } else {
       toast.error("No PDF document available");
     }
   };
 
   // Handle edit
-  const handleEdit = (policy: PolicyTemplate) => {
+  const handleEdit = (policy: Policy) => {
     setEditingPolicy(policy);
     setViewMode("edit");
   };
 
-  // Handle delete
-  const handleDelete = async (policy: PolicyTemplate) => {
-    if (!organizationId) return;
+  // -----------------------------------------------------------------------
+  // DELETE — Phase 1 Relational (soft-delete via policy-data-service)
+  // -----------------------------------------------------------------------
+  const handleDelete = async (policy: Policy) => {
+    if (!organizationId || !user) return;
 
     // Two-stage confirmation
     if (confirmDelete !== policy.id) {
@@ -578,74 +545,23 @@ const PoliciesTabContent: React.FC = () => {
     setIsDeleting(policy.id);
 
     try {
-      // Fetch current organization data
-      const { data: org, error: fetchError } = await supabase
-        .from("organizations")
-        .select("modules")
-        .eq("id", organizationId)
-        .single();
-
-      if (fetchError) throw fetchError;
-
-      // Remove policy from policyList (canonical location)
-      const currentModules = org?.modules || {};
-      const currentHrConfig = currentModules.hr?.config || {};
-
-      // Read from policyList, with migration fallback from old "policies" key
-      let currentPolicies: PolicyTemplate[] = [];
-      if (Array.isArray(currentHrConfig.policyList)) {
-        currentPolicies = currentHrConfig.policyList;
-      } else if (Array.isArray(currentHrConfig.policies)) {
-        currentPolicies = currentHrConfig.policies;
-      } else if (currentHrConfig.policies && typeof currentHrConfig.policies === "object") {
-        currentPolicies = Object.values(currentHrConfig.policies).filter(
-          (p: any) => p && typeof p === "object" && p.id && p.title
-        ) as PolicyTemplate[];
-      }
-
-      const updatedPolicies = currentPolicies.filter(
-        (p: PolicyTemplate) => p.id !== policy.id
-      );
-
-      // Build updated modules — save to policyList, leave policies (settings) untouched
-      const updatedModules = {
-        ...currentModules,
-        hr: {
-          ...currentModules.hr,
-          config: {
-            ...currentHrConfig,
-            policyList: updatedPolicies,
-          },
-        },
-      };
-
-      // Save to database
-      const { error: updateError } = await supabase
-        .from("organizations")
-        .update({
-          modules: updatedModules,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", organizationId);
-
-      if (updateError) throw updateError;
+      // Soft-delete: sets is_active=false, status=archived
+      await deletePolicyFromDB(policy.id, user.id);
 
       // NEXUS audit logging
-      if (user) {
-        await nexus({
-          organization_id: organizationId!,
-          user_id: user.id,
-          activity_type: "policy_deleted",
-          details: {
-            policy_id: policy.id,
-            policy_title: policy.title,
-            version: policy.version,
-          },
-        });
-      }
+      await nexus({
+        organization_id: organizationId,
+        user_id: user.id,
+        activity_type: "policy_deleted",
+        details: {
+          policy_id: policy.id,
+          policy_title: policy.title,
+          version: policy.version,
+        },
+      });
 
       toast.success(`Policy "${policy.title}" deleted`);
-      setPolicies(updatedPolicies);
+      setPolicies((prev) => prev.filter((p) => p.id !== policy.id));
       setConfirmDelete(null);
     } catch (error: any) {
       console.error("Error deleting policy:", error);
@@ -653,6 +569,117 @@ const PoliciesTabContent: React.FC = () => {
     } finally {
       setIsDeleting(null);
     }
+  };
+
+  // -----------------------------------------------------------------------
+  // PUBLISH — Phase 2: Draft → Published
+  // -----------------------------------------------------------------------
+  const handlePublish = async (policy: Policy) => {
+    if (!organizationId || !user) return;
+
+    try {
+      const updated = await publishPolicy(policy.id, user.id);
+      setPolicies((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+
+      await nexus({
+        organization_id: organizationId,
+        user_id: user.id,
+        activity_type: "policy_published",
+        details: {
+          policy_id: policy.id,
+          policy_title: policy.title,
+          version: policy.version,
+        },
+      });
+
+      toast.success(`"${policy.title}" is now active`);
+    } catch (error: any) {
+      console.error("Error publishing policy:", error);
+      toast.error(`Failed to publish: ${error.message}`);
+    }
+  };
+
+  // -----------------------------------------------------------------------
+  // ARCHIVE — Phase 2: Published → Archived
+  // -----------------------------------------------------------------------
+  const handleArchive = async (policy: Policy) => {
+    if (!organizationId || !user) return;
+
+    try {
+      const updated = await archivePolicy(policy.id, user.id);
+      setPolicies((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+
+      await nexus({
+        organization_id: organizationId,
+        user_id: user.id,
+        activity_type: "policy_archived",
+        details: {
+          policy_id: policy.id,
+          policy_title: policy.title,
+          version: policy.version,
+        },
+      });
+
+      toast.success(`"${policy.title}" archived`);
+    } catch (error: any) {
+      console.error("Error archiving policy:", error);
+      toast.error(`Failed to archive: ${error.message}`);
+    }
+  };
+
+  // -----------------------------------------------------------------------
+  // MAJOR REVISION — Phase 2: Published → Archived + New Draft
+  // -----------------------------------------------------------------------
+  const handleMajorRevision = async (policy: Policy) => {
+    if (!organizationId || !user) return;
+
+    try {
+      const { archived, newDraft } = await majorRevisionPolicy(policy, user.id);
+
+      // Replace old policy in list with archived version, add new draft
+      setPolicies((prev) => [
+        ...prev.map((p) => (p.id === archived.id ? archived : p)),
+        newDraft,
+      ]);
+
+      await nexus({
+        organization_id: organizationId,
+        user_id: user.id,
+        activity_type: "policy_major_revision",
+        details: {
+          old_policy_id: policy.id,
+          old_version: policy.version,
+          new_policy_id: newDraft.id,
+          new_version: newDraft.version,
+          policy_title: policy.title,
+        },
+      });
+
+      toast.success(
+        `v${newDraft.version} created as draft. Edit and publish when ready.`
+      );
+
+      // Open the new draft for editing
+      setEditingPolicy(newDraft);
+      setViewMode("edit");
+    } catch (error: any) {
+      console.error("Error creating major revision:", error);
+      toast.error(`Failed to create new version: ${error.message}`);
+    }
+  };
+
+  // -----------------------------------------------------------------------
+  // FILTERED LIST — Phase 2: Status filter
+  // -----------------------------------------------------------------------
+  const filteredPolicies = statusFilter === 'all'
+    ? policies
+    : policies.filter((p) => p.status === statusFilter);
+
+  const statusCounts = {
+    all: policies.length,
+    published: policies.filter((p) => p.status === 'published').length,
+    draft: policies.filter((p) => p.status === 'draft').length,
+    archived: policies.filter((p) => p.status === 'archived').length,
   };
 
   // Handle save callback
@@ -688,9 +715,9 @@ const PoliciesTabContent: React.FC = () => {
               {canManagePolicies && (
                 <div className="subheader-right">
                   <span className="subheader-pill">
-                    <span className="subheader-pill-value">{policies.length}</span>
+                    <span className="subheader-pill-value">{filteredPolicies.length}</span>
                     <span className="subheader-pill-label">
-                      {policies.length === 1 ? "Policy" : "Policies"}
+                      {filteredPolicies.length === 1 ? "Policy" : "Policies"}
                     </span>
                   </span>
                   <div className="subheader-divider" />
@@ -705,6 +732,43 @@ const PoliciesTabContent: React.FC = () => {
               )}
             </div>
           </div>
+
+          {/* Phase 2: Status Filter Pills */}
+          {policies.length > 0 && (
+            <div className="flex items-center gap-2">
+              {STATUS_FILTERS.map((filter) => {
+                const count = statusCounts[filter.id];
+                const isActive = statusFilter === filter.id;
+                return (
+                  <button
+                    key={filter.id}
+                    onClick={() => setStatusFilter(filter.id)}
+                    className={`
+                      flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
+                      transition-all duration-150 border
+                      ${isActive
+                        ? filter.color === 'emerald'
+                          ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                          : filter.color === 'amber'
+                            ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
+                            : 'bg-gray-600/30 border-gray-500/50 text-gray-200'
+                        : 'bg-gray-800/50 border-gray-700/50 text-gray-500 hover:text-gray-300 hover:bg-gray-700/50'
+                      }
+                    `}
+                  >
+                    <span>{filter.label}</span>
+                    {count > 0 && (
+                      <span className={`text-xs tabular-nums ${
+                        isActive ? 'opacity-80' : 'opacity-50'
+                      }`}>
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {/* Policy Grid or Empty State */}
           {!Array.isArray(policies) || policies.length === 0 ? (
@@ -732,20 +796,31 @@ const PoliciesTabContent: React.FC = () => {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {policies.map((policy) => (
-                <PolicyCard
-                  key={policy.id}
-                  policy={policy}
-                  categories={policyCategories}
-                  onView={() => handleViewPDF(policy)}
-                  onEdit={() => handleEdit(policy)}
-                  onDelete={() => handleDelete(policy)}
-                  isDeleting={isDeleting === policy.id}
-                  confirmDelete={confirmDelete === policy.id}
-                />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredPolicies.map((policy) => (
+                  <PolicyCard
+                    key={policy.id}
+                    policy={policy}
+                    categories={policyCategories}
+                    onView={() => handleViewPDF(policy)}
+                    onEdit={() => handleEdit(policy)}
+                    onDelete={() => handleDelete(policy)}
+                    isDeleting={isDeleting === policy.id}
+                    confirmDelete={confirmDelete === policy.id}
+                  />
+                ))}
+              </div>
+
+              {/* Empty filter state */}
+              {filteredPolicies.length === 0 && policies.length > 0 && (
+                <div className="card p-6 text-center">
+                  <p className="text-gray-400 text-sm">
+                    No {statusFilter === 'all' ? '' : statusFilter} policies found.
+                  </p>
+                </div>
+              )}
+            </>
           )}
 
           {/* Compliance Dashboard Link */}
@@ -778,6 +853,9 @@ const PoliciesTabContent: React.FC = () => {
           editingPolicy={editingPolicy}
           onCancel={handleCancel}
           onSave={handleSaveComplete}
+          onPublish={handlePublish}
+          onArchive={handleArchive}
+          onMajorRevision={handleMajorRevision}
         />
       ) : null}
     </div>

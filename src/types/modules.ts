@@ -7,6 +7,7 @@
  */
 
 import { SecurityLevel } from '@/config/security';
+import type { ReviewSchedule, RecertificationInterval } from '@/types/policies';
 
 // =============================================================================
 // MODULE PERMISSIONS
@@ -228,115 +229,64 @@ export interface CommunicationsModuleConfig extends BaseModuleConfig {
 // HR MODULE
 // =============================================================================
 
-/** Policy category for organization */
-export type PolicyCategory =
-  | 'food_safety'
-  | 'workplace_safety'
-  | 'harassment'
-  | 'attendance'
-  | 'dress_code'
-  | 'technology'
-  | 'confidentiality'
-  | 'general'
-  | 'custom';
+// =============================================================================
+// POLICY TYPES — Re-exported from @/types/policies (single source of truth)
+// =============================================================================
+// Policies moved from JSONB config to a relational table (ADR-001, Phase 1).
+// The canonical types now live in @/types/policies.ts.
+//
+// These re-exports exist so that older components (usePolicies, PolicyCard)
+// continue to compile. New code should import directly from @/types/policies.
+// =============================================================================
 
-/** Recertification interval presets */
-export type RecertificationInterval =
-  | 'none'        // One-time acknowledgment
-  | '30_days'
-  | '90_days'
-  | '180_days'
-  | 'annual'      // 365 days
-  | 'biennial'    // 730 days
-  | 'custom';     // Custom days
+// Re-export for backward compat (canonical definitions live in @/types/policies)
+export type { ReviewSchedule, RecertificationInterval };
 
-/** Review schedule presets */
-export type ReviewSchedule =
-  | 'quarterly'   // Every 3 months
-  | 'semi_annual' // Every 6 months
-  | 'annual'      // Yearly
-  | 'biennial'    // Every 2 years
-  | 'as_needed';  // No fixed schedule
+/**
+ * @deprecated Replaced by configurable category_id: string on the Policy type.
+ * Categories are now user-configurable via PolicyCategoryConfig in org JSONB.
+ * This hardcoded union remains only for PoliciesManager backward compat.
+ * New code should use category_id: string and look up display info from
+ * the org's policyCategories config array.
+ */
+export type PolicyCategory = string;
 
-/** Policy definition stored in config */
+/**
+ * @deprecated Use Policy from @/types/policies instead.
+ *
+ * PolicyTemplate was the JSONB-era shape (camelCase). The relational table
+ * uses snake_case Policy. The usePolicies hook maps between them during
+ * the transition. Once all consumers migrate to Policy, this can be removed.
+ *
+ * Migration path: import { Policy } from '@/types/policies'
+ */
 export interface PolicyTemplate {
   id: string;
   title: string;
   description: string;
-  category: string;  // User-defined category ID from policyCategories config
-  
-  // ==========================================================================
-  // DOCUMENT
-  // ==========================================================================
-  /** Storage path to PDF in Supabase */
+  category: string;
   documentUrl: string | null;
-  /** Version string (e.g., "1.0", "2.1") */
   version: string;
-  
-  // ==========================================================================
-  // POLICY DATES (distinct from system timestamps)
-  // ==========================================================================
-  /** When policy takes effect */
   effectiveDate: string;
-  /** When policy was first written/prepared */
   preparedDate: string;
-  /** When policy content was last revised */
   lastRevisionDate: string;
-  
-  // ==========================================================================
-  // AUTHORSHIP
-  // ==========================================================================
-  /** Name of person who prepared/authored the policy */
   preparedBy: string;
-  /** Title/role of the author (e.g., "Chef/Owner", "HR Manager") */
   authorTitle?: string;
-  
-  // ==========================================================================
-  // REVIEW SCHEDULE
-  // ==========================================================================
-  /** How often policy should be reviewed */
   reviewSchedule: ReviewSchedule;
-  /** Calculated next review date (lastRevisionDate + schedule) */
   nextReviewDate?: string;
-  
-  // ==========================================================================
-  // ACKNOWLEDGMENT & RECERTIFICATION
-  // ==========================================================================
-  /** Whether team members must acknowledge this policy */
   requiresAcknowledgment: boolean;
-  /** Recertification settings (for team member re-acknowledgment) */
   recertification: {
     required: boolean;
     interval: RecertificationInterval;
     customDays?: number;
   };
-  
-  // ==========================================================================
-  // APPLICABILITY (who must acknowledge)
-  // ==========================================================================
-  /** Departments that must acknowledge (empty = not filtered by dept) */
   applicableDepartments: string[];
-  /** Scheduled roles that must acknowledge (empty = not filtered by role) */
   applicableScheduledRoles: string[];
-  /** Kitchen stations that must acknowledge (empty = not filtered by station) */
   applicableKitchenStations: string[];
-  
-  // ==========================================================================
-  // STATUS
-  // ==========================================================================
-  /** Is this policy currently active */
   isActive: boolean;
-  
-  // ==========================================================================
-  // SYSTEM METADATA (auto-managed)
-  // ==========================================================================
-  /** When record was created in system */
   createdAt: string;
-  /** User ID who uploaded to system */
   createdBy: string;
-  /** When record was last modified in system */
   updatedAt: string;
-  /** User ID who last modified */
   updatedBy: string;
 }
 

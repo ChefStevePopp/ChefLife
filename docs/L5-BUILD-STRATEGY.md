@@ -926,6 +926,13 @@ ChefLife maintains a centralized CSS component library for reusable patterns. Al
 | `.btn-ghost-green` | Success ghost | Green text, green hover |
 | `.btn-ghost-amber` | Warning ghost | Amber text, amber hover |
 | `.btn-ghost-primary` | Primary ghost | Blue text, blue hover |
+| `.btn-soft` | Soft base (gray) | Tinted fill + colored border, present but quiet |
+| `.btn-soft-primary` | Soft primary | Blue tint + blue border |
+| `.btn-soft-emerald` | Soft success | Emerald tint + emerald border |
+| `.btn-soft-amber` | Soft warning | Amber tint + amber border |
+| `.btn-soft-rose` | Soft danger | Rose tint + rose border |
+| `.btn-soft-purple` | Soft HR/people | Purple tint + purple border |
+| `.btn-soft-cyan` | Soft info | Cyan tint + cyan border |
 | `.input` | Standard text input | Dark background, border, focus ring |
 | `.tab` | Tab navigation button | With color variants (see UX Cohesion) |
 | `.tab.active` | Active tab state | White text, colored top bar |
@@ -1021,6 +1028,41 @@ The glowing action bar for unsaved changes, bulk actions, and contextual control
 **Reference Implementations:**
 - `src/features/admin/components/sections/recipe/MasterIngredientList/IngredientDetailPage/index.tsx`
 - `src/features/team/components/TeamManagement/components/RosterBulkActions.tsx`
+
+### Button Hierarchy: Solid → Soft → Ghost
+
+ChefLife uses a 3-tier button system. Choose tier by visual weight needed:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  btn-primary          Solid fill, white text        → Page CTAs    │
+│  btn-soft-{color}     Tinted fill + colored border  → Card actions  │
+│  btn-ghost-{color}    Transparent, gray border      → Toolbar/quiet │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+| Tier | At Rest | Hover | Use For |
+|------|---------|-------|--------|
+| **Solid** (`btn-primary`) | Filled background, white text | Deeper fill | Page-level CTAs, primary actions |
+| **Soft** (`btn-soft-{color}`) | `bg-{color}-500/10 border-{color}-500/30 text-{color}-400` | `bg-{color}-500/20 border-{color}-500/40` | Card actions, secondary CTAs, "present but quiet" |
+| **Ghost** (`btn-ghost-{color}`) | Transparent, `border-gray-700` | Color reveals on text/border | Tertiary actions, toolbars, maintenance |
+
+**Colors available:** primary, emerald, amber, rose, purple, cyan (+ base gray)
+
+**When to use Soft:**
+- Card action buttons (View, Download, Preview)
+- Modal secondary actions
+- Detail panel CTAs
+- Anywhere you need color identity without CTA weight
+- The button should "register" as that color at rest without competing with a primary CTA
+
+**The naming tells the story:** If `btn-primary` shouts and `btn-ghost-primary` whispers, `btn-soft-primary` speaks at a comfortable volume.
+
+**Reference Implementation:** `PolicyCard.tsx` — View PDF uses `btn-soft-primary`, Edit uses `btn-ghost`
+
+**CSS Location:** `src/index.css` → search for "SOFT BUTTONS"
+
+---
 
 ### Toggle Switch
 
@@ -2200,6 +2242,67 @@ For mutually exclusive options within a placemat:
 
 ---
 
+## Hero Entity Card Pattern
+
+For items that deserve visual presence — policies, recipes, categories — use the baseball card layout with hero image:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │                                                         ││
+│  │   [Badge]                           [Status] [Version]  ││  ← Gradient overlay top
+│  │                                                         ││
+│  │                                                         ││  ← Hero image (aspect-[16/10])
+│  │                                                         ││
+│  │                     Card Title                          ││  ← Gradient overlay bottom
+│  │                     Subtitle                            ││
+│  └─────────────────────────────────────────────────────────┘│
+│                                                             │
+│  Body metadata strip                                        │  ← Date, status, interval
+│                                                             │
+│  ▶ Expandable details                                       │  ← Description, applicability
+│                                                             │
+│  [btn-soft-primary]  [btn-ghost]  [neutral→rose]            │  ← 3-tier button actions
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Dual Gradient Overlays:**
+```tsx
+{/* Top gradient — badges readable over any image */}
+<div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/60 to-transparent" />
+
+{/* Bottom gradient — title readable over any image */}
+<div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/80 to-transparent" />
+```
+
+**Image Sizing:** Use 512px max dimension for card hero images. 256px pixelates at typical card render widths.
+
+**Reference Implementation:** `PolicyCard.tsx`, `CategoryManager.tsx`
+
+---
+
+## Competency Language Standard
+
+ChefLife uses competency language, not paperwork jargon. Policies protect the team — the language should feel supportive, not bureaucratic.
+
+| ❌ Bureaucratic | ✅ Competency |
+|----------------|---------------|
+| Acknowledgment required | Requires completion |
+| 180 Days | Renews every 180 days |
+| ACKNOWLEDGMENT | COMPLETION |
+| RECERTIFICATION | RENEWAL |
+| Policy violation | Review needed |
+| Non-compliant | Incomplete |
+
+**Icon choices reinforce tone:**
+- Completion → `ClipboardCheck` (amber) — a task, not a threat
+- Renewal → `Clock` or `RotateCcw` (cyan) — a rhythm, not a deadline
+- Active → `CheckCircle` (emerald) — confirmation, not gatekeeping
+
+**Applicability Pills:** Use "go-away grey" (`bg-gray-700/50 text-gray-400 border-gray-600/30`) for role/department pills. They're metadata, not color-coded categories. Don't let them compete with semantic colors.
+
+---
+
 ## Pending State + Floating Action Bar Pattern
 
 For important decisions that deserve gravitas (price mode, status changes):
@@ -2279,11 +2382,36 @@ All money-related values use a single teal accent:
 
 ---
 
-*Last updated: January 18, 2026 - Tablecloth/Placemat Hierarchy, Selection Pattern, Pending State Pattern added*
+*Last updated: February 4, 2026 - btn-soft Button Tier, Hero Entity Card, Competency Language Standard*
 
 ---
 
 ## Changelog
+
+**Feb 4, 2026 (Sessions 68-70 — HR Policy & Compliance):**
+- **btn-soft Button Tier** — New 3-tier button hierarchy documented:
+  - Solid (`btn-primary`) → Soft (`btn-soft-{color}`) → Ghost (`btn-ghost-{color}`)
+  - Seven color variants: primary, emerald, amber, rose, purple, cyan + base gray
+  - At rest: `bg-{color}-500/10 border-{color}-500/30 text-{color}-400`
+  - Hover: `bg-{color}-500/20 border-{color}-500/40 text-{color}-300`
+  - Use case: Card actions that need color identity without CTA weight
+  - Reference: PolicyCard View PDF button
+  - CSS location: `src/index.css` → search for "SOFT BUTTONS"
+- **Hero Entity Card Pattern** documented:
+  - Baseball card layout with aspect-[16/10] hero image
+  - Dual gradient overlays (top for badges, bottom for title)
+  - 512px max image dimension (256px pixelates at card widths)
+  - Body metadata strip + expandable details + 3-tier button actions
+  - Reference: `PolicyCard.tsx`, `CategoryManager.tsx`
+- **Competency Language Standard** added:
+  - "Completion" not "Acknowledgment", "Renewal" not "Recertification"
+  - Icon choices reinforce supportive tone (ClipboardCheck, Clock, CheckCircle)
+  - "Go-away grey" for applicability pills (`bg-gray-700/50`)
+- **Core Components table** updated with all 7 `btn-soft` variants
+- **Image Optimization Utility** — `optimizeImage()` in `src/shared/utils/imageOptimization.ts`:
+  - Native Canvas API, WebP output, configurable quality (default 0.82)
+  - Max dimension constraint (512px for category covers)
+  - Documented in UTILS.md
 
 **Jan 31, 2026 (Session - IngredientsInput L5/L6 Rebuild):**
 - **Three-Mode Input Pattern** documented:

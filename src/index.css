@@ -611,6 +611,63 @@ select::-ms-expand {
            hover:bg-primary-500/10 focus:ring-primary-500/50;
   }
 
+  /* ---------------------------------------------------------------------------
+   * SOFT BUTTONS — the midway between solid and ghost
+   * ---------------------------------------------------------------------------
+   * Hierarchy:  btn-primary (solid fill, full CTA)
+   *           → btn-soft-primary (tinted fill + colored border, present but quiet)
+   *           → btn-ghost-primary (transparent, gray border, color on hover)
+   *
+   * Use btn-soft when you need the button to register as "that color" at rest
+   * without competing with a primary CTA. Perfect for secondary actions inside
+   * cards, modals, and detail panels.
+   *
+   * Pattern: bg-{color}-500/10  border-{color}-500/30  text-{color}-400
+   *   hover: bg-{color}-500/20  text-{color}-300
+   * ---------------------------------------------------------------------------
+   */
+  .btn-soft {
+    @apply btn bg-gray-700/40 hover:bg-gray-600/50 text-gray-300 hover:text-white
+           border border-gray-600/40 hover:border-gray-500/50
+           focus:ring-gray-500/50;
+  }
+
+  .btn-soft-primary {
+    @apply btn bg-primary-500/10 hover:bg-primary-500/20 text-primary-400 hover:text-primary-300
+           border border-primary-500/30 hover:border-primary-500/40
+           focus:ring-primary-500/50;
+  }
+
+  .btn-soft-emerald {
+    @apply btn bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300
+           border border-emerald-500/30 hover:border-emerald-500/40
+           focus:ring-emerald-500/50;
+  }
+
+  .btn-soft-amber {
+    @apply btn bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 hover:text-amber-300
+           border border-amber-500/30 hover:border-amber-500/40
+           focus:ring-amber-500/50;
+  }
+
+  .btn-soft-rose {
+    @apply btn bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300
+           border border-rose-500/30 hover:border-rose-500/40
+           focus:ring-rose-500/50;
+  }
+
+  .btn-soft-purple {
+    @apply btn bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 hover:text-purple-300
+           border border-purple-500/30 hover:border-purple-500/40
+           focus:ring-purple-500/50;
+  }
+
+  .btn-soft-cyan {
+    @apply btn bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 hover:text-cyan-300
+           border border-cyan-500/30 hover:border-cyan-500/40
+           focus:ring-cyan-500/50;
+  }
+
   /* Input */
   .input {
     @apply bg-gray-800/50 border border-gray-700/50 rounded-xl px-4 py-2 text-base
@@ -1230,6 +1287,20 @@ select::-ms-expand {
 
 .toggle-switch.rose input:checked + .toggle-switch-track {
   background-color: rgb(244, 63, 94);
+}
+
+/* Soft toggle — dialed-back intensity for form contexts */
+.toggle-switch.soft input:checked + .toggle-switch-track {
+  background-color: rgba(14, 165, 233, 0.45);
+}
+.toggle-switch.soft input:focus + .toggle-switch-track {
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15);
+}
+.toggle-switch.soft .toggle-switch-track::after {
+  background-color: rgb(209, 213, 219); /* gray-300 knob when off */
+}
+.toggle-switch.soft input:checked + .toggle-switch-track::after {
+  background-color: white;
 }
 
 /* ============================================================================

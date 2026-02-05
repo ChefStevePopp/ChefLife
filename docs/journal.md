@@ -8,6 +8,9 @@
 
 | Date | Handoff File | Focus Area |
 |------|--------------|------------|
+| 2026-02-05 | `handoffs/HANDOFF-SESSION-71-PolicyForm-UX-TypeCleanup.md` | Soft toggles, plain-English explainers, type system single source of truth |
+| 2026-02-04 | `handoffs/HANDOFF-SESSION-70-HR-Policy-Architecture.md` | Roadmap, PolicyCard visual entity, L5 color corrections, btn-soft |
+| 2026-01-31 | `HANDOFF-2026-01-31-IngredientsInput-L5-L6-Rebuild.md` | IngredientsInput rebuild, table/tablet/guided modes |
 | 2026-01-28 | `handoffs/HANDOFF-Recipe-Viewer-L5.md` | L5 Viewer Screen Standard, ViewerCard pattern, responsive containers |
 | 2026-01-24 | `HANDOFF-2026-01-24-RecipeViewer-L5-Ingredients.md` | Recipe Viewer L5/L6, Ingredients tab, configurable sourcing |
 | 2026-01-18 | `HANDOFF-2025-01-18-Session68-Triage-Blank-Screen.md` | Fix Triage → Create Ingredient blank screen |
@@ -91,8 +94,14 @@ Transcripts are stored in `/mnt/transcripts/` and contain full conversation hist
 - ✅ MIL Common Name field (Stage 1 of Import Flow)
 - ✅ VendorAnalytics 4-section story architecture (Session 60)
 - ✅ NEXUS analytics events (7 new event types)
+- ✅ HR Policy CategoryManager (L5/L6 CRUD, image upload, drag-reorder)
+- ✅ HR PolicyCard visual entity (hero area, dual gradient, category badge)
+- ✅ HR Policy relational migration (Phase 1 — tables, types, data service)
+- ✅ HR Policy versioning (Phase 2 — MAJOR.MINOR.PATCH lifecycle)
+- ✅ HR Policy type system cleanup (single source of truth, deprecated bridges)
 
 ### In Progress
+- 🔄 **HR Policy Acknowledgments (Phase 3)** — user-side read-and-confirm flow, NEXUS events
 - 🔄 **Recipe Editor L5/L6 Overhaul**
   - ✅ Ingredients tab (Table/Tablet/Guided modes)
   - ⏳ Production tab
@@ -148,4 +157,4 @@ YYYY-MM-DD-HH-MM-SS-[description].txt
 
 ---
 
-*Last updated: January 31, 2026 (IngredientsInput L5/L6 Rebuild)*
+*Last updated: February 5, 2026 (HR Policy Type System Cleanup — Session 71)*

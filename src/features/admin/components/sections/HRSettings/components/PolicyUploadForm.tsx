@@ -1,24 +1,27 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+﻿import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   FileText,
   X,
   Info,
   ChevronUp,
-  ChevronDown,
   ArrowLeft,
   AlertTriangle,
   Calendar,
   CheckCircle,
   RefreshCw,
   Check,
-  Save,
   RotateCcw,
   User,
   Building2,
   Briefcase,
   ChefHat,
   ClipboardCheck,
+  Wrench,
   Users,
+  FilePenLine,
+  Send,
+  Archive,
+  CopyPlus,
 } from "lucide-react";
 import { FileDropzone } from "@/shared/components/FileDropzone";
 import { DocumentPreview } from "@/features/admin/components/sections/VendorInvoice/components/DocumentPreview";
@@ -30,11 +33,12 @@ import { supabase } from "@/lib/supabase";
 import { nexus } from "@/lib/nexus";
 import toast from "react-hot-toast";
 import type {
-  PolicyTemplate,
   RecertificationInterval,
   ReviewSchedule,
   PolicyCategoryConfig,
 } from "@/types/modules";
+import { bumpVersion, VERSION_BUMP_LABELS, type Policy, type VersionBumpType } from "@/types/policies";
+import { createPolicy, updatePolicy } from "@/lib/policy-data-service";
 
 // =============================================================================
 // SKELETON COMPONENTS
@@ -78,9 +82,13 @@ const SkeletonCard: React.FC<{ lines?: number }> = ({ lines = 3 }) => (
 // =============================================================================
 
 interface PolicyUploadFormProps {
-  editingPolicy?: PolicyTemplate | null;
+  editingPolicy?: Policy | null;
   onCancel: () => void;
   onSave: () => void;
+  /** Lifecycle callbacks  -- called from status banner, parent handles data + state */
+  onPublish?: (policy: Policy) => void;
+  onArchive?: (policy: Policy) => void;
+  onMajorRevision?: (policy: Policy) => void;
 }
 
 // Review schedule options
@@ -108,8 +116,6 @@ const colorClasses: Record<string, { bg: string; text: string }> = {
   indigo: { bg: "bg-indigo-500/20", text: "text-indigo-400" },
   blue: { bg: "bg-blue-500/20", text: "text-blue-400" },
   emerald: { bg: "bg-emerald-500/20", text: "text-emerald-400" },
-  violet: { bg: "bg-violet-500/20", text: "text-violet-400" },
-  amber: { bg: "bg-amber-500/20", text: "text-amber-400" },
   cyan: { bg: "bg-cyan-500/20", text: "text-cyan-400" },
 };
 
@@ -150,6 +156,9 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
   editingPolicy,
   onCancel,
   onSave,
+  onPublish,
+  onArchive,
+  onMajorRevision,
 }) => {
   const { user, organizationId } = useAuth();
   const { showDiagnostics } = useDiagnostics();
@@ -171,57 +180,59 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
   // Basic info
   const [title, setTitle] = useState(editingPolicy?.title || "");
   const [description, setDescription] = useState(editingPolicy?.description || "");
-  const [category, setCategory] = useState(editingPolicy?.category || "general");
-  const [version, setVersion] = useState(editingPolicy?.version || "1.0");
+  const [category, setCategory] = useState(editingPolicy?.category_id || "general");
+  const [version, setVersion] = useState(editingPolicy?.version || "1.0.0");
+  const [versionBumpType, setVersionBumpType] = useState<VersionBumpType>('patch');
+  const isEditingPublished = isEditMode && editingPolicy?.status === 'published';
 
   // Policy dates
   const [effectiveDate, setEffectiveDate] = useState(
-    editingPolicy?.effectiveDate
-      ? new Date(editingPolicy.effectiveDate).toISOString().split("T")[0]
+    editingPolicy?.effective_date
+      ? new Date(editingPolicy.effective_date).toISOString().split("T")[0]
       : new Date().toISOString().split("T")[0]
   );
   const [preparedDate, setPreparedDate] = useState(
-    editingPolicy?.preparedDate
-      ? new Date(editingPolicy.preparedDate).toISOString().split("T")[0]
+    editingPolicy?.prepared_date
+      ? new Date(editingPolicy.prepared_date).toISOString().split("T")[0]
       : new Date().toISOString().split("T")[0]
   );
   const [lastRevisionDate, setLastRevisionDate] = useState(
-    editingPolicy?.lastRevisionDate
-      ? new Date(editingPolicy.lastRevisionDate).toISOString().split("T")[0]
+    editingPolicy?.last_revision_date
+      ? new Date(editingPolicy.last_revision_date).toISOString().split("T")[0]
       : new Date().toISOString().split("T")[0]
   );
 
   // Authorship
-  const [preparedBy, setPreparedBy] = useState(editingPolicy?.preparedBy || "");
-  const [authorTitle, setAuthorTitle] = useState(editingPolicy?.authorTitle || "");
+  const [preparedBy, setPreparedBy] = useState(editingPolicy?.prepared_by || "");
+  const [authorTitle, setAuthorTitle] = useState(editingPolicy?.author_title || "");
 
   // Review schedule
   const [reviewSchedule, setReviewSchedule] = useState<ReviewSchedule>(
-    editingPolicy?.reviewSchedule || "annual"
+    (editingPolicy?.review_schedule as ReviewSchedule) || "annual"
   );
 
   // Acknowledgment
   const [requiresAcknowledgment, setRequiresAcknowledgment] = useState(
-    editingPolicy?.requiresAcknowledgment ?? true
+    editingPolicy?.requires_acknowledgment ?? true
   );
   const [recertificationRequired, setRecertificationRequired] = useState(
-    editingPolicy?.recertification.required ?? false
+    editingPolicy?.recertification_required ?? false
   );
   const [recertificationInterval, setRecertificationInterval] =
-    useState<RecertificationInterval>(editingPolicy?.recertification.interval || "none");
+    useState<RecertificationInterval>((editingPolicy?.recertification_interval as RecertificationInterval) || "none");
   const [customDays, setCustomDays] = useState<number | undefined>(
-    editingPolicy?.recertification.customDays
+    editingPolicy?.recertification_custom_days ?? undefined
   );
 
   // Applicability
   const [applicableDepartments, setApplicableDepartments] = useState<string[]>(
-    editingPolicy?.applicableDepartments || []
+    editingPolicy?.applicable_departments || []
   );
   const [applicableScheduledRoles, setApplicableScheduledRoles] = useState<string[]>(
-    editingPolicy?.applicableScheduledRoles || []
+    editingPolicy?.applicable_scheduled_roles || []
   );
   const [applicableKitchenStations, setApplicableKitchenStations] = useState<string[]>(
-    editingPolicy?.applicableKitchenStations || []
+    editingPolicy?.applicable_kitchen_stations || []
   );
 
   // ---------------------------------------------------------------------------
@@ -239,7 +250,7 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
 
   // Safety net: if the policy's category doesn't exist in available options,
   // fall back to "general" so the user can re-categorize and save.
-  // Futureproofing — users don't have DB access to fix orphaned category IDs.
+  // Futureproofing  -- users don't have DB access to fix orphaned category IDs.
   useEffect(() => {
     if (!isCategoriesLoading && policyCategories.length > 0) {
       const categoryExists = policyCategories.some((c) => c.id === category);
@@ -256,27 +267,27 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
     file: null as File | null,
     title: editingPolicy?.title || "",
     description: editingPolicy?.description || "",
-    category: editingPolicy?.category || "general",
-    version: editingPolicy?.version || "1.0",
-    effectiveDate: editingPolicy?.effectiveDate
-      ? new Date(editingPolicy.effectiveDate).toISOString().split("T")[0]
+    category: editingPolicy?.category_id || "general",
+    version: editingPolicy?.version || "1.0.0",
+    effectiveDate: editingPolicy?.effective_date
+      ? new Date(editingPolicy.effective_date).toISOString().split("T")[0]
       : new Date().toISOString().split("T")[0],
-    preparedDate: editingPolicy?.preparedDate
-      ? new Date(editingPolicy.preparedDate).toISOString().split("T")[0]
+    preparedDate: editingPolicy?.prepared_date
+      ? new Date(editingPolicy.prepared_date).toISOString().split("T")[0]
       : new Date().toISOString().split("T")[0],
-    lastRevisionDate: editingPolicy?.lastRevisionDate
-      ? new Date(editingPolicy.lastRevisionDate).toISOString().split("T")[0]
+    lastRevisionDate: editingPolicy?.last_revision_date
+      ? new Date(editingPolicy.last_revision_date).toISOString().split("T")[0]
       : new Date().toISOString().split("T")[0],
-    preparedBy: editingPolicy?.preparedBy || "",
-    authorTitle: editingPolicy?.authorTitle || "",
-    reviewSchedule: editingPolicy?.reviewSchedule || "annual",
-    requiresAcknowledgment: editingPolicy?.requiresAcknowledgment ?? true,
-    recertificationRequired: editingPolicy?.recertification.required ?? false,
-    recertificationInterval: editingPolicy?.recertification.interval || "none",
-    customDays: editingPolicy?.recertification.customDays,
-    applicableDepartments: editingPolicy?.applicableDepartments || [],
-    applicableScheduledRoles: editingPolicy?.applicableScheduledRoles || [],
-    applicableKitchenStations: editingPolicy?.applicableKitchenStations || [],
+    preparedBy: editingPolicy?.prepared_by || "",
+    authorTitle: editingPolicy?.author_title || "",
+    reviewSchedule: editingPolicy?.review_schedule || "annual",
+    requiresAcknowledgment: editingPolicy?.requires_acknowledgment ?? true,
+    recertificationRequired: editingPolicy?.recertification_required ?? false,
+    recertificationInterval: editingPolicy?.recertification_interval || "none",
+    customDays: editingPolicy?.recertification_custom_days ?? undefined,
+    applicableDepartments: editingPolicy?.applicable_departments || [],
+    applicableScheduledRoles: editingPolicy?.applicable_scheduled_roles || [],
+    applicableKitchenStations: editingPolicy?.applicable_kitchen_stations || [],
   });
 
   const toggleGuidance = (section: string) => {
@@ -344,15 +355,15 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Escape → Cancel
+      // Escape  -> Cancel
       if (e.key === "Escape" && !isLoading) {
         e.preventDefault();
         onCancel();
       }
-      // Cmd/Ctrl + S → Save
+      // Cmd/Ctrl + S  -> Save as draft (safe action; publish requires explicit click)
       if ((e.metaKey || e.ctrlKey) && e.key === "s" && !isLoading) {
         e.preventDefault();
-        handleSubmit();
+        handleSubmit('draft');
       }
     };
 
@@ -428,19 +439,14 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
     return operationsSettings?.kitchen_stations || [];
   }, [operationsSettings]);
 
-  // Auto-increment version when editing and uploading new PDF
+  // Auto-compute version from bump type when editing a published policy
   useEffect(() => {
-    if (isEditMode && file && editingPolicy) {
-      const [major, minor] = editingPolicy.version.split(".").map(Number);
-      const newMinor = minor + 1;
-      if (newMinor >= 10) {
-        setVersion(`${major + 1}.0`);
-      } else {
-        setVersion(`${major}.${newMinor}`);
-      }
+    if (isEditingPublished && editingPolicy) {
+      const newVersion = bumpVersion(editingPolicy.version || '1.0.0', versionBumpType);
+      setVersion(newVersion);
       setLastRevisionDate(new Date().toISOString().split("T")[0]);
     }
-  }, [file, isEditMode, editingPolicy]);
+  }, [versionBumpType, isEditingPublished, editingPolicy]);
 
   // ---------------------------------------------------------------------------
   // HANDLERS
@@ -476,12 +482,16 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
     if (!description.trim()) return "Description is required";
     if (!category) return "Category is required";
     if (!version.trim()) return "Version is required";
-    if (!version.match(/^\d+\.\d+$/)) return "Version must be in format X.Y (e.g., 1.0)";
+    if (!version.match(/^\d+\.\d+(\.\d+)?$/)) return "Version must be in format X.Y.Z (e.g., 1.0.0)";
     if (!effectiveDate) return "Effective date is required";
     if (!preparedDate) return "Prepared date is required";
     if (!lastRevisionDate) return "Last revision date is required";
     if (!preparedBy.trim()) return "Prepared by is required";
-    if (!isEditMode && !file) return "PDF document is required";
+    // PDF required for publishing, optional for drafts
+    // (targetStatus check happens in handleSubmit, not here)
+    // This validation runs before we know the target status,
+    // so we skip it here and check in handleSubmit instead.
+    // if (!isEditMode && !file) return "PDF document is required";
     if (recertificationRequired && recertificationInterval === "custom" && !customDays) {
       return "Custom recertification days is required";
     }
@@ -491,7 +501,7 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
   // ---------------------------------------------------------------------------
   // SUBMIT
   // ---------------------------------------------------------------------------
-  const handleSubmit = async () => {
+  const handleSubmit = async (targetStatus: 'draft' | 'published' = 'published') => {
     const validationError = validateForm();
     if (validationError) {
       setError(validationError);
@@ -504,25 +514,39 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
       return;
     }
 
+    // PDF is required when publishing (not for drafts)
+    if (targetStatus === 'published' && !isEditMode && !file) {
+      const msg = "PDF document is required to publish. Save as draft instead?";
+      setError(msg);
+      toast.error(msg);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
     try {
-      let documentUrl = editingPolicy?.documentUrl || null;
+      // ---------------------------------------------------------------
+      // 1. Handle PDF upload/replacement (unchanged  -- storage layer)
+      // ---------------------------------------------------------------
+      let documentUrl = editingPolicy?.document_url || null;
 
       if (file) {
         documentUrl = await policyService.uploadPolicyDocument(file, organizationId);
 
-        if (isEditMode && editingPolicy?.documentUrl) {
+        if (isEditMode && editingPolicy?.document_url) {
           try {
-            await policyService.deletePolicyDocument(editingPolicy.documentUrl);
+            await policyService.deletePolicyDocument(editingPolicy.document_url);
           } catch (error) {
             console.error("Failed to delete old PDF:", error);
           }
         }
       }
 
-      const calculateNextReviewDate = (): string => {
+      // ---------------------------------------------------------------
+      // 2. Calculate next review date
+      // ---------------------------------------------------------------
+      const calculateNextReviewDate = (): string | null => {
         const revisionDate = new Date(lastRevisionDate);
         switch (reviewSchedule) {
           case "quarterly":
@@ -539,128 +563,106 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
             break;
           case "as_needed":
           default:
-            return "";
+            return null;
         }
         return revisionDate.toISOString();
       };
 
-      const now = new Date().toISOString();
-      const policyData: PolicyTemplate = {
-        id: editingPolicy?.id || crypto.randomUUID(),
-        title: title.trim(),
-        description: description.trim(),
-        category,
-        documentUrl,
-        version: version.trim(),
-        effectiveDate: new Date(effectiveDate).toISOString(),
-        preparedDate: new Date(preparedDate).toISOString(),
-        lastRevisionDate: new Date(lastRevisionDate).toISOString(),
-        preparedBy: preparedBy.trim(),
-        authorTitle: authorTitle.trim() || undefined,
-        reviewSchedule,
-        nextReviewDate: calculateNextReviewDate() || undefined,
-        requiresAcknowledgment,
-        recertification: {
-          required: recertificationRequired,
-          interval: recertificationRequired ? recertificationInterval : "none",
-          customDays: recertificationInterval === "custom" ? customDays : undefined,
-        },
-        applicableDepartments,
-        applicableScheduledRoles,
-        applicableKitchenStations,
-        isActive: true,
-        createdAt: editingPolicy?.createdAt || now,
-        createdBy: editingPolicy?.createdBy || user.id,
-        updatedAt: now,
-        updatedBy: user.id,
-      };
-
-      const { data: org, error: fetchError } = await supabase
-        .from("organizations")
-        .select("modules, settings")
-        .eq("id", organizationId)
-        .single();
-
-      if (fetchError) throw fetchError;
-
-      // Check modules first, fall back to settings for backward compatibility
-      const currentModules = org?.modules || {};
-      const currentSettings = org?.settings || {};
-      const currentHrConfig = currentModules.hr?.config || currentSettings.hr?.config || {};
-
       // ---------------------------------------------------------------
-      // READ from policyList (canonical), with migration from old
-      // "policies" key where data was previously (incorrectly) stored.
+      // 3. Phase 1 Relational: INSERT or UPDATE `policies` table
+      //    No more JSONB read/write/merge  -- clean table operations.
       // ---------------------------------------------------------------
-      let currentPolicies: PolicyTemplate[] = [];
-      if (Array.isArray(currentHrConfig.policyList)) {
-        currentPolicies = currentHrConfig.policyList;
-      } else if (Array.isArray(currentHrConfig.policies)) {
-        // Legacy: policies was an array instead of settings object
-        currentPolicies = currentHrConfig.policies;
-      } else if (currentHrConfig.policies && typeof currentHrConfig.policies === "object") {
-        // Mangled: settings object with policy data mixed in
-        currentPolicies = Object.values(currentHrConfig.policies).filter(
-          (p: any) => p && typeof p === "object" && p.id && p.title
-        ) as PolicyTemplate[];
-      }
+      const policyTitle = title.trim();
 
-      let updatedPolicies: PolicyTemplate[];
-      if (isEditMode) {
-        updatedPolicies = currentPolicies.map((p: PolicyTemplate) =>
-          p.id === policyData.id ? policyData : p
-        );
+      // Determine status:
+      // - New policies: use targetStatus from button clicked
+      // - Edits: use targetStatus (allows promoting draft  -> published)
+      const resolvedStatus = targetStatus;
+      const isPublishing = resolvedStatus === 'published';
+
+      if (isEditMode && editingPolicy) {
+        // UPDATE existing policy row
+        await updatePolicy(editingPolicy.id, {
+          title: policyTitle,
+          description: description.trim() || null,
+          category_id: category,
+          document_url: documentUrl,
+          version: version.trim(),
+          status: resolvedStatus,
+          ...(isPublishing && !editingPolicy.published_at
+            ? { published_at: new Date().toISOString(), published_by: user.id }
+            : {}),
+          effective_date: new Date(effectiveDate).toISOString(),
+          prepared_date: new Date(preparedDate).toISOString(),
+          last_revision_date: new Date(lastRevisionDate).toISOString(),
+          prepared_by: preparedBy.trim() || null,
+          author_title: authorTitle.trim() || null,
+          review_schedule: reviewSchedule as any,
+          next_review_date: calculateNextReviewDate(),
+          requires_acknowledgment: requiresAcknowledgment,
+          recertification_required: recertificationRequired,
+          recertification_interval: (recertificationRequired ? recertificationInterval : "none") as any,
+          recertification_custom_days: recertificationInterval === "custom" ? (customDays ?? null) : null,
+          applicable_departments: applicableDepartments,
+          applicable_scheduled_roles: applicableScheduledRoles,
+          applicable_kitchen_stations: applicableKitchenStations,
+          updated_by: user.id,
+        });
       } else {
-        updatedPolicies = [...currentPolicies, policyData];
+        // INSERT new policy row
+        await createPolicy({
+          organization_id: organizationId,
+          title: policyTitle,
+          description: description.trim() || null,
+          category_id: category,
+          document_url: documentUrl,
+          version: version.trim(),
+          status: resolvedStatus,
+          is_active: true,
+          effective_date: new Date(effectiveDate).toISOString(),
+          prepared_date: new Date(preparedDate).toISOString(),
+          last_revision_date: new Date(lastRevisionDate).toISOString(),
+          prepared_by: preparedBy.trim() || null,
+          author_title: authorTitle.trim() || null,
+          review_schedule: reviewSchedule as any,
+          next_review_date: calculateNextReviewDate(),
+          requires_acknowledgment: requiresAcknowledgment,
+          recertification_required: recertificationRequired,
+          recertification_interval: (recertificationRequired ? recertificationInterval : "none") as any,
+          recertification_custom_days: recertificationInterval === "custom" ? (customDays ?? null) : null,
+          applicable_departments: applicableDepartments,
+          applicable_scheduled_roles: applicableScheduledRoles,
+          applicable_kitchen_stations: applicableKitchenStations,
+          created_by: user.id,
+          updated_by: user.id,
+        });
       }
 
-      // WRITE to policyList (canonical) — never touch "policies" (settings)
-      const updatedModules = {
-        ...currentModules,
-        hr: {
-          ...currentModules.hr,
-          config: {
-            ...currentHrConfig,
-            policyList: updatedPolicies,
-          },
-        },
-      };
-
-      const { error: updateError } = await supabase
-        .from("organizations")
-        .update({
-          modules: updatedModules,
-          updated_at: now,
-        })
-        .eq("id", organizationId);
-
-      if (updateError) throw updateError;
-
+      // ---------------------------------------------------------------
+      // 4. NEXUS audit logging
+      // ---------------------------------------------------------------
       await nexus({
         organization_id: organizationId,
         user_id: user.id,
         activity_type: isEditMode ? "policy_updated" : "policy_uploaded",
         details: {
-          policy_id: policyData.id,
-          policy_title: policyData.title,
-          category: policyData.category,
-          version: policyData.version,
-          prepared_by: policyData.preparedBy,
-          review_schedule: policyData.reviewSchedule,
+          policy_id: editingPolicy?.id || "new",
+          policy_title: policyTitle,
+          category,
+          version: version.trim(),
+          prepared_by: preparedBy.trim(),
+          review_schedule: reviewSchedule,
           file_name: file?.name,
           file_size: file?.size,
           ...(isEditMode && {
             old_version: editingPolicy?.version,
-            new_version: policyData.version,
+            new_version: version.trim(),
           }),
         },
       });
 
-      toast.success(
-        isEditMode
-          ? `Policy "${policyData.title}" updated successfully!`
-          : `Policy "${policyData.title}" created successfully!`
-      );
+      const statusLabel = resolvedStatus === 'draft' ? 'saved as draft' : isEditMode ? 'updated' : 'published';
+      toast.success(`Policy "${policyTitle}" ${statusLabel} successfully!`);
 
       onSave();
     } catch (error: any) {
@@ -705,12 +707,10 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
           </div>
         </div>
 
-        {/* Card Skeletons */}
+        {/* Card Skeletons (4 cards: upload, basic info, dates & compliance, applicability) */}
         <SkeletonCard lines={1} />
+        <SkeletonCard lines={5} />
         <SkeletonCard lines={4} />
-        <SkeletonCard lines={3} />
-        <SkeletonCard lines={2} />
-        <SkeletonCard lines={2} />
         <SkeletonCard lines={3} />
       </div>
     );
@@ -747,17 +747,94 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
               </p>
             </div>
           </div>
-          <div className="subheader-right">
-            <button
-              onClick={onCancel}
-              className="btn-ghost px-2"
-              title="Cancel"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+          {/* subheader-right: lifecycle status pill (edit mode) */}
+          {isEditMode && editingPolicy && (
+            <div className="subheader-right">
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium
+                ${editingPolicy.status === 'published'
+                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                  : editingPolicy.status === 'archived'
+                  ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                  : 'bg-gray-600/20 text-gray-400 border border-gray-600/30'
+                }`}
+              >
+                {editingPolicy.status === 'published' && <CheckCircle className="w-3 h-3" />}
+                {editingPolicy.status === 'archived' && <Archive className="w-3 h-3" />}
+                {editingPolicy.status === 'draft' && <FilePenLine className="w-3 h-3" />}
+                {editingPolicy.status.charAt(0).toUpperCase() + editingPolicy.status.slice(1)} &middot; v{editingPolicy.version}
+              </span>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* ================================================================== */}
+      {/* LIFECYCLE ACTIONS  -- Phase 2                                        */}
+      {/* Contextual: draft can publish, published can create new ver/archive */}
+      {/* Disabled when dirty  -- save first to avoid publishing stale data     */}
+      {/* ================================================================== */}
+      {isEditMode && editingPolicy && (editingPolicy.status === 'draft' || editingPolicy.status === 'published') && (
+        <div className={`rounded-lg border px-4 py-2.5 flex items-center justify-between gap-4
+          ${isDirty ? 'bg-gray-800/30 border-gray-700/30' : 'bg-gray-800/50 border-gray-700/40'}`}
+        >
+          <span className="text-xs text-gray-500">
+            {isDirty ? 'Save changes before using lifecycle actions' : 'Lifecycle'}
+          </span>
+          <div className="flex items-center gap-2">
+            {/* Draft  -> Publish */}
+            {editingPolicy.status === 'draft' && onPublish && (
+              <button
+                type="button"
+                onClick={() => onPublish(editingPolicy)}
+                disabled={isDirty}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+                           transition-colors border
+                           ${isDirty
+                             ? 'bg-gray-800/50 border-gray-700/30 text-gray-600 cursor-not-allowed'
+                             : 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/30 text-emerald-400'
+                           }`}
+              >
+                <Send className="w-3.5 h-3.5" />
+                Publish
+              </button>
+            )}
+            {/* Published  -> New Version */}
+            {editingPolicy.status === 'published' && onMajorRevision && (
+              <button
+                type="button"
+                onClick={() => onMajorRevision(editingPolicy)}
+                disabled={isDirty}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+                           transition-colors border
+                           ${isDirty
+                             ? 'bg-gray-800/50 border-gray-700/30 text-gray-600 cursor-not-allowed'
+                             : 'bg-blue-500/10 hover:bg-blue-500/20 border-blue-500/25 text-blue-400'
+                           }`}
+              >
+                <CopyPlus className="w-3.5 h-3.5" />
+                New Version
+              </button>
+            )}
+            {/* Published  -> Archive */}
+            {editingPolicy.status === 'published' && onArchive && (
+              <button
+                type="button"
+                onClick={() => onArchive(editingPolicy)}
+                disabled={isDirty}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+                           transition-colors border
+                           ${isDirty
+                             ? 'bg-gray-800/50 border-gray-700/30 text-gray-600 cursor-not-allowed'
+                             : 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/20 text-amber-400/80'
+                           }`}
+              >
+                <Archive className="w-3.5 h-3.5" />
+                Archive
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ================================================================== */}
       {/* DOCUMENT UPLOAD CARD */}
@@ -791,7 +868,7 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
             <div className="p-4 pt-2 space-y-2 text-sm text-gray-400">
               <p><strong className="text-gray-300">What to upload:</strong> A PDF version of your policy document. This is what team members will read and acknowledge.</p>
               <p><strong className="text-gray-300">Best practices:</strong> Use clear formatting, include page numbers, and make sure the document is the final approved version. Maximum file size is 10MB.</p>
-              <p><strong className="text-gray-300">Tip:</strong> If you're updating an existing policy, upload the new version here — the system will automatically increment the version number.</p>
+              <p><strong className="text-gray-300">Tip:</strong> If you're updating an existing policy, upload the new version here  -- use the version bump selector to indicate what kind of change this is.</p>
             </div>
           </div>
         </div>
@@ -829,14 +906,14 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
             </div>
           )}
 
-          {isEditMode && !file && editingPolicy?.documentUrl && (
+          {isEditMode && !file && editingPolicy?.document_url && (
             <div className="mt-3 p-4 bg-gray-800/50 border border-gray-700 rounded-lg">
               <div className="flex items-center gap-3">
                 <FileText className="w-5 h-5 text-gray-400" />
                 <div>
                   <p className="text-sm font-medium text-gray-300">Current Document</p>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    {editingPolicy.documentUrl.split("/").pop()}
+                    {editingPolicy.document_url.split("/").pop()}
                   </p>
                 </div>
               </div>
@@ -855,7 +932,7 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
           </div>
           <div className="flex-1">
             <h3 className="text-base font-medium text-white">Basic Information</h3>
-            <p className="text-xs text-gray-500">Title, category, and description</p>
+            <p className="text-xs text-gray-500">Title, category, version, description, and authorship</p>
           </div>
         </div>
 
@@ -875,8 +952,10 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
             <div className="p-4 pt-2 space-y-2 text-sm text-gray-400">
               <p><strong className="text-gray-300">Title:</strong> The official name of this policy (e.g., "Disconnecting from Work Policy", "Food Safety Standards").</p>
               <p><strong className="text-gray-300">Category:</strong> Helps organize your policies and makes them easier to find. You can customize categories in HR Settings.</p>
-              <p><strong className="text-gray-300">Version:</strong> Use format like "1.0" for new policies. When you make significant changes, increment to "2.0". Minor updates go to "1.1", "1.2", etc.</p>
-              <p><strong className="text-gray-300">Description:</strong> A brief summary of what this policy covers — this appears in the policy library listing.</p>
+              <p><strong className="text-gray-300">Version:</strong> Uses MAJOR.MINOR.PATCH format (e.g., 1.0.0). Patch = typo fix (no review needed). Minor = worth a read. Major = everyone re-reads and re-signs.</p>
+              <p><strong className="text-gray-300">Prepared By:</strong> The person who wrote or is responsible for this policy. This appears on the policy document header.</p>
+              <p><strong className="text-gray-300">Author Title:</strong> The role or position of the author (e.g., "Chef/Owner", "HR Manager"). This doesn't have to be you &mdash; it could be an HR consultant or corporate office.</p>
+              <p><strong className="text-gray-300">Description:</strong> A brief summary of what this policy covers  -- this appears in the policy library listing.</p>
             </div>
           </div>
         </div>
@@ -922,18 +1001,64 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
               <label className="block text-sm text-gray-400 mb-1.5">
                 Version <span className="text-rose-400">*</span>
               </label>
-              <input
-                type="text"
-                value={version}
-                onChange={(e) => setVersion(e.target.value)}
-                placeholder="1.0"
-                className="input w-full"
-                disabled={isLoading || (isEditMode && !!file)}
-              />
-              {isEditMode && file && (
-                <p className="text-xs text-amber-400 mt-1">
-                  Auto-incremented from v{editingPolicy?.version}
+
+              {isEditingPublished ? (
+                /* Published policy: compact version + bump pills */
+                <>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="inline-flex items-center h-10 px-3 rounded-lg bg-gray-800/80 border border-gray-700/50 text-gray-200 font-mono text-sm">
+                    {version}
+                  </span>
+                  <span className="text-xs text-gray-500">from v{editingPolicy?.version || '1.0.0'}</span>
+                  <div className="flex items-center gap-1 ml-auto">
+                    {(['patch', 'minor'] as VersionBumpType[]).map((type) => {
+                      const isActive = versionBumpType === type;
+                      return (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => setVersionBumpType(type)}
+                          title={VERSION_BUMP_LABELS[type].description}
+                          className={`inline-flex items-center gap-1.5 px-3 h-8 rounded-full
+                                     text-xs font-medium transition-all border
+                                     ${isActive
+                                       ? type === 'minor'
+                                         ? 'bg-blue-500/15 border-blue-500/40 text-blue-300'
+                                         : 'bg-gray-600/30 border-gray-500/50 text-gray-200'
+                                       : 'bg-gray-800/50 border-gray-700/50 text-gray-500 hover:text-gray-300 hover:bg-gray-700/50'
+                                     }`}
+                        >
+                          {type === 'patch' ? <Wrench className="w-3 h-3" /> : <ClipboardCheck className="w-3 h-3" />}
+                          {VERSION_BUMP_LABELS[type].label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <p className="text-[11px] text-gray-500 leading-snug mt-1.5">
+                  <span className="text-gray-400 font-medium">Patch</span> = small fix (typo, formatting) -- nobody needs to re-read.{' '}
+                  <span className="text-gray-400 font-medium">Minor</span> = worth a look (new section, updated info) -- ChefLife flags it for your team.
                 </p>
+                </>
+              ) : (
+                /* Draft or new policy: manual version entry */
+                <div className="space-y-1.5">
+                  <input
+                    type="text"
+                    value={version}
+                    onChange={(e) => setVersion(e.target.value)}
+                    placeholder="e.g., 1.0.0 — or match your existing document"
+                    className="input w-full"
+                    disabled={isLoading}
+                  />
+                  {!isEditMode && (
+                    <p className="text-[11px] text-gray-500 leading-snug">
+                      If this document already has a version number, enter it here.
+                      ChefLife tracks changes from this point forward using <span className="text-gray-400 font-medium">Major</span>.<span className="text-gray-400 font-medium">Minor</span>.<span className="text-gray-400 font-medium">Patch</span>{' '}
+                      — Major = re-sign required, Minor = worth a read, Patch = typo fix.
+                    </p>
+                  )}
+                </div>
               )}
             </div>
 
@@ -945,17 +1070,51 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Brief description of what this policy covers..."
-                rows={2}
-                className="input w-full resize-none"
+                rows={3}
+                className="input w-full resize-y"
                 disabled={isLoading}
               />
+            </div>
+          </div>
+
+          {/* Authorship  -- folded into Basic Info (only 2 fields) */}
+          <div className="pt-4 mt-2 border-t border-gray-700/30">
+            <div className="flex items-center gap-2 mb-3">
+              <User className="w-4 h-4 text-violet-400" />
+              <span className="text-sm font-medium text-gray-300">Authorship</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-1.5">
+                  Prepared By <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={preparedBy}
+                  onChange={(e) => setPreparedBy(e.target.value)}
+                  placeholder="e.g., Steve Popp"
+                  className="input w-full"
+                  disabled={isLoading}
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1.5">Author Title / Role</label>
+                <input
+                  type="text"
+                  value={authorTitle}
+                  onChange={(e) => setAuthorTitle(e.target.value)}
+                  placeholder="e.g., Chef/Owner, HR Manager"
+                  className="input w-full"
+                  disabled={isLoading}
+                />
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       {/* ================================================================== */}
-      {/* POLICY DATES CARD */}
+      {/* DATES & COMPLIANCE CARD (merged: dates + review/ack)              */}
       {/* ================================================================== */}
       <div className="card overflow-hidden">
         <div className="p-4 flex items-center gap-3 border-b border-gray-700/50">
@@ -963,8 +1122,8 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
             <Calendar className={`w-4 h-4 ${colorClasses.emerald.text}`} />
           </div>
           <div className="flex-1">
-            <h3 className="text-base font-medium text-white">Policy Dates</h3>
-            <p className="text-xs text-gray-500">When the policy takes effect and was last updated</p>
+            <h3 className="text-base font-medium text-white">Dates & Compliance</h3>
+            <p className="text-xs text-gray-500">Effective dates, review schedule, and acknowledgment settings</p>
           </div>
         </div>
 
@@ -976,7 +1135,7 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
           >
             <div className="flex items-center gap-2">
               <Info className="w-4 h-4 text-primary-400 flex-shrink-0" />
-              <span className="text-sm font-medium text-gray-300">What do these dates mean?</span>
+              <span className="text-sm font-medium text-gray-300">What do these fields mean?</span>
             </div>
             <ChevronUp className="w-4 h-4 text-gray-400" />
           </button>
@@ -984,235 +1143,160 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
             <div className="p-4 pt-2 space-y-2 text-sm text-gray-400">
               <p><strong className="text-gray-300">Effective Date:</strong> When this policy goes into effect. Team members are expected to comply from this date forward.</p>
               <p><strong className="text-gray-300">Prepared Date:</strong> When the policy was originally written. This could be months or years before the effective date.</p>
-              <p><strong className="text-gray-300">Last Revision Date:</strong> When the policy content was last updated. This is used to calculate when the next review is due.</p>
+              <p><strong className="text-gray-300">Last Revision Date:</strong> When the policy content was last updated. Used to calculate when the next review is due.</p>
+              <p><strong className="text-gray-300">Review Schedule:</strong> How often YOU should review this policy. "Per Annum" (yearly) is standard for most.</p>
+              <p><strong className="text-gray-300">Acknowledgment:</strong> If enabled, team members confirm they've read and understood. Recertification re-asks periodically.</p>
               <p className="text-amber-400/80"><strong>Ontario requirement:</strong> The "Disconnecting from Work" policy requires a prepared date on the document itself.</p>
             </div>
           </div>
         </div>
 
-        {/* Form Fields */}
+        {/* 2-Column Layout: Dates left, Review/Ack right */}
         <div className="p-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm text-gray-400 mb-1.5">
-                Effective Date <span className="text-rose-400">*</span>
-              </label>
-              <input
-                type="date"
-                value={effectiveDate}
-                onChange={(e) => setEffectiveDate(e.target.value)}
-                className="input w-full"
-                disabled={isLoading}
-              />
-            </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-            <div>
-              <label className="block text-sm text-gray-400 mb-1.5">
-                Prepared Date <span className="text-rose-400">*</span>
-              </label>
-              <input
-                type="date"
-                value={preparedDate}
-                onChange={(e) => setPreparedDate(e.target.value)}
-                className="input w-full"
-                disabled={isLoading}
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-400 mb-1.5">
-                Last Revision Date <span className="text-rose-400">*</span>
-              </label>
-              <input
-                type="date"
-                value={lastRevisionDate}
-                onChange={(e) => setLastRevisionDate(e.target.value)}
-                className="input w-full"
-                disabled={isLoading}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ================================================================== */}
-      {/* AUTHORSHIP CARD */}
-      {/* ================================================================== */}
-      <div className="card overflow-hidden">
-        <div className="p-4 flex items-center gap-3 border-b border-gray-700/50">
-          <div className={`w-8 h-8 rounded-lg ${colorClasses.violet.bg} flex items-center justify-center`}>
-            <User className={`w-4 h-4 ${colorClasses.violet.text}`} />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-base font-medium text-white">Authorship</h3>
-            <p className="text-xs text-gray-500">Who prepared this policy</p>
-          </div>
-        </div>
-
-        {/* Expandable Guidance */}
-        <div className={`expandable-info-section ${expandedGuidance.authorship ? "expanded" : ""}`}>
-          <button
-            onClick={() => toggleGuidance("authorship")}
-            className="expandable-info-header w-full justify-between"
-          >
-            <div className="flex items-center gap-2">
-              <Info className="w-4 h-4 text-primary-400 flex-shrink-0" />
-              <span className="text-sm font-medium text-gray-300">Who should I put here?</span>
-            </div>
-            <ChevronUp className="w-4 h-4 text-gray-400" />
-          </button>
-          <div className="expandable-info-content">
-            <div className="p-4 pt-2 space-y-2 text-sm text-gray-400">
-              <p><strong className="text-gray-300">Prepared By:</strong> The person who wrote or is responsible for this policy. This appears on the policy document header.</p>
-              <p><strong className="text-gray-300">Author Title:</strong> The role or position of the author (e.g., "Chef/Owner", "HR Manager", "General Manager"). Adds authority to the document.</p>
-              <p><strong className="text-gray-300">Note:</strong> This doesn't have to be you — it could be an HR consultant, lawyer, or corporate office that provided the policy.</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Form Fields */}
-        <div className="p-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-gray-400 mb-1.5">
-                Prepared By <span className="text-rose-400">*</span>
-              </label>
-              <input
-                type="text"
-                value={preparedBy}
-                onChange={(e) => setPreparedBy(e.target.value)}
-                placeholder="e.g., Steve Popp"
-                className="input w-full"
-                disabled={isLoading}
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-400 mb-1.5">Author Title / Role</label>
-              <input
-                type="text"
-                value={authorTitle}
-                onChange={(e) => setAuthorTitle(e.target.value)}
-                placeholder="e.g., Chef/Owner, HR Manager"
-                className="input w-full"
-                disabled={isLoading}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ================================================================== */}
-      {/* REVIEW & ACKNOWLEDGMENT CARD */}
-      {/* ================================================================== */}
-      <div className="card overflow-hidden">
-        <div className="p-4 flex items-center gap-3 border-b border-gray-700/50">
-          <div className={`w-8 h-8 rounded-lg ${colorClasses.amber.bg} flex items-center justify-center`}>
-            <ClipboardCheck className={`w-4 h-4 ${colorClasses.amber.text}`} />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-base font-medium text-white">Review & Acknowledgment</h3>
-            <p className="text-xs text-gray-500">Review schedule and team acknowledgment settings</p>
-          </div>
-        </div>
-
-        {/* Expandable Guidance */}
-        <div className={`expandable-info-section ${expandedGuidance.review ? "expanded" : ""}`}>
-          <button
-            onClick={() => toggleGuidance("review")}
-            className="expandable-info-header w-full justify-between"
-          >
-            <div className="flex items-center gap-2">
-              <Info className="w-4 h-4 text-primary-400 flex-shrink-0" />
-              <span className="text-sm font-medium text-gray-300">What are these settings for?</span>
-            </div>
-            <ChevronUp className="w-4 h-4 text-gray-400" />
-          </button>
-          <div className="expandable-info-content">
-            <div className="p-4 pt-2 space-y-2 text-sm text-gray-400">
-              <p><strong className="text-gray-300">Policy Review Schedule:</strong> How often YOU should review this policy to make sure it's still current. "Per Annum" (yearly) is standard for most policies.</p>
-              <p><strong className="text-gray-300">Requires Acknowledgment:</strong> If enabled, team members will need to confirm they've read and understood this policy.</p>
-              <p><strong className="text-gray-300">Recertification:</strong> If enabled, team members will need to re-acknowledge the policy periodically (e.g., annually). Useful for safety policies.</p>
-              <p className="text-amber-400/80"><strong>Tip:</strong> Food safety and workplace safety policies typically require annual recertification.</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Form Fields */}
-        <div className="p-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm text-gray-400 mb-1.5">Policy Review Schedule</label>
-              <select
-                value={reviewSchedule}
-                onChange={(e) => setReviewSchedule(e.target.value as ReviewSchedule)}
-                className="input w-full"
-                disabled={isLoading}
-              >
-                {REVIEW_SCHEDULE_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
+            {/* LEFT: Policy Dates */}
             <div className="space-y-4">
-              <label className="toggle-switch">
+              <div className="flex items-center gap-2 mb-1">
+                <Calendar className="w-4 h-4 text-emerald-400" />
+                <span className="text-sm font-medium text-gray-300">Policy Dates</span>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1.5">
+                  Effective Date <span className="text-rose-400">*</span>
+                </label>
                 <input
-                  type="checkbox"
-                  checked={requiresAcknowledgment}
-                  onChange={(e) => setRequiresAcknowledgment(e.target.checked)}
+                  type="date"
+                  value={effectiveDate}
+                  onChange={(e) => setEffectiveDate(e.target.value)}
+                  className="input w-full"
                   disabled={isLoading}
                 />
-                <span className="toggle-switch-track" />
-                <span className="ml-3 text-sm text-gray-300">Requires Acknowledgment</span>
-              </label>
-
-              {requiresAcknowledgment && (
-                <label className="toggle-switch">
-                  <input
-                    type="checkbox"
-                    checked={recertificationRequired}
-                    onChange={(e) => setRecertificationRequired(e.target.checked)}
-                    disabled={isLoading}
-                  />
-                  <span className="toggle-switch-track" />
-                  <span className="ml-3 text-sm text-gray-300">Requires Recertification</span>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1.5">
+                  Prepared Date <span className="text-rose-400">*</span>
                 </label>
-              )}
+                <input
+                  type="date"
+                  value={preparedDate}
+                  onChange={(e) => setPreparedDate(e.target.value)}
+                  className="input w-full"
+                  disabled={isLoading}
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1.5">
+                  Last Revision Date <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={lastRevisionDate}
+                  onChange={(e) => setLastRevisionDate(e.target.value)}
+                  className="input w-full"
+                  disabled={isLoading}
+                />
+              </div>
+            </div>
 
-              {requiresAcknowledgment && recertificationRequired && (
-                <div className="ml-14 space-y-2">
-                  <select
-                    value={recertificationInterval}
-                    onChange={(e) =>
-                      setRecertificationInterval(e.target.value as RecertificationInterval)
-                    }
-                    className="input w-full text-sm"
-                    disabled={isLoading}
-                  >
-                    {RECERTIFICATION_OPTIONS.filter((o) => o.value !== "none").map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+            {/* RIGHT: Review Schedule & Acknowledgment */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 mb-1">
+                <ClipboardCheck className="w-4 h-4 text-amber-400" />
+                <span className="text-sm font-medium text-gray-300">Review & Acknowledgment</span>
+              </div>
 
-                  {recertificationInterval === "custom" && (
+              {/* Review Schedule */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-1.5">Review Schedule</label>
+                <select
+                  value={reviewSchedule}
+                  onChange={(e) => setReviewSchedule(e.target.value as ReviewSchedule)}
+                  className="input w-full"
+                  disabled={isLoading}
+                >
+                  {REVIEW_SCHEDULE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-gray-500 mt-1 leading-snug">
+                  This is a reminder for <span className="text-gray-400">you</span> to review the policy, not your team. Yearly works for most.
+                </p>
+              </div>
+
+              {/* Acknowledgment toggles -- soft variant, with plain-English hints */}
+              <div className="rounded-lg bg-gray-800/30 border border-gray-700/30 p-3 space-y-3">
+                <div>
+                  <label className="toggle-switch soft">
                     <input
-                      type="number"
-                      value={customDays || ""}
-                      onChange={(e) => setCustomDays(Number(e.target.value) || undefined)}
-                      placeholder="Number of days"
-                      min="1"
-                      className="input w-full text-sm"
+                      type="checkbox"
+                      checked={requiresAcknowledgment}
+                      onChange={(e) => setRequiresAcknowledgment(e.target.checked)}
                       disabled={isLoading}
                     />
-                  )}
+                    <span className="toggle-switch-track" />
+                    <span className="ml-3 text-sm text-gray-300">Requires Acknowledgment</span>
+                  </label>
+                  <p className="text-[11px] text-gray-500 mt-1 ml-[3.25rem] leading-snug">
+                    Your team confirms they've read this. Good for anything safety-related or legally required.
+                  </p>
                 </div>
-              )}
+
+                {requiresAcknowledgment && (
+                  <>
+                    <div className="pl-2">
+                      <label className="toggle-switch soft">
+                        <input
+                          type="checkbox"
+                          checked={recertificationRequired}
+                          onChange={(e) => setRecertificationRequired(e.target.checked)}
+                          disabled={isLoading}
+                        />
+                        <span className="toggle-switch-track" />
+                        <span className="ml-3 text-sm text-gray-300">Requires Recertification</span>
+                      </label>
+                      <p className="text-[11px] text-gray-500 mt-1 ml-[3.25rem] leading-snug">
+                        Re-asks periodically. Turn this on for food safety, WHMIS, or anything your team should review more than once.
+                      </p>
+                    </div>
+
+                    {recertificationRequired && (
+                      <div className="pl-2 pt-0.5">
+                        <select
+                          value={recertificationInterval}
+                          onChange={(e) =>
+                            setRecertificationInterval(e.target.value as RecertificationInterval)
+                          }
+                          className="input w-full text-sm"
+                          disabled={isLoading}
+                        >
+                          {RECERTIFICATION_OPTIONS.filter((o) => o.value !== "none").map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+
+                        {recertificationInterval === "custom" && (
+                          <input
+                            type="number"
+                            value={customDays || ""}
+                            onChange={(e) => setCustomDays(Number(e.target.value) || undefined)}
+                            placeholder="Number of days"
+                            min="1"
+                            className="input w-full text-sm mt-2"
+                            disabled={isLoading}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
+
           </div>
         </div>
       </div>
@@ -1285,7 +1369,7 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
               </div>
             ) : (
               <p className="text-sm text-gray-500 italic">
-                No departments configured — set up in Operations → Variables
+                No departments configured - set up in Operations &gt; Variables
               </p>
             )}
           </div>
@@ -1315,7 +1399,7 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
               </div>
             ) : (
               <p className="text-sm text-gray-500 italic">
-                No scheduled roles configured — set up in Operations → Variables
+                No scheduled roles configured - set up in Operations &gt; Variables
               </p>
             )}
           </div>
@@ -1345,7 +1429,7 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
               </div>
             ) : (
               <p className="text-sm text-gray-500 italic">
-                No kitchen stations configured — set up in Operations → Variables
+                No kitchen stations configured - set up in Operations &gt; Variables
               </p>
             )}
           </div>
@@ -1373,7 +1457,7 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
             <kbd className="px-1.5 py-0.5 bg-gray-700 rounded text-gray-400">Esc</kbd> Cancel
           </span>
           <span>
-            <kbd className="px-1.5 py-0.5 bg-gray-700 rounded text-gray-400">⌘S</kbd> Save
+            <kbd className="px-1.5 py-0.5 bg-gray-700 rounded text-gray-400">Ctrl+S</kbd> Save Draft
           </span>
         </span>
       </div>
@@ -1409,21 +1493,28 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
                 Cancel
               </button>
               <button
-                onClick={handleSubmit}
+                onClick={() => handleSubmit('draft')}
+                className="btn-ghost text-sm py-1.5 px-4 border border-gray-600"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <RefreshCw className="w-4 h-4 animate-spin mr-1" />
+                ) : (
+                  <FilePenLine className="w-4 h-4 mr-1" />
+                )}
+                Save Draft
+              </button>
+              <button
+                onClick={() => handleSubmit('published')}
                 className="btn-primary text-sm py-1.5 px-4"
                 disabled={isLoading}
               >
                 {isLoading ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin mr-1" />
-                    Saving...
-                  </>
+                  <RefreshCw className="w-4 h-4 animate-spin mr-1" />
                 ) : (
-                  <>
-                    <Save className="w-4 h-4 mr-1" />
-                    {isEditMode ? "Update Policy" : "Save Policy"}
-                  </>
+                  <Send className="w-4 h-4 mr-1" />
                 )}
+                {isEditMode ? "Update & Publish" : "Publish"}
               </button>
             </div>
           </div>
@@ -1431,9 +1522,24 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
       )}
 
       {/* ================================================================== */}
-      {/* STATIC ACTION BUTTONS (only when NOT dirty) */}
+      {/* STATIC ACTION BUTTONS (only when NOT dirty)                       */}
+      {/* Edit mode: nothing changed — just show back button.                */}
+      {/* New mode: show full action bar as initial call-to-action.          */}
       {/* ================================================================== */}
-      {!isDirty && (
+      {!isDirty && isEditMode && (
+        <div className="card p-4">
+          <div className="flex justify-center">
+            <button
+              onClick={onCancel}
+              className="btn-ghost text-sm"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to Policies
+            </button>
+          </div>
+        </div>
+      )}
+      {!isDirty && !isEditMode && (
         <div className="card p-4">
           <div className="flex justify-between">
             <button
@@ -1443,23 +1549,28 @@ export const PolicyUploadForm: React.FC<PolicyUploadFormProps> = ({
             >
               Cancel
             </button>
-            <button
-              onClick={handleSubmit}
-              className="btn-primary"
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <>
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleSubmit('draft')}
+                className="btn-ghost border border-gray-600"
+                disabled={isLoading}
+              >
+                <FilePenLine className="w-4 h-4" />
+                Save Draft
+              </button>
+              <button
+                onClick={() => handleSubmit('published')}
+                className="btn-primary"
+                disabled={isLoading}
+              >
+                {isLoading ? (
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="w-4 h-4" />
-                  {isEditMode ? "Update Policy" : "Save Policy"}
-                </>
-              )}
-            </button>
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+                Publish
+              </button>
+            </div>
           </div>
         </div>
       )}
