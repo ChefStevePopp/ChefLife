@@ -2,9 +2,9 @@
 ## A Living Restaurant System
 
 **Document Created:** January 8, 2026
-**Last Updated:** February 5, 2026
+**Last Updated:** February 6, 2026
 **Authors:** Steve Popp (Creator) & Claude (Architecture Partner)
-**Version:** 2.1 - Compliance Shield + Type System Architecture
+**Version:** 2.2 - Supersession Pattern + Recipe Versioning
 
 ---
 
@@ -163,7 +163,7 @@ Not to make money - to feed people, to create experiences, to share craft.
 │  ├── Allergens      → Allergen tracking, cross-contact                     │
 │  ├── Media          → Photos, videos, plating references                   │
 │  ├── Training       → Skill levels, certifications, safety                │
-│  └── Versions       → Version history, approval workflow                   │
+│  └── Versions       → Version history, MAJOR.MINOR.PATCH, comm tiers      │
 │                                                                             │
 │  KEY FEATURES                                                              │
 │  ════════════                                                              │
@@ -171,6 +171,8 @@ Not to make money - to feed people, to create experiences, to share craft.
 │  • Dynamic Recipe Type from Food Relationships taxonomy                   │
 │  • Floating action bar shows exactly which tabs have changes              │
 │  • Responsive layout via .admin-container                                 │
+│  • MAJOR.MINOR.PATCH versioning with communication tiers                  │
+│  • Retire & Reissue via Supersession Pattern (no history deletion)        │
 │                                                                             │
 │  RECIPE TYPES (from Food Relationships)                                    │
 │  ══════════════════════════════════════                                    │
@@ -787,6 +789,49 @@ ChefLife is not built by a team of 50 engineers who can tap each other on the sh
 
 ---
 
+### 🔗 The Supersession Pattern — Nothing Is Ever Silently Erased
+
+Across every module, ChefLife follows one architectural rule: **records are never deleted, only superseded.**
+
+When something is replaced — an invoice, an allergen declaration, a recipe version, a policy — the old record survives. Grayed out, linked forward to its replacement, linked backward to its origin. Always visible in history. Always auditable.
+
+**The Pattern Shape:**
+```
+superseded_at     TIMESTAMPTZ     -- NULL = active
+superseded_by     UUID/FK         -- Forward link to replacement
+supersedes_id     UUID/FK         -- Backward link to original
+```
+
+**Rules:**
+- `superseded_at IS NULL` → active record
+- `superseded_at IS NOT NULL` → replaced, grayed, never deleted
+- Both directions always set — no orphaned links
+- Constraint: one active per entity
+
+**Implementations:**
+
+| Module | What Gets Superseded | Why It Matters |
+|--------|---------------------|----------------|
+| Vendor Invoices | Price corrections, re-imports | Financial audit trail |
+| Allergen Declarations | Pinned to recipe versions | Natasha's Promise — broken chains kill |
+| Recipe Reissue | "Start fresh" without destroying history | Operational continuity |
+| Policies | Regulatory updates | ESA compliance proof |
+
+**UI Treatment:**
+- Active: normal rendering
+- Superseded: grayed (`text-gray-500`, `opacity-60`), "Superseded" badge
+- Forward link: "Superseded by [Name]" — clickable
+- Backward link: "Reissued from [Name] vX.Y.Z" — clickable
+- Always visible in history/audit views, never deletable
+
+**The Promise:** "No record in ChefLife is ever silently erased. If it existed, it still exists — superseded, linked, and preserved."
+
+**The Build Rule:** "If someone needs to prove what was here before, can they? If the answer is no, the feature isn't done."
+
+See: [PATTERN-Supersession.md](patterns/PATTERN-Supersession.md), [PROMISE-Nothing-Erased.md](promises/PROMISE-Nothing-Erased.md)
+
+---
+
 ## The Philosophy
 
 ### People Over Profit
@@ -1208,9 +1253,9 @@ That's the vision. That's the mission. That's ChefLife.
 
 ---
 
-**Document Version:** 2.1
+**Document Version:** 2.2
 **Status:** Living Document
-**Last Update:** February 5, 2026 - Compliance Shield + Type System Architecture
+**Last Update:** February 6, 2026 - Supersession Pattern + Recipe Versioning
 **Next Update:** As the body grows
 
 ---
@@ -1231,3 +1276,4 @@ That's the vision. That's the mission. That's ChefLife.
 | 1.9 | Jan 22, 2026 | **Recipe Module Architecture** - 11-tab editor detail, tab-level change tracking, dynamic Recipe Type from taxonomy, admin-container responsive layout. |
 | 2.0 | Feb 1, 2026 | **Allergen Manager Core Module** - 5th core module extracted from Recipe Settings. Three-state allergen system (Contains/May Contain/None), environmental tracking at stations, L5 Vitals Page accordion pattern, white-label icon customization (planned), multi-jurisdiction compliance (Natasha's Law, FDA, Health Canada, FSANZ). The Immune System organ. |
 | 2.1 | Feb 5, 2026 | **HR & Policies (The Compliance Shield)** + **Type System Architecture**. Policy lifecycle (draft/published/archived), MAJOR.MINOR.PATCH versioning with restaurant communication hierarchy, acknowledgment flow design, configurable categories. Type system discipline documented: single source of truth per domain, snake_case convention, migration discipline, shared enum ownership rules, the "No What-The-Hell" test. Built for 1,000 organizations. |
+| 2.2 | Feb 6, 2026 | **Supersession Pattern + Recipe Versioning**. Platform-wide Supersession Pattern documented (superseded_at/superseded_by/supersedes_id). MAJOR.MINOR.PATCH with communication tiers implemented in Recipe VersionHistory (Patch=silent, Minor=broadcast, Major=mandatory meeting). Retire & Reissue architecture for recipes. bumpType stored per version for NEXUS integration. Nothing-Erased promise: no record silently deleted, all superseded with bidirectional links. |

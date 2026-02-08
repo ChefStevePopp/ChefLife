@@ -547,6 +547,7 @@ select::-ms-expand {
   /* Feature cards inside expandable info */
   .subheader-feature-card {
     @apply flex items-start gap-3 p-3 rounded-lg border border-gray-700/30;
+    background: rgba(31, 41, 55, 0.50); /* matches expandable header tone */
   }
   .subheader-feature-card svg {
     @apply w-4 h-4 flex-shrink-0 mt-0.5;
@@ -653,6 +654,13 @@ select::-ms-expand {
   .btn-soft-rose {
     @apply btn bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300
            border border-rose-500/30 hover:border-rose-500/40
+           focus:ring-rose-500/50;
+  }
+
+  /* Solid Rose Button - for critical/safety actions */
+  .btn-rose {
+    @apply btn bg-rose-500/30 hover:bg-rose-500/50 text-white
+           border border-rose-500/50 hover:border-rose-400/60
            focus:ring-rose-500/50;
   }
 
@@ -769,13 +777,29 @@ select::-ms-expand {
     &.active { @apply text-white; }
   }
 
-  /* Expandable info section - Premium morph (blur clears as it fades in) */
+  /* -------------------------------------------------------------------------
+   * EXPANDABLE INFO SECTION — Three-tone card
+   * -------------------------------------------------------------------------
+   * HEADER  : rgba(31, 41, 55, 0.40)  — gray-800 mid-tone, the handle
+   * HOVER   : rgba(31, 41, 55, 0.60)  — brightens, confirms clickable
+   * CONTENT : rgba(31, 41, 55, 0.22)  — subtle step-down, the drawer
+   *
+   * The content uses a GUTTER (m-2 rounded-lg) so the drawer interior
+   * floats inset from the card border. This creates the "panel inside a
+   * card" look that Vitals uses — room to breathe on all sides.
+   * -------------------------------------------------------------------------
+   */
   .expandable-info-section {
-    @apply bg-primary-800/10 rounded-lg overflow-hidden;
+    @apply rounded-xl overflow-hidden border border-gray-700/40;
+    background: rgba(31, 41, 55, 0.25); /* shell — just holds the border */
   }
 
   .expandable-info-header {
-    @apply w-full p-4 flex items-start gap-3 text-left focus:outline-none hover:bg-primary-800/20 transition-colors;
+    @apply w-full px-5 py-4 flex items-start gap-3 text-left focus:outline-none transition-colors;
+    background: rgba(31, 41, 55, 0.50); /* HEADER — mid-tone, the handle */
+  }
+  .expandable-info-header:hover {
+    background: rgba(31, 41, 55, 0.70); /* HOVER — brightens, confirms clickable */
   }
 
   .expandable-info-content {
@@ -783,8 +807,12 @@ select::-ms-expand {
     opacity: 0;
     filter: blur(4px);
     overflow: hidden;
+    background: rgba(31, 41, 55, 0.30); /* CONTENT — subtle step-down, neutral tone */
+    /* Gutter: inset from card edges so content floats inside the shell */
+    margin: 0 0.5rem 0.5rem 0.5rem;
+    border-radius: 0.5rem;
     /* Retract: faster (0.2s), ease-in (accelerates into close), then height snaps */
-    transition: max-height 0.01s ease 0.2s, opacity 0.2s ease-in, filter 0.2s ease-in;
+    transition: max-height 0.01s ease 0.2s, opacity 0.2s ease-in, filter 0.2s ease-in, margin 0.01s ease 0.2s;
   }
 
   .expandable-info-section.expanded .expandable-info-content {
@@ -793,6 +821,11 @@ select::-ms-expand {
     filter: blur(0);
     /* Expand: slower (0.3s), ease-out (decelerates into view), height snaps first */
     transition: max-height 0.01s ease, opacity 0.3s ease-out 0.05s, filter 0.3s ease-out 0.05s;
+  }
+
+  /* When collapsed, kill the margin so no gap shows under the header */
+  .expandable-info-section:not(.expanded) .expandable-info-content {
+    margin: 0;
   }
 
   .expandable-info-section.expanded .lucide-chevron-up {

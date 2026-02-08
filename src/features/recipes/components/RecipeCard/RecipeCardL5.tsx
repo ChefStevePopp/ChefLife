@@ -37,16 +37,18 @@ import type { Recipe } from "../../types/recipe";
 
 interface RecipeCardL5Props {
   recipe: Recipe;
-  onClick: () => void;
+  onViewRecipe: () => void;
   laborRate?: number;
   className?: string;
 }
 
 const LABOR_RATE_PER_HOUR = 20;
 
+const diagnosticPath = 'src/features/recipes/components/RecipeCard/RecipeCardL5.tsx';
+
 export const RecipeCardL5: React.FC<RecipeCardL5Props> = ({
   recipe,
-  onClick,
+  onViewRecipe,
   laborRate = LABOR_RATE_PER_HOUR,
   className = "",
 }) => {
@@ -84,13 +86,12 @@ export const RecipeCardL5: React.FC<RecipeCardL5Props> = ({
 
   // Calculate if the recipe was recently updated (within configured window)
   const isUpdated = useMemo(() => {
-    if (isNew || !recipe.modified_at) return false;
-    if (recipe.versions && recipe.versions.length > 1) return true;
-    const modifiedDate = new Date(recipe.modified_at);
+    if (isNew || !recipe.updated_at) return false;
+    const modifiedDate = new Date(recipe.updated_at);
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - recipeConfig.updatedBadgeDays);
     return modifiedDate > cutoffDate;
-  }, [isNew, recipe.modified_at, recipe.versions, recipeConfig.updatedBadgeDays]);
+  }, [isNew, recipe.updated_at, recipe.versions, recipeConfig.updatedBadgeDays]);
 
   // Find the primary image in the media array
   const primaryMedia = useMemo(
@@ -217,9 +218,9 @@ export const RecipeCardL5: React.FC<RecipeCardL5Props> = ({
         {/* NEW Badge - L5 style */}
         {isNew && (
           <div className="absolute top-14 left-4 z-20">
-            <div className="px-3 py-1.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 flex items-center gap-2">
-              <Clock className="w-3.5 h-3.5" />
-              <span className="text-xs font-medium">NEW</span>
+            <div className="px-3 py-1.5 rounded-full bg-gray-900/90 border border-gray-700 flex items-center gap-2">
+              <Clock className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-xs font-medium text-amber-400">NEW</span>
             </div>
           </div>
         )}
@@ -227,9 +228,9 @@ export const RecipeCardL5: React.FC<RecipeCardL5Props> = ({
         {/* UPDATED Badge - L5 style */}
         {isUpdated && (
           <div className="absolute top-14 left-4 z-20">
-            <div className="px-3 py-1.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center gap-2">
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span className="text-xs font-medium">UPDATED</span>
+            <div className="px-3 py-1.5 rounded-full bg-gray-900/90 border border-gray-700 flex items-center gap-2">
+              <RefreshCw className="w-3.5 h-3.5 text-purple-400" />
+              <span className="text-xs font-medium text-purple-400">UPDATED</span>
             </div>
           </div>
         )}
@@ -462,7 +463,7 @@ export const RecipeCardL5: React.FC<RecipeCardL5Props> = ({
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onClick();
+              onViewRecipe();
             }}
             className="w-full flex justify-center px-4 py-2 bg-gray-700/70 hover:bg-primary-800/80 text-gray-300 hover:text-white rounded-lg transition-colors text-sm font-medium items-center gap-2 relative z-40"
           >
@@ -471,6 +472,9 @@ export const RecipeCardL5: React.FC<RecipeCardL5Props> = ({
           </button>
         </div>
       </div>
+
+      {/* Diagnostic Text */}
+      <div className="text-xs text-gray-500 font-mono px-4 pb-2">{diagnosticPath}</div>
 
       {/* Hover border effect */}
       <div className="absolute inset-0 rounded-2xl border-2 border-primary-500/50 opacity-0 hover:opacity-100 transition-opacity" />

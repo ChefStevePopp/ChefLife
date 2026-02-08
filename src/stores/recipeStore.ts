@@ -51,14 +51,27 @@ export const useRecipeStore = create<RecipeStore>((set) => ({
     try {
       set({ isLoading: true, error: null });
 
+      // Strip fields that don't exist on the recipes table
+      const cleanUpdates = { ...updates };
+      const nonDbFields = [
+        "station_name",
+        "major_group_name",
+        "category_name",
+        "sub_category_name",
+        "created_by_name",
+        "modified_by_name",
+        "created_by_email",
+        "modified_by_email",
+        "allergens", // TypeScript-only field; database uses "allergenInfo"
+      ] as const;
+      for (const field of nonDbFields) {
+        delete (cleanUpdates as Record<string, unknown>)[field];
+      }
+
       // Update the main recipe record
       const { data, error } = await supabase
         .from("recipes")
-        .update({
-          ...updates,
-          // Ensure stages are properly included in the update
-          stages: updates.stages || null,
-        })
+        .update(cleanUpdates)
         .eq("id", id)
         .select()
         .single();
@@ -96,14 +109,16 @@ export const useRecipeStore = create<RecipeStore>((set) => ({
         throw new Error("User organization not found");
       }
 
+      // Strip fields that don't exist on the recipes table
+      const cleanRecipe = { ...recipe };
+      delete (cleanRecipe as Record<string, unknown>)["allergens"];
+
       const { data, error } = await supabase
         .from("recipes")
         .insert([
           {
-            ...recipe,
+            ...cleanRecipe,
             organization_id: user.user_metadata.organizationId,
-            // Ensure stages are properly included in the creation
-            stages: recipe.stages || null,
           },
         ])
         .select()

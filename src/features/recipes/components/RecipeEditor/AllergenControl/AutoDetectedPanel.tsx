@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, ChevronDown, ChevronRight, Package, ChefHat } from 'lucide-react';
+import { Database, ChevronUp, ChevronDown, ChevronRight, Package, ChefHat, Eye } from 'lucide-react';
 import { AllergenBadge } from '@/features/allergens/components/AllergenBadge';
 import type { AllergenType } from '@/features/allergens/types';
 import type { AutoDetectedAllergens, AllergenSource } from './types';
@@ -66,7 +66,7 @@ const AllergenWithSource: React.FC<{
       <button
         onClick={() => setShowSources(!showSources)}
         className="group flex items-center gap-1 p-1 rounded hover:bg-gray-700/50 transition-colors"
-        title="Click to see source ingredients"
+        title="Click to see which of your ingredients contributed this"
       >
         <AllergenBadge type={allergen} size="md" showLabel disableTooltip />
         <Eye className="w-3 h-3 text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -83,28 +83,38 @@ const AllergenWithSource: React.FC<{
 };
 
 /**
- * Auto-Detected Panel - Read-only display of allergens from ingredients
- * Left side of the two-panel layout
+ * =============================================================================
+ * YOUR ALLERGEN DATA — From Your Master Ingredient List
+ * =============================================================================
+ * ChefLife is a mirror, not an oracle. This panel reflects the allergen data
+ * that YOU entered in the Master Ingredient List. ChefLife cascades it through
+ * recipe ingredients — but the data is yours, the responsibility is yours.
+ * 
+ * Language is critical here: never "we detected" or "auto-detected."
+ * Always "your data shows" or "from your ingredient entries."
+ * =============================================================================
  */
 export const AutoDetectedPanel: React.FC<AutoDetectedPanelProps> = ({
   autoDetected,
   isLoading
 }) => {
-  const [containsExpanded, setContainsExpanded] = useState(true);
-  const [mayContainExpanded, setMayContainExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(true);
   
   const containsCount = autoDetected.contains.size;
   const mayContainCount = autoDetected.mayContain.size;
+  const totalCount = containsCount + mayContainCount;
   
   if (isLoading) {
     return (
-      <div className="bg-gray-800/50 rounded-xl border border-gray-700 p-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-6 bg-gray-700 rounded w-1/2"></div>
-          <div className="flex gap-2">
-            <div className="h-10 w-10 bg-gray-700 rounded-full"></div>
-            <div className="h-10 w-10 bg-gray-700 rounded-full"></div>
-            <div className="h-10 w-10 bg-gray-700 rounded-full"></div>
+      <div className="expandable-info-section expanded">
+        <div className="p-6">
+          <div className="animate-pulse space-y-4">
+            <div className="h-6 bg-gray-700 rounded w-1/2"></div>
+            <div className="flex gap-2">
+              <div className="h-10 w-10 bg-gray-700 rounded-full"></div>
+              <div className="h-10 w-10 bg-gray-700 rounded-full"></div>
+              <div className="h-10 w-10 bg-gray-700 rounded-full"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -112,43 +122,51 @@ export const AutoDetectedPanel: React.FC<AutoDetectedPanelProps> = ({
   }
   
   return (
-    <div className="bg-gray-800/50 rounded-xl border border-gray-700">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-700">
+    <div className={`expandable-info-section ${expanded ? 'expanded' : ''}`}>
+      
+      {/* Expandable Header */}
+      <button
+        className="expandable-info-header w-full justify-between"
+        onClick={() => setExpanded(!expanded)}
+      >
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
-            <Eye className="w-5 h-5 text-blue-400" />
+          <div className="w-10 h-10 rounded-lg bg-gray-700/50 flex items-center justify-center flex-shrink-0">
+            <Database className="w-5 h-5 text-gray-500" />
           </div>
-          <div>
-            <h3 className="text-base font-medium text-white">Auto-Detected</h3>
-            <p className="text-xs text-gray-400">From recipe ingredients</p>
+          <div className="text-left">
+            <h3 className="text-base font-medium text-white">Your Allergen Data</h3>
+            <p className="text-xs text-gray-400">
+              Populated from your Master Ingredient List entries
+            </p>
           </div>
         </div>
-      </div>
+        <div className="flex items-center gap-2">
+          {totalCount > 0 && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-400">
+              {totalCount} allergen{totalCount !== 1 ? 's' : ''}
+            </span>
+          )}
+          <ChevronUp className="w-4 h-4 text-gray-400" />
+        </div>
+      </button>
       
-      {/* Contains Section */}
-      <div className="border-b border-gray-700">
-        <button
-          onClick={() => setContainsExpanded(!containsExpanded)}
-          className="w-full p-3 flex items-center justify-between hover:bg-gray-700/30 transition-colors"
-        >
-          <div className="flex items-center gap-2">
-            {containsExpanded ? (
-              <ChevronDown className="w-4 h-4 text-gray-400" />
-            ) : (
-              <ChevronRight className="w-4 h-4 text-gray-400" />
-            )}
-            <span className="text-sm font-medium text-rose-400">CONTAINS</span>
-            <span className="text-xs text-gray-500">({containsCount})</span>
-          </div>
-        </button>
-        
-        {containsExpanded && (
-          <div className="px-4 pb-4">
+      {/* Expandable Content */}
+      <div className="expandable-info-content">
+        <div className="px-5 pt-4 pb-5 space-y-4">
+          
+          {/* Contains Section */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+              <span className="text-sm font-medium text-rose-400">CONTAINS</span>
+              <span className="text-xs text-gray-500">({containsCount})</span>
+            </div>
             {containsCount === 0 ? (
-              <p className="text-sm text-gray-500 italic">No allergens detected</p>
+              <p className="text-sm text-gray-500 italic pl-5">
+                No allergen data found in your ingredient entries
+              </p>
             ) : (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 pl-5">
                 {Array.from(autoDetected.contains.entries()).map(([allergen, sources]) => (
                   <AllergenWithSource 
                     key={allergen} 
@@ -159,32 +177,20 @@ export const AutoDetectedPanel: React.FC<AutoDetectedPanelProps> = ({
               </div>
             )}
           </div>
-        )}
-      </div>
-      
-      {/* May Contain Section */}
-      <div>
-        <button
-          onClick={() => setMayContainExpanded(!mayContainExpanded)}
-          className="w-full p-3 flex items-center justify-between hover:bg-gray-700/30 transition-colors"
-        >
-          <div className="flex items-center gap-2">
-            {mayContainExpanded ? (
-              <ChevronDown className="w-4 h-4 text-gray-400" />
-            ) : (
-              <ChevronRight className="w-4 h-4 text-gray-400" />
-            )}
-            <span className="text-sm font-medium text-amber-400">MAY CONTAIN</span>
-            <span className="text-xs text-gray-500">({mayContainCount})</span>
-          </div>
-        </button>
-        
-        {mayContainExpanded && (
-          <div className="px-4 pb-4">
+          
+          {/* May Contain Section */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+              <span className="text-sm font-medium text-amber-400">MAY CONTAIN</span>
+              <span className="text-xs text-gray-500">({mayContainCount})</span>
+            </div>
             {mayContainCount === 0 ? (
-              <p className="text-sm text-gray-500 italic">No potential allergens detected</p>
+              <p className="text-sm text-gray-500 italic pl-5">
+                No potential allergens in your ingredient data
+              </p>
             ) : (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 pl-5">
                 {Array.from(autoDetected.mayContain.entries()).map(([allergen, sources]) => (
                   <AllergenWithSource 
                     key={allergen} 
@@ -195,15 +201,13 @@ export const AutoDetectedPanel: React.FC<AutoDetectedPanelProps> = ({
               </div>
             )}
           </div>
-        )}
-      </div>
-      
-      {/* Footer hint */}
-      <div className="p-3 border-t border-gray-700 bg-gray-800/30">
-        <p className="text-xs text-gray-500 flex items-center gap-1">
-          <Eye className="w-3 h-3" />
-          Click any allergen to see source ingredients
-        </p>
+          
+          {/* Footer hint */}
+          <p className="text-xs text-gray-500 flex items-center gap-1 pt-2 border-t border-gray-700/50">
+            <Eye className="w-3 h-3" />
+            Click any allergen to trace it back to your ingredients
+          </p>
+        </div>
       </div>
     </div>
   );

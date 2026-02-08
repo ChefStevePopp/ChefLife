@@ -22,6 +22,7 @@ import {
   isImageFile,
 } from "@/lib/image-utils";
 import type { Recipe, RecipeMedia } from "../../types/recipe";
+import { FileDropzone } from "@/shared/components/FileDropzone/FileDropzone";
 import toast from "react-hot-toast";
 
 /**
@@ -59,6 +60,9 @@ export const MediaManager: React.FC<MediaManagerProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const [showVideoModal, setShowVideoModal] = useState(false);
+  const [videoUrl, setVideoUrl] = useState("");
+  const [videoError, setVideoError] = useState<string | null>(null);
 
   // Media counts and limits
   const imageCount = recipe.media.filter((m) => m.type === "image").length;
@@ -72,11 +76,27 @@ export const MediaManager: React.FC<MediaManagerProps> = ({
   // -------------------------------------------------------------------------
   // FILE UPLOAD - With WebP Compression
   // -------------------------------------------------------------------------
+  
+  // Handle file from FileDropzone component
+  const handleDropzoneFile = async (file: File) => {
+    await processFileUpload(file);
+  };
+
+  // Handle file from hidden input (button click)
   const handleFileUpload = async (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    try {
+      await processFileUpload(file);
+    } finally {
+      resetFileInput();
+    }
+  };
+
+  // Shared upload logic
+  const processFileUpload = async (file: File) => {
 
     // Validate file type
     if (!isImageFile(file)) {
@@ -154,9 +174,13 @@ export const MediaManager: React.FC<MediaManagerProps> = ({
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+    }
+  };
+
+  // Reset file input after upload (only for button click path)
+  const resetFileInput = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   };
 
@@ -273,21 +297,35 @@ export const MediaManager: React.FC<MediaManagerProps> = ({
   // -------------------------------------------------------------------------
   // VIDEO LINKS (YouTube only - no storage cost)
   // -------------------------------------------------------------------------
-  const addVideoLink = () => {
+  const openVideoModal = () => {
     if (!canAddVideo) {
       toast.error(`Maximum ${MAX_RECIPE_VIDEOS} videos allowed`);
       return;
     }
+    setVideoUrl("");
+    setVideoError(null);
+    setShowVideoModal(true);
+  };
 
-    const url = prompt("Enter YouTube video URL:");
-    if (!url) return;
+  const closeVideoModal = () => {
+    setShowVideoModal(false);
+    setVideoUrl("");
+    setVideoError(null);
+  };
 
-    const videoId = url.match(
+  const extractVideoId = (url: string): string | null => {
+    // Supports: youtube.com/watch?v=, youtu.be/, youtube.com/embed/
+    const match = url.match(
       /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/
-    )?.[1];
+    );
+    return match?.[1] || null;
+  };
+
+  const handleVideoSubmit = () => {
+    const videoId = extractVideoId(videoUrl);
 
     if (!videoId) {
-      toast.error("Invalid YouTube URL");
+      setVideoError("Please enter a valid YouTube URL");
       return;
     }
 
@@ -304,8 +342,12 @@ export const MediaManager: React.FC<MediaManagerProps> = ({
       media: [...recipe.media, newMedia],
     });
 
-    toast.success("Video link added");
+    closeVideoModal();
+    toast.success("Video added");
   };
+
+  // Preview video ID for the modal
+  const previewVideoId = extractVideoId(videoUrl);
 
   // -------------------------------------------------------------------------
   // MEDIA MANAGEMENT
@@ -480,7 +522,7 @@ export const MediaManager: React.FC<MediaManagerProps> = ({
               Camera
             </button>
             <button
-              onClick={addVideoLink}
+              onClick={openVideoModal}
               className="btn-ghost text-sm py-2 px-3"
               disabled={isUploading || !canAddVideo}
             >
@@ -539,20 +581,16 @@ export const MediaManager: React.FC<MediaManagerProps> = ({
               </div>
             </div>
           ) : (
-            <div className="w-full h-80 flex flex-col items-center justify-center">
-              <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 flex items-center justify-center mb-4">
-                <Image className="w-8 h-8 text-cyan-400/50" />
-              </div>
-              <p className="text-gray-400 mb-4">No primary image set</p>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="btn-primary text-sm"
-                disabled={!canAddImage}
-              >
-                <Plus className="w-4 h-4 mr-1.5" />
-                Add Primary Image
-              </button>
-            </div>
+            <FileDropzone
+              accept="image/*"
+              onFile={handleDropzoneFile}
+              isLoading={isUploading}
+              loadingMessage={`Compressing & uploading... ${Math.round(uploadProgress)}%`}
+              label="Drop your hero shot here"
+              hint="PNG, JPG, WebP — auto-compressed"
+              variant="primary"
+              disabled={!canAddImage}
+            />
           )}
         </div>
       </div>
@@ -789,6 +827,101 @@ export const MediaManager: React.FC<MediaManagerProps> = ({
                 className="btn-primary text-sm px-4 py-2"
               >
                 Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Video Modal */}
+      {showVideoModal && (
+        <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-900 rounded-xl max-w-lg w-full overflow-hidden border border-gray-800">
+            <div className="p-4 border-b border-gray-800 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-rose-500/20 flex items-center justify-center">
+                  <Video className="w-5 h-5 text-rose-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-medium text-white">Add YouTube Video</h3>
+                  <p className="text-xs text-gray-500">Paste a link to embed</p>
+                </div>
+              </div>
+              <button
+                onClick={closeVideoModal}
+                className="p-1.5 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-gray-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              {/* URL Input */}
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1.5">
+                  YouTube URL
+                </label>
+                <input
+                  type="url"
+                  value={videoUrl}
+                  onChange={(e) => {
+                    setVideoUrl(e.target.value);
+                    setVideoError(null);
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && handleVideoSubmit()}
+                  placeholder="https://youtube.com/watch?v=... or https://youtu.be/..."
+                  className={`input w-full ${
+                    videoError ? "border-rose-500/50 focus:border-rose-500" : ""
+                  }`}
+                  autoFocus
+                />
+                {videoError && (
+                  <p className="text-sm text-rose-400 mt-1.5 flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    {videoError}
+                  </p>
+                )}
+              </div>
+
+              {/* Live Preview */}
+              {previewVideoId && (
+                <div className="rounded-lg overflow-hidden border border-gray-700/50">
+                  <div className="relative pt-[56.25%] bg-gray-800">
+                    <iframe
+                      src={`https://www.youtube.com/embed/${previewVideoId}`}
+                      className="absolute inset-0 w-full h-full"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Empty state hint */}
+              {!previewVideoId && !videoError && (
+                <div className="rounded-lg border border-dashed border-gray-700 p-6 text-center">
+                  <Play className="w-8 h-8 text-gray-600 mx-auto mb-2" />
+                  <p className="text-sm text-gray-500">
+                    Paste a YouTube URL above to see a preview
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-gray-800 flex justify-end gap-3">
+              <button
+                onClick={closeVideoModal}
+                className="btn-ghost text-sm px-4 py-2"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleVideoSubmit}
+                className="btn-primary text-sm px-4 py-2"
+                disabled={!previewVideoId}
+              >
+                <Plus className="w-4 h-4 mr-1.5" />
+                Add Video
               </button>
             </div>
           </div>

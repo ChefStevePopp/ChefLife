@@ -97,26 +97,13 @@ export const IngredientsInput: React.FC<IngredientsInputProps> = ({
   }, [fetchMasterIngredients, operationsSettings, fetchOperationsSettings]);
 
   // Handle ingredients change
+  // Note: We do NOT auto-update allergenInfo here. The AllergenControl component
+  // computes the cascade and shows auto-detected allergens, but the operator
+  // must click "Save Declaration" to accept liability and persist to allergenInfo.
+  // This is the legal checkpoint — ChefLife shows the truth, operator owns the declaration.
   const handleIngredientsChange = useCallback((ingredients: RecipeIngredient[]) => {
-    // Recalculate allergens from all ingredients
-    const allAllergens = new Set<string>();
-    ingredients.forEach((ing) => {
-      if (!ing.is_sandbox && (ing.type === 'raw' || ing.ingredient_type === 'raw')) {
-        const mi = masterIngredients.find((m) => m.id === ing.name);
-        if (mi?.allergens?.length) {
-          mi.allergens.forEach((allergen: string) => allAllergens.add(allergen));
-        }
-      }
-    });
-
-    onChange({
-      ingredients,
-      allergenInfo: {
-        ...recipe.allergenInfo,
-        contains: Array.from(allAllergens),
-      },
-    });
-  }, [masterIngredients, onChange, recipe.allergenInfo]);
+    onChange({ ingredients });
+  }, [onChange]);
 
   // Open tablet mode (speed)
   const openTabletMode = () => {

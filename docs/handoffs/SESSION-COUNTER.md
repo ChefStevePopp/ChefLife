@@ -1,7 +1,7 @@
 # ChefLife Session Counter
 
-**Current Session:** 71
-**Last Updated:** 2026-02-04
+**Current Session:** 72
+**Last Updated:** 2026-02-06
 
 ## How to Use
 
@@ -27,15 +27,20 @@
 | 68 | Feb 3, 2026 | HR Module Review + CategoryManager Baseball Cards | HANDOFF-SESSION-70-HR-Policy-Architecture.md |
 | 69 | Feb 3, 2026 | HR Schema Collision Fix + Storage Buckets | (covered in session 70 handoff) |
 | 70 | Feb 4, 2026 | HR Policy Roadmap Architecture + PolicyCard Visual Refinement + btn-soft | HANDOFF-SESSION-70-HR-Policy-Architecture.md |
+| 71 | Feb 5, 2026 | PolicyForm UX + Type System Cleanup | HANDOFF-SESSION-71-PolicyForm-UX-TypeCleanup.md |
+| 72 | Feb 6, 2026 | Recipe MAJOR.MINOR.PATCH + Communication Tiers + Supersession Pattern | HANDOFF-SESSION-72-RecipeVersioning-Supersession.md |
 
-## Next Session
+## Next Session (73)
 
-**Potential Focus Areas:**
+**Primary Focus:**
+- Inline Pending Changes Panel + Allergen-Aware Auto-Suggestions (Layer 3)
+- See: SESSION-73-STARTER.md
+
+**Other Potential Focus Areas:**
+- Retire & Reissue (first recipe Supersession Pattern implementation)
+- RecipeCard old component cleanup (migrate remaining consumers to L5)
 - HR & Policies Phase 1 — Relational migration (policies table, RLS)
-- HR & Policies Phase 2 — Team-facing acknowledgment experience
 - IngredientsInput continued (Production/Method/Costing tabs)
-- Recipe Editor remaining tabs
-- Mobile responsive pass
 
 ## Naming Convention
 

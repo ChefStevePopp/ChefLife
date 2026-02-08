@@ -193,7 +193,7 @@ const SortableRow: React.FC<SortableRowProps> = ({
         </div>
 
         {/* Quantity - fixed */}
-        <div className="w-16 flex-shrink-0">
+        <div className="w-20 flex-shrink-0">
           <input
             type="number"
             value={ingredient.quantity || ""}
@@ -402,6 +402,12 @@ export const TableView: React.FC<TableViewProps> = ({
         name: value,
         type: type,
         ingredient_type: type,
+        // Set the proper relational ID field
+        master_ingredient_id: type === 'raw' ? value : undefined,
+        prepared_recipe_id: type === 'prepared' ? value : undefined,
+        // Denormalized display fields
+        ingredient_name: type === 'raw' ? raw?.product : prep?.name,
+        common_name: type === 'raw' ? raw?.common_name : undefined,
         unit: type === 'raw' ? (raw?.recipe_unit_type || '') : (prep?.unit_type || ''),
         cost: type === 'raw' ? (raw?.cost_per_recipe_unit || 0) : (prep?.cost_per_unit || 0),
         cost_per_unit: type === 'raw' ? (raw?.cost_per_recipe_unit || 0) : (prep?.cost_per_unit || 0),
@@ -461,7 +467,7 @@ export const TableView: React.FC<TableViewProps> = ({
         <div className="flex-[1.5] min-w-0 text-center">Common Name</div>
         <div className="flex-[1.5] min-w-0 text-center">Common Measure</div>
         <div className="w-24 flex-shrink-0 text-center">R/U Type</div>
-        <div className="w-16 flex-shrink-0 text-center"># R/U</div>
+        <div className="w-20 flex-shrink-0 text-center"># R/U</div>
         <div className="w-20 flex-shrink-0 text-center">R/U Cost</div>
         <div className="w-20 flex-shrink-0 text-center">Total</div>
         <div className="w-32 flex-shrink-0 text-center pl-4 border-l border-gray-700/50">Actions</div>

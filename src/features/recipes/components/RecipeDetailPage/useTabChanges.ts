@@ -44,7 +44,7 @@ const TAB_FIELDS: Record<string, (keyof Recipe)[]> = {
   storage: ["storage"],
   stations: ["equipment"],
   quality: ["quality_standards"],
-  allergens: ["allergens"],
+  allergens: ["allergenInfo"],
   media: ["media", "image_url"],
   training: ["training"],
   versions: ["version", "versions"],

@@ -125,6 +125,13 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
           mayContain: [],
           crossContactRisk: [],
         },
+        allergenManualOverrides: recipeInput.allergenManualOverrides || {
+          manualContains: [],
+          manualMayContain: [],
+          promotedToContains: [],
+          manualNotes: {},
+          crossContactNotes: [],
+        },
         media: recipeInput.media || [],
         training: recipeInput.training || {},
         versions: recipeInput.versions || [],
@@ -188,7 +195,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       // Make sure stages is properly formatted as JSONB
       let formattedUpdates = { ...updates };
 
-      // Remove view-only fields that don't exist in the recipes table
+      // Remove view-only fields and TypeScript-only fields that don't exist in the recipes table
       const viewOnlyFields = [
         "station_name",
         "major_group_name",
@@ -198,6 +205,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
         "modified_by_name",
         "created_by_email",
         "modified_by_email",
+        "allergens", // TypeScript-only field; database uses "allergenInfo"
       ];
 
       viewOnlyFields.forEach((field) => {

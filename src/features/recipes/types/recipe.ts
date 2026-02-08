@@ -33,6 +33,15 @@ export interface Recipe {
     mayContain?: string[];
     crossContactRisk?: string[];
   };
+  // Persisted manual allergen overrides — survives tab switches & save/reload
+  // Separates "operator explicitly added" from "auto-detected from ingredients"
+  allergenManualOverrides?: {
+    manualContains: string[];       // Operator-added CONTAINS (cross-contact, shared equipment, etc.)
+    manualMayContain: string[];     // Operator-added MAY CONTAIN
+    promotedToContains: string[];   // Upgraded from mayContain → contains
+    manualNotes: Record<string, string>; // Per-allergen notes
+    crossContactNotes: string[];    // General cross-contact notes
+  };
   quality_standards?: QualityStandards;
   media?: RecipeMedia[];
   training?: RecipeTraining;

@@ -127,10 +127,10 @@ export const IngredientSearch: React.FC<IngredientSearchProps> = ({
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
       </div>
 
-      {/* Dropdown */}
+      {/* Dropdown - wider than input for readability */}
       {open && (
         <div
-          className={`absolute z-50 w-full bg-gray-800 rounded-lg border border-gray-700 shadow-xl max-h-80 overflow-auto
+          className={`absolute z-50 min-w-full w-max max-w-lg bg-gray-800 rounded-lg border border-gray-700 shadow-xl max-h-80 overflow-auto
             ${dropDirection === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'}`}
         >
           <div className="p-2 space-y-1">

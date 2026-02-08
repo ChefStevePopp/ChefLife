@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Save,
@@ -18,6 +18,7 @@ import { useRecipeNavigationStore } from "@/stores/recipeNavigationStore";
 import { useAuth } from "@/hooks/useAuth";
 import { useOperationsStore } from "@/stores/operationsStore";
 import { useDiagnostics } from "@/hooks/useDiagnostics";
+import { nexus } from "@/lib/nexus";
 import { supabase } from "@/lib/supabase";
 import toast from "react-hot-toast";
 
@@ -37,6 +38,8 @@ import { InstructionEditor } from "../RecipeEditor/InstructionEditor";
 import { StationEquipment } from "../RecipeEditor/StationEquipment";
 import { QualityStandards } from "../RecipeEditor/QualityStandards";
 import { AllergenControl } from "../RecipeEditor/AllergenControl";
+import { useAllergenAutoSync } from "../RecipeEditor/useAllergenAutoSync";
+import { useRecipeChangeDetection } from "../RecipeEditor/useRecipeChangeDetection";
 import { MediaManager } from "../RecipeEditor/MediaManager";
 import { TrainingModule } from "../RecipeEditor/TrainingModule";
 import { VersionHistory } from "../RecipeEditor/VersionHistory";
@@ -47,7 +50,7 @@ import type { Recipe } from "../../types/recipe";
  * =============================================================================
  * RECIPE DETAIL PAGE - L5 Professional
  * =============================================================================
- * URL-routed recipe editor replacing RecipeEditorModal.
+ * URL-routed recipe editor. Full-page with bookmarkable URLs.
  * Benefits: Bookmarkable URLs, email links for team review, auth refresh
  * doesn't lose work, natural back button behavior.
  * =============================================================================
@@ -77,7 +80,7 @@ const createNewRecipe = (organizationId: string): Omit<Recipe, "id"> => ({
   steps: [],
   equipment: [],
   quality_standards: {},
-  allergens: {
+  allergenInfo: {
     contains: [],
     mayContain: [],
     crossContactRisk: [],
@@ -140,11 +143,88 @@ export const RecipeDetailPage: React.FC = () => {
   // Active tab state
   const [activeTab, setActiveTab] = useState("recipe");
 
+  // =========================================================================
+  // VERSION SNAPSHOT — Comparison baseline for VersionHistory change detection
+  // =========================================================================
+  // Separate from originalData (DB baseline). This snapshot resets when
+  // the operator creates a version bump in VersionHistory, so the Pending
+  // Changes panel clears immediately — even before Save persists to DB.
+  // After Save, originalData catches up and both are in sync again.
+  // =========================================================================
+  const [versionSnapshot, setVersionSnapshot] = useState<Recipe | null>(null);
+
+  // Sync snapshot whenever the DB baseline updates (load + post-save)
+  useEffect(() => {
+    if (originalData) setVersionSnapshot({ ...originalData });
+  }, [originalData]);
+
+  // ---------------------------------------------------------------------------
+  // HANDLERS (defined early — hooks below depend on handleChange)
+  // ---------------------------------------------------------------------------
+  const handleChange = (updates: Partial<Recipe>) => {
+    setFormData((prev) => (prev ? { ...prev, ...updates } : null));
+  };
+
   // Tab-level change tracking
   const { changedTabs, getChangeSummary } = useTabChanges(
     formData,
     originalData
   );
+
+  // =========================================================================
+  // ALLERGEN AUTO-SYNC — Runs regardless of active tab
+  // When ingredients change on ANY tab, allergenInfo stays current.
+  // Life-safety: no stale declarations, no phantom allergens after removal.
+  // =========================================================================
+  useAllergenAutoSync({ recipe: formData, onChange: handleChange });
+
+  // =========================================================================
+  // CHANGE DETECTION — Drives auto-versioning on save
+  // Compares formData vs originalData (DB baseline). When handleSave runs,
+  // if no manual version bump happened on the Versions tab, the detection
+  // result determines the auto-bump tier and generates change notes.
+  // =========================================================================
+  const saveDetection = useRecipeChangeDetection(
+    (formData || {}) as Recipe,
+    originalData
+  );
+
+  // =========================================================================
+  // ALLERGEN REVIEW GATE — Save interceptor
+  // =========================================================================
+  // When allergens change (add OR remove), the operator MUST explicitly
+  // confirm the declaration via the "Confirm Declaration & Save" button
+  // on the Allergens tab. Save is blocked until confirmation.
+  //
+  // Flow: Save clicked → allergens/ingredients differ from baseline?
+  //       → redirect to Allergens tab → operator clicks "Confirm"
+  //       → gate satisfied + save fires in one action.
+  //
+  // Key principle: Visiting the tab isn't reviewing. Looking isn't
+  // accepting responsibility. Only explicit confirmation counts.
+  //
+  // allergenReviewedRef resets whenever allergenInfo changes. ONLY
+  // handleConfirmDeclaration sets it to true.
+  // =========================================================================
+  const allergenReviewedRef = useRef(false);
+
+  // Detect when auto-sync changes allergenInfo — reset the review gate.
+  // ANY change to the declaration (add or remove) requires explicit confirmation
+  // via the "Confirm Declaration & Save" button. Visiting the tab alone
+  // doesn't count — looking isn't accepting responsibility.
+  const prevAllergenFingerprintRef = useRef<string>('');
+  useEffect(() => {
+    if (!formData) return;
+    const fp = JSON.stringify({
+      c: (formData.allergenInfo?.contains || []).slice().sort(),
+      m: (formData.allergenInfo?.mayContain || []).slice().sort(),
+    });
+    if (prevAllergenFingerprintRef.current && fp !== prevAllergenFingerprintRef.current) {
+      // Allergens changed — require explicit confirmation again
+      allergenReviewedRef.current = false;
+    }
+    prevAllergenFingerprintRef.current = fp;
+  }, [formData?.allergenInfo]);
 
   // ---------------------------------------------------------------------------
   // FETCH SETTINGS
@@ -312,30 +392,240 @@ export const RecipeDetailPage: React.FC = () => {
     loadRecipe();
   }, [id, isNew, organizationId, recipeIds, setCurrentIndex, initialType, initialMajorGroup]);
 
-  // ---------------------------------------------------------------------------
-  // HANDLERS
-  // ---------------------------------------------------------------------------
-  const handleChange = (updates: Partial<Recipe>) => {
-    setFormData((prev) => (prev ? { ...prev, ...updates } : null));
-  };
-
   const handleSave = async () => {
     if (!formData || !organizationId) return;
+
+    // -----------------------------------------------------------------------
+    // ALLERGEN REVIEW GATE — Intercept save if declaration changed
+    // -----------------------------------------------------------------------
+    // Two checks, because auto-sync runs in useEffect (asynchronous):
+    //
+    //   CHECK 1: allergenInfo already differs from baseline
+    //            → auto-sync caught up, declaration visibly changed
+    //
+    //   CHECK 2: ingredient composition changed vs baseline
+    //            → auto-sync may NOT have caught up yet (race condition)
+    //            → different ingredients = potential allergen change
+    //            → removing an allergen-carrying ingredient is just as
+    //              dangerous as adding one — must review either way
+    //
+    // Life-safety: both additions AND removals require review.
+    // -----------------------------------------------------------------------
+    if (!isNew && originalData && !allergenReviewedRef.current) {
+      // Check 1: allergenInfo already differs
+      const origContains = JSON.stringify((originalData.allergenInfo?.contains || []).slice().sort());
+      const origMayContain = JSON.stringify((originalData.allergenInfo?.mayContain || []).slice().sort());
+      const currContains = JSON.stringify((formData.allergenInfo?.contains || []).slice().sort());
+      const currMayContain = JSON.stringify((formData.allergenInfo?.mayContain || []).slice().sort());
+      const allergenInfoDiffers = origContains !== currContains || origMayContain !== currMayContain;
+
+      // Check 2: ingredient composition changed (catches auto-sync race)
+      const ingredientFp = (ings: any[]) =>
+        (ings || []).map(i => i.master_ingredient_id || i.prepared_recipe_id || i.id).sort().join('|');
+      const ingredientsDiffer = ingredientFp(formData.ingredients) !== ingredientFp(originalData.ingredients);
+
+      if (allergenInfoDiffers || ingredientsDiffer) {
+        setActiveTab('allergens');
+        toast(
+          allergenInfoDiffers
+            ? 'Allergen declaration changed \u2014 please review before saving.'
+            : 'Ingredients changed \u2014 please review allergen declaration before saving.',
+          {
+            icon: '\u{1F6E1}\uFE0F',
+            duration: 5000,
+            style: {
+              background: '#1a1a2e',
+              color: '#f9fafb',
+              border: '1px solid rgba(244,63,94,0.3)',
+            },
+          }
+        );
+        return;
+      }
+    }
+
     setIsSaving(true);
     try {
+      // =================================================================
+      // AUTO VERSION BUMP — Every detected change gets a version number
+      // =================================================================
+      // If the operator manually bumped on the Versions tab, formData.version
+      // already differs from originalData.version — skip auto-bump.
+      //
+      // Otherwise, run the detection result (useRecipeChangeDetection) to
+      // determine the tier and auto-generate change notes.
+      //
+      // Tier mapping (from architecture doc):
+      //   MAJOR — CONTAINS allergen add/remove, ingredient-sourced allergen
+      //   MINOR — MAY CONTAIN, ingredient add/remove, yield, method
+      //   PATCH — Cross-contact notes, description, production notes
+      //
+      // NEXUS events fire based on the bump tier. Every change gets an
+      // audit trail. Nothing is ever silently changed.
+      // =================================================================
+      let saveData = { ...formData };
+
+      if (!isNew && originalData && formData.version === originalData.version && saveDetection.hasChanges) {
+        const bumpType = saveDetection.suggestedTier;
+        const normalizeVersion = (v: string) => {
+          const parts = (v || '1.0.0').split('.').map(p => parseInt(p) || 0);
+          while (parts.length < 3) parts.push(0);
+          return parts;
+        };
+        const [major, minor, patch] = normalizeVersion(saveData.version || '1.0.0');
+        const newVersion = bumpType === 'major'
+          ? `${major + 1}.0.0`
+          : bumpType === 'minor'
+            ? `${major}.${minor + 1}.0`
+            : `${major}.${minor}.${patch + 1}`;
+
+        // Auto-generate notes from detected changes
+        const autoNotes = saveDetection.changes
+          .map(c => c.description)
+          .join('; ');
+
+        const versionEntry = {
+          version: `${major}.${minor}.${patch}`,
+          date: saveData.updated_at || new Date().toISOString(),
+          changedBy: user?.id,
+          notes: autoNotes,
+          status: saveData.status,
+          bumpType,
+          changes: saveDetection.changes.map(c => ({
+            category: c.category,
+            description: c.description,
+            tier: c.suggestedTier,
+            safetyFloor: c.isSafetyFloor,
+          })),
+        };
+
+        saveData = {
+          ...saveData,
+          version: newVersion,
+          versions: [versionEntry, ...(saveData.versions || [])],
+          modified_by: user?.id,
+          updated_at: new Date().toISOString(),
+        };
+
+        // MINOR/MAJOR resets to draft (substantive change needs re-approval)
+        if (bumpType !== 'patch') {
+          saveData.status = 'draft';
+        }
+
+        // Update formData so NEXUS emission below sees the bumped version
+        setFormData(saveData);
+      }
+
       if (isNew) {
-        await createRecipe(formData as Recipe);
+        const created = await createRecipe(saveData as Recipe);
         toast.success("Recipe created successfully");
+        setOriginalData(saveData as Recipe);
+        // Navigate to the new recipe's real URL
+        navigate(returnTo);
       } else {
-        if (!("id" in formData)) {
+        if (!("id" in saveData)) {
           toast.error("Cannot update recipe: No ID found");
           return;
         }
-        await updateRecipe(formData.id, formData);
+        await updateRecipe(saveData.id, saveData);
         toast.success("Recipe saved successfully");
+
+        // =================================================================
+        // NEXUS EVENT EMISSION — Post-save, fire events for version bumps
+        // and allergen declaration changes. These go to the activity_logs
+        // table and drive notifications, card badges, and audit trail.
+        // =================================================================
+        if (organizationId && user?.id && originalData) {
+          const recipeId = saveData.id;
+          const recipeName = saveData.name || 'Untitled';
+
+          // --- Version bump detection ---
+          if (saveData.version !== originalData.version) {
+            // Read bump type and structured changes from the latest version entry
+            const latestEntry = (saveData.versions || [])[0];
+            const bumpType = latestEntry?.bumpType || 'patch';
+            const activityType = bumpType === 'major'
+              ? 'recipe_version_major' as const
+              : bumpType === 'minor'
+                ? 'recipe_version_minor' as const
+                : 'recipe_version_patch' as const;
+
+            nexus({
+              organization_id: organizationId,
+              user_id: user.id,
+              activity_type: activityType,
+              details: {
+                recipe_id: recipeId,
+                name: recipeName,
+                version: saveData.version,
+                previous_version: originalData.version,
+                bump_type: bumpType,
+                notes: latestEntry?.notes || '',
+                // Structured change audit trail — every detected change
+                // with its category, tier, and safety floor status
+                changes: latestEntry?.changes || [],
+              },
+            });
+          }
+
+          // --- Allergen declaration change detection ---
+          const origContains = JSON.stringify((originalData.allergenInfo?.contains || []).slice().sort());
+          const origMayContain = JSON.stringify((originalData.allergenInfo?.mayContain || []).slice().sort());
+          const currContains = JSON.stringify((saveData.allergenInfo?.contains || []).slice().sort());
+          const currMayContain = JSON.stringify((saveData.allergenInfo?.mayContain || []).slice().sort());
+
+          if (origContains !== currContains || origMayContain !== currMayContain) {
+            // Build a human-readable summary of what changed
+            const origC = new Set((originalData.allergenInfo?.contains || []).map((s: string) => s.toLowerCase()));
+            const currC = new Set((saveData.allergenInfo?.contains || []).map((s: string) => s.toLowerCase()));
+            const addedC = [...currC].filter(a => !origC.has(a));
+            const removedC = [...origC].filter(a => !currC.has(a));
+            const summaryParts: string[] = [];
+            if (addedC.length) summaryParts.push(`+${addedC.join(', ')}`);
+            if (removedC.length) summaryParts.push(`-${removedC.join(', ')}`);
+
+            nexus({
+              organization_id: organizationId,
+              user_id: user.id,
+              activity_type: 'recipe_allergen_changed',
+              severity: 'critical',
+              details: {
+                recipe_id: recipeId,
+                name: recipeName,
+                version: saveData.version,
+                summary: summaryParts.join(', ') || 'allergen profile updated',
+                contains_added: addedC,
+                contains_removed: removedC,
+                new_contains: saveData.allergenInfo?.contains || [],
+                new_may_contain: saveData.allergenInfo?.mayContain || [],
+                previous_contains: originalData.allergenInfo?.contains || [],
+                previous_may_contain: originalData.allergenInfo?.mayContain || [],
+              },
+            });
+          }
+
+          // --- Allergen declaration confirmation (explicit button) ---
+          if (allergenReviewedRef.current) {
+            nexus({
+              organization_id: organizationId,
+              user_id: user.id,
+              activity_type: 'recipe_allergen_declared',
+              details: {
+                recipe_id: recipeId,
+                name: recipeName,
+                version: saveData.version,
+                contains: saveData.allergenInfo?.contains || [],
+                may_contain: saveData.allergenInfo?.mayContain || [],
+              },
+            });
+          }
+        }
+
+        // Stay on page — reset baseline so dirty tracking clears
+        setOriginalData(saveData as Recipe);
+        // Reset review gate for next edit cycle
+        allergenReviewedRef.current = false;
       }
-      setOriginalData(formData as Recipe);
-      navigate(returnTo);
     } catch (err) {
       console.error("Error saving recipe:", err);
       toast.error("Failed to save recipe");
@@ -343,6 +633,26 @@ export const RecipeDetailPage: React.FC = () => {
       setIsSaving(false);
     }
   };
+
+  // -------------------------------------------------------------------------
+  // CONFIRM DECLARATION — Operator explicitly accepts allergen disclosure
+  // Satisfies the review gate, then triggers save in one action.
+  // -------------------------------------------------------------------------
+  const handleConfirmDeclaration = () => {
+    allergenReviewedRef.current = true;
+    handleSave();
+  };
+
+  // -------------------------------------------------------------------------
+  // VERSION CREATED — Reset snapshot so Pending Changes panel clears
+  // Called by VersionHistory after operator commits a version bump.
+  // The bump is in formData (via onChange) but not yet persisted.
+  // -------------------------------------------------------------------------
+  const handleVersionCreated = useCallback(() => {
+    if (formData) {
+      setVersionSnapshot(formData as Recipe);
+    }
+  }, [formData]);
 
   const handleDeleteConfirm = async () => {
     if (!formData || isNew || !("id" in formData)) return;
@@ -556,7 +866,19 @@ export const RecipeDetailPage: React.FC = () => {
           <QualityStandards recipe={formData as Recipe} onChange={handleChange} />
         )}
         {activeTab === "allergens" && (
-          <AllergenControl recipe={formData as Recipe} onChange={handleChange} />
+          <AllergenControl
+            recipe={formData as Recipe}
+            onChange={handleChange}
+            onConfirmDeclaration={handleConfirmDeclaration}
+            allergensDirty={
+              originalData
+                ? JSON.stringify((formData.allergenInfo?.contains || []).slice().sort()) !==
+                    JSON.stringify((originalData.allergenInfo?.contains || []).slice().sort()) ||
+                  JSON.stringify((formData.allergenInfo?.mayContain || []).slice().sort()) !==
+                    JSON.stringify((originalData.allergenInfo?.mayContain || []).slice().sort())
+                : false
+            }
+          />
         )}
         {activeTab === "media" && (
           <MediaManager recipe={formData as Recipe} onChange={handleChange} />
@@ -565,7 +887,12 @@ export const RecipeDetailPage: React.FC = () => {
           <TrainingModule recipe={formData as Recipe} onChange={handleChange} />
         )}
         {activeTab === "versions" && (
-          <VersionHistory recipe={formData as Recipe} onChange={handleChange} />
+          <VersionHistory
+            recipe={formData as Recipe}
+            onChange={handleChange}
+            lastSavedRecipe={versionSnapshot}
+            onVersionCreated={handleVersionCreated}
+          />
         )}
       </div>
 

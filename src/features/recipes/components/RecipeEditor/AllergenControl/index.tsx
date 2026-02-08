@@ -1,9 +1,10 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { Shield, RotateCcw, Save, X, Printer, Info, ChevronUp, ChevronDown, Link2, FileCheck, AlertTriangle, Heart } from 'lucide-react';
+import { Shield, RotateCcw, Printer, Info, ChevronUp, ChevronDown, Link2, FileCheck, AlertTriangle, Heart } from 'lucide-react';
 import { useDiagnostics } from '@/hooks/useDiagnostics';
 import { useMasterIngredientsStore } from '@/stores/masterIngredientsStore';
 import { useRecipeStore } from '@/stores/recipeStore';
 import { AutoDetectedPanel } from './AutoDetectedPanel';
+import { ManualOverrides } from './ManualOverrides';
 import { DeclarationPanel } from './DeclarationPanel';
 import { CrossContactNotes } from './CrossContactNotes';
 import { ShareButton } from './ShareButton';
@@ -15,6 +16,10 @@ import type { Recipe } from '../../../types/recipe';
 interface AllergenControlProps {
   recipe: Recipe;
   onChange: (updates: Partial<Recipe>) => void;
+  /** Called when operator clicks "Confirm Declaration" — triggers review gate + save */
+  onConfirmDeclaration?: () => void;
+  /** Whether allergenInfo differs from the last-saved baseline (passed from parent) */
+  allergensDirty?: boolean;
 }
 
 // Default empty overrides
@@ -27,62 +32,38 @@ const DEFAULT_OVERRIDES: ManualAllergenOverrides = {
 };
 
 /**
- * Parse existing allergenInfo into manual overrides
- * This handles migration from old format to new format
- */
-function parseExistingAllergenInfo(
-  allergenInfo: Recipe['allergenInfo'],
-  autoDetected: ReturnType<typeof useAllergenCascade>['autoDetected']
-): ManualAllergenOverrides {
-  if (!allergenInfo) return DEFAULT_OVERRIDES;
-  
-  const overrides: ManualAllergenOverrides = {
-    manualContains: [],
-    manualMayContain: [],
-    promotedToContains: [],
-    manualNotes: {},
-    crossContactNotes: allergenInfo.crossContactRisk || []
-  };
-  
-  // Any allergen in contains that's not auto-detected is manual
-  for (const allergen of allergenInfo.contains || []) {
-    const key = allergen as AllergenType;
-    if (!autoDetected.contains.has(key)) {
-      // Check if it was promoted from may contain
-      if (autoDetected.mayContain.has(key)) {
-        overrides.promotedToContains.push(key);
-      } else {
-        overrides.manualContains.push(key);
-      }
-    }
-  }
-  
-  // Any allergen in mayContain that's not auto-detected is manual
-  for (const allergen of allergenInfo.mayContain || []) {
-    const key = allergen as AllergenType;
-    if (!autoDetected.mayContain.has(key) && !autoDetected.contains.has(key)) {
-      overrides.manualMayContain.push(key);
-    }
-  }
-  
-  return overrides;
-}
-
-/**
- * AllergenControl - Two-panel allergen management with auto-cascade and manual overrides
+ * =============================================================================
+ * ALLERGEN CONTROL — L5 Professional
+ * =============================================================================
+ * Two-column layout with legal boundary:
+ *   LEFT:  Your Data — Ingredient-sourced allergens, manual overrides, cross-contact
+ *   |      ChefLife mirrors YOUR data. We don't detect — we reflect.
+ *   RIGHT: The Declaration — Read-only legal bond between operator and customer
+ *   |      UUID identity only. No names. No doxxing. Cryptographic traceability.
  * 
- * L5 Audit: Full traceability of allergen sources, safety locks on auto-detected
- * L6 UX: Zero-friction auto-cascade, only intervene for exceptions
+ * PATTERN: Same as every other recipe tab.
+ *   - Receives recipe + onChange from parent RecipeDetailPage
+ *   - Calls onChange({ allergenInfo }) to push changes to parent formData
+ *   - Parent's useTabChanges detects dirty state, lights up tab dot
+ *   - Parent's floating action bar handles Save for ALL tabs uniformly
+ *   - NO self-save, NO competing action bar
+ *
+ * FUTURE: When auth identity bridge is built, the parent's save flow will
+ * capture declaration metadata (who, when, from where) as a legal receipt
+ * in a dedicated recipe_allergen_declarations table.
+ * =============================================================================
  */
 export const AllergenControl: React.FC<AllergenControlProps> = ({
   recipe,
-  onChange
+  onChange,
+  onConfirmDeclaration,
+  allergensDirty
 }) => {
   const { showDiagnostics } = useDiagnostics();
   const { fetchIngredients } = useMasterIngredientsStore();
   const { fetchRecipes } = useRecipeStore();
   
-  // Fetch data on mount
+  // Fetch data on mount (needed for cascade to resolve prepared ingredients)
   useEffect(() => {
     fetchIngredients();
     fetchRecipes();
@@ -91,15 +72,11 @@ export const AllergenControl: React.FC<AllergenControlProps> = ({
   // Transform recipe ingredients to the format needed by the cascade hook
   const ingredients = useMemo(() => {
     return (recipe.ingredients || []).map(ing => {
-      // Compute ingredient type first so we can use it for fallback logic
       const ingredientType = ing.ingredient_type || (ing.type as 'raw' | 'prepared') || 'raw';
-      
       return {
         id: ing.id,
         ingredient_type: ingredientType,
-        // For raw ingredients, fall back to ing.name which contains the master_ingredient_id
         master_ingredient_id: ing.master_ingredient_id || (ingredientType === 'raw' ? ing.name : undefined),
-        // For prepared ingredients, fall back to ing.name which contains the recipe_id
         prepared_recipe_id: ing.prepared_recipe_id || (ingredientType === 'prepared' ? ing.name : undefined),
         ingredient_name: ing.ingredient_name || ing.common_name,
         common_name: ing.common_name
@@ -107,44 +84,51 @@ export const AllergenControl: React.FC<AllergenControlProps> = ({
     });
   }, [recipe.ingredients]);
   
-  // Initial cascade computation (without manual overrides) to parse existing data
-  const initialCascade = useAllergenCascade({ ingredients, manualOverrides: undefined });
-  
-  // Parse existing allergenInfo to get initial manual overrides
-  const [manualOverrides, setManualOverrides] = useState<ManualAllergenOverrides>(() => {
-    return parseExistingAllergenInfo(recipe.allergenInfo, initialCascade.autoDetected);
-  });
-  
-  // Track saved state for dirty detection
-  const [savedOverrides, setSavedOverrides] = useState<ManualAllergenOverrides>(manualOverrides);
+  // =========================================================================
+  // MANUAL OVERRIDES — Read from persisted recipe field, not local state
+  // useAllergenAutoSync (at RecipeEditor level) handles cascade + allergenInfo sync.
+  // AllergenControl owns the UI for managing overrides.
+  // =========================================================================
+  const manualOverrides: ManualAllergenOverrides = useMemo(() => {
+    const stored = recipe.allergenManualOverrides;
+    if (!stored) return DEFAULT_OVERRIDES;
+    return {
+      manualContains: stored.manualContains || [],
+      manualMayContain: stored.manualMayContain || [],
+      promotedToContains: stored.promotedToContains || [],
+      manualNotes: stored.manualNotes || {},
+      crossContactNotes: stored.crossContactNotes || [],
+    };
+  }, [recipe.allergenManualOverrides]);
+
+  // Helper: persist override changes via parent onChange
+  const updateOverrides = useCallback((updater: (prev: ManualAllergenOverrides) => ManualAllergenOverrides) => {
+    const updated = updater(manualOverrides);
+    onChange({ allergenManualOverrides: updated });
+  }, [manualOverrides, onChange]);
   
   // Expandable info section
   const [showInfo, setShowInfo] = useState(false);
   
-  // Full cascade with manual overrides
+  // Cascade for UI display (autoDetected sources, allergensWithContext badges)
+  // allergenInfo SYNC is handled by useAllergenAutoSync at RecipeEditor level — not here.
   const { autoDetected, declaration, allergensWithContext, isLoading } = useAllergenCascade({
     ingredients,
     manualOverrides
   });
   
-  // Compute dirty state
-  const isDirty = useMemo(() => {
-    return JSON.stringify(manualOverrides) !== JSON.stringify(savedOverrides);
-  }, [manualOverrides, savedOverrides]);
+  // =========================================================================
+  // DIRTY STATE — for Declaration Panel display
+  // Parent (RecipeDetailPage) compares allergenInfo against originalData
+  // (the DB baseline). This is the single source of truth for "pending".
+  // =========================================================================
+  const hasUnsavedChanges = allergensDirty ?? false;
   
-  // Count changes
-  const changeCount = useMemo(() => {
-    let count = 0;
-    count += Math.abs(manualOverrides.manualContains.length - savedOverrides.manualContains.length);
-    count += Math.abs(manualOverrides.manualMayContain.length - savedOverrides.manualMayContain.length);
-    count += Math.abs(manualOverrides.promotedToContains.length - savedOverrides.promotedToContains.length);
-    count += Math.abs(manualOverrides.crossContactNotes.length - savedOverrides.crossContactNotes.length);
-    return count || (isDirty ? 1 : 0);
-  }, [manualOverrides, savedOverrides, isDirty]);
-  
-  // Action handlers
+  // =========================================================================
+  // MANUAL OVERRIDE HANDLERS
+  // =========================================================================
   const handleAddManual = useCallback((allergen: AllergenType, tier: 'contains' | 'mayContain', note?: string) => {
-    setManualOverrides(prev => ({
+    updateOverrides(prev => ({
       ...prev,
       manualContains: tier === 'contains' 
         ? [...prev.manualContains.filter(a => a !== allergen), allergen]
@@ -154,10 +138,10 @@ export const AllergenControl: React.FC<AllergenControlProps> = ({
         : prev.manualMayContain.filter(a => a !== allergen),
       manualNotes: note ? { ...prev.manualNotes, [allergen]: note } : prev.manualNotes
     }));
-  }, []);
+  }, [updateOverrides]);
   
   const handleRemoveManual = useCallback((allergen: AllergenType) => {
-    setManualOverrides(prev => ({
+    updateOverrides(prev => ({
       ...prev,
       manualContains: prev.manualContains.filter(a => a !== allergen),
       manualMayContain: prev.manualMayContain.filter(a => a !== allergen),
@@ -165,66 +149,52 @@ export const AllergenControl: React.FC<AllergenControlProps> = ({
         Object.entries(prev.manualNotes).filter(([key]) => key !== allergen)
       )
     }));
-  }, []);
+  }, [updateOverrides]);
   
   const handlePromote = useCallback((allergen: AllergenType) => {
-    setManualOverrides(prev => ({
+    updateOverrides(prev => ({
       ...prev,
       promotedToContains: [...prev.promotedToContains.filter(a => a !== allergen), allergen]
     }));
-  }, []);
+  }, [updateOverrides]);
   
   const handleUnpromote = useCallback((allergen: AllergenType) => {
-    setManualOverrides(prev => ({
+    updateOverrides(prev => ({
       ...prev,
       promotedToContains: prev.promotedToContains.filter(a => a !== allergen)
     }));
-  }, []);
+  }, [updateOverrides]);
   
   const handleUpdateNote = useCallback((allergen: AllergenType, note: string) => {
-    setManualOverrides(prev => ({
+    updateOverrides(prev => ({
       ...prev,
       manualNotes: note 
         ? { ...prev.manualNotes, [allergen]: note }
         : Object.fromEntries(Object.entries(prev.manualNotes).filter(([key]) => key !== allergen))
     }));
-  }, []);
+  }, [updateOverrides]);
   
   const handleNotesChange = useCallback((notes: string[]) => {
-    setManualOverrides(prev => ({
+    updateOverrides(prev => ({
       ...prev,
       crossContactNotes: notes
     }));
-  }, []);
-  
-  const handleSave = useCallback(() => {
-    // Update the recipe with the new allergen declaration
-    onChange({
-      allergenInfo: {
-        contains: declaration.contains,
-        mayContain: declaration.mayContain,
-        crossContactRisk: declaration.crossContactNotes
-      }
-    });
-    
-    // Update saved state
-    setSavedOverrides(manualOverrides);
-  }, [onChange, declaration, manualOverrides]);
-  
-  const handleDiscard = useCallback(() => {
-    setManualOverrides(savedOverrides);
-  }, [savedOverrides]);
+  }, [updateOverrides]);
   
   const handleResetToAuto = useCallback(() => {
-    setManualOverrides(DEFAULT_OVERRIDES);
-  }, []);
+    onChange({ allergenManualOverrides: DEFAULT_OVERRIDES });
+  }, [onChange]);
   
   const handlePrint = useCallback(() => {
     window.print();
   }, []);
+
+  const hasManualOverrides = manualOverrides.manualContains.length > 0 
+    || manualOverrides.manualMayContain.length > 0 
+    || manualOverrides.promotedToContains.length > 0;
   
   return (
-    <div className="space-y-6 pb-20">
+    <div className="space-y-6">
       {showDiagnostics && (
         <div className="text-xs text-gray-500 font-mono">
           src/features/recipes/components/RecipeEditor/AllergenControl/index.tsx
@@ -246,7 +216,6 @@ export const AllergenControl: React.FC<AllergenControlProps> = ({
             </div>
           </div>
 
-          {/* Right: Stats Pills + Actions */}
           <div className="subheader-right">
             <span className={`subheader-pill ${declaration.contains.length > 0 ? 'rose' : ''}`}>
               <span className="subheader-pill-value">{declaration.contains.length}</span>
@@ -259,6 +228,15 @@ export const AllergenControl: React.FC<AllergenControlProps> = ({
             
             <div className="subheader-divider" />
             
+            {hasManualOverrides && (
+              <button
+                onClick={handleResetToAuto}
+                className="btn-ghost px-2"
+                title="Reset to Auto-Detected Only"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+            )}
             <button
               onClick={handlePrint}
               className="btn-ghost px-2"
@@ -288,7 +266,6 @@ export const AllergenControl: React.FC<AllergenControlProps> = ({
           </button>
           <div className="expandable-info-content">
             <div className="p-4 pt-2 space-y-4">
-              {/* Core message */}
               <p className="text-sm text-gray-300 leading-relaxed">
                 In 2016, Natasha Ednan-Laperouse died from an allergic reaction to sesame 
                 in a sandwich that wasn't labeled. Her death led to Natasha's Law in the UK, 
@@ -296,7 +273,6 @@ export const AllergenControl: React.FC<AllergenControlProps> = ({
                 the allergen chain never breaks — from the invoice to the plate.
               </p>
 
-              {/* Feature cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div className="subheader-feature-card">
                   <Link2 className="w-4 h-4 text-rose-400/80" />
@@ -321,7 +297,7 @@ export const AllergenControl: React.FC<AllergenControlProps> = ({
                   <div>
                     <span className="subheader-feature-title text-gray-300">Safety Locks</span>
                     <p className="subheader-feature-desc">
-                      Auto-detected allergens can't be removed — only added to
+                      Ingredient-sourced allergens can't be removed — only added to
                     </p>
                   </div>
                 </div>
@@ -336,7 +312,6 @@ export const AllergenControl: React.FC<AllergenControlProps> = ({
                 </div>
               </div>
 
-              {/* Pro tip */}
               <div className="flex items-start gap-3 pt-2 border-t border-gray-700/50">
                 <div className="w-6 h-6 rounded-full bg-rose-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
                   <Shield className="w-3.5 h-3.5 text-rose-400" />
@@ -353,71 +328,56 @@ export const AllergenControl: React.FC<AllergenControlProps> = ({
         </div>
       </div>
       
-      {/* Two-Panel Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left: Auto-Detected */}
-        <AutoDetectedPanel 
-          autoDetected={autoDetected}
-          isLoading={isLoading}
-        />
+      {/* ================================================================== */}
+      {/* TWO-COLUMN LAYOUT                                                   */}
+      {/* LEFT: Workbench (discover, override, annotate)                      */}
+      {/* RIGHT: Declaration (read-only legal document)                       */}
+      {/* ================================================================== */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-0">
         
-        {/* Right: Declaration */}
-        <DeclarationPanel
-          allergensWithContext={allergensWithContext}
-          autoDetected={autoDetected}
-          manualOverrides={manualOverrides}
-          onAddManual={handleAddManual}
-          onRemoveManual={handleRemoveManual}
-          onPromote={handlePromote}
-          onUnpromote={handleUnpromote}
-          onUpdateNote={handleUpdateNote}
-        />
-      </div>
-      
-      {/* Cross-Contact Notes */}
-      <CrossContactNotes
-        notes={manualOverrides.crossContactNotes}
-        onChange={handleNotesChange}
-      />
-      
-      {/* L5 Floating Action Bar */}
-      {isDirty && (
-        <div className="floating-action-bar warning">
-          <div className="floating-action-bar-inner">
-            <div className="floating-action-bar-content">
-              <span className="text-amber-400 text-sm font-medium">
-                ⚠️ {changeCount} unsaved change{changeCount !== 1 ? 's' : ''}
-              </span>
-              
-              <button
-                onClick={handleResetToAuto}
-                className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-400 hover:text-white transition-colors"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                Reset to Auto
-              </button>
-              
-              <div className="h-6 w-px bg-gray-700" />
-              
-              <button
-                onClick={handleDiscard}
-                className="btn-ghost px-3 py-1.5"
-              >
-                <X className="w-4 h-4" />
-                <span className="text-sm">Discard</span>
-              </button>
-              
-              <button
-                onClick={handleSave}
-                className="btn-primary px-4 py-1.5"
-              >
-                <Save className="w-4 h-4" />
-                <span className="text-sm">Save Declaration</span>
-              </button>
-            </div>
-          </div>
+        {/* LEFT: Your Data — The Workbench */}
+        <div className="space-y-4 pr-6">
+          <AutoDetectedPanel 
+            autoDetected={autoDetected}
+            isLoading={isLoading}
+          />
+          
+          <ManualOverrides
+            manualOverrides={manualOverrides}
+            allergensWithContext={allergensWithContext}
+            onAddManual={handleAddManual}
+            onRemoveManual={handleRemoveManual}
+            onPromote={handlePromote}
+            onUnpromote={handleUnpromote}
+            onUpdateNote={handleUpdateNote}
+          />
+          
+          <CrossContactNotes
+            notes={manualOverrides.crossContactNotes}
+            onChange={handleNotesChange}
+          />
         </div>
-      )}
+        
+        {/* LEGAL BOUNDARY — The vertical wall */}
+        <div className="hidden lg:flex flex-col items-center py-4">
+          <div className="flex-1 w-px bg-gradient-to-b from-transparent via-gray-600 to-transparent" />
+          <div className="my-3 px-2 py-1.5 rounded bg-gray-800 border border-gray-700">
+            <Shield className="w-3.5 h-3.5 text-rose-400/60" />
+          </div>
+          <div className="flex-1 w-px bg-gradient-to-b from-transparent via-gray-600 to-transparent" />
+        </div>
+        
+        {/* RIGHT: The Legal Declaration — Faces the Customer */}
+        <div className="pl-6 lg:pl-6">
+          <DeclarationPanel
+            declaration={declaration}
+            allergensWithContext={allergensWithContext}
+            recipe={recipe}
+            hasUnsavedChanges={hasUnsavedChanges}
+            onConfirmDeclaration={onConfirmDeclaration}
+          />
+        </div>
+      </div>
     </div>
   );
 };

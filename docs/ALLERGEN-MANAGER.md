@@ -395,13 +395,20 @@ allergen_custom1_may_contain: boolean
 allergen_notes: text
 ```
 
-### recipes Table (Future)
+### recipes Table (Future) — Boolean Migration
+
+> **JSONB is being replaced.** See [ROADMAP-Allergen-Boolean-Migration.md](./roadmaps/ROADMAP-Allergen-Boolean-Migration.md)
+> for the full plan. Recipes will use the same boolean column pattern as MIL:
+> `allergen_{type}_contains`, `allergen_{type}_may_contain`, `allergen_{type}_environment`
+> (21 × 3 = 63 standard + 12 custom = 75 columns).
 
 ```sql
--- Allergen overrides (when recipe needs manual declaration)
-allergen_declarations: jsonb
-allergen_overrides: jsonb
-allergen_customer_notes: text
+-- Target schema (replacing allergenInfo JSONB)
+allergen_peanut_contains          BOOLEAN NOT NULL DEFAULT FALSE,
+allergen_peanut_may_contain       BOOLEAN NOT NULL DEFAULT FALSE,
+allergen_peanut_environment       BOOLEAN NOT NULL DEFAULT FALSE,
+-- ... (× 21 standard + 3 custom)
+allergen_customer_notes            TEXT
 ```
 
 ---

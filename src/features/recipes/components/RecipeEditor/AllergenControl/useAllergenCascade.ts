@@ -220,8 +220,8 @@ export function useAllergenCascade({
     }
     
     return {
-      contains: Array.from(containsSet),
-      mayContain: Array.from(mayContainSet),
+      contains: Array.from(containsSet).sort(),
+      mayContain: Array.from(mayContainSet).sort(),
       crossContactNotes: manualOverrides?.crossContactNotes || []
     };
   }, [autoDetected, manualOverrides]);

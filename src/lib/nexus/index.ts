@@ -46,6 +46,13 @@ export type ActivityType =
   | "recipe_updated"
   | "recipe_deleted"
   | "recipe_status_changed"
+  // Recipe versioning — MAJOR.MINOR.PATCH communication tiers
+  | "recipe_version_patch"
+  | "recipe_version_minor"
+  | "recipe_version_major"
+  // Allergen declaration lifecycle
+  | "recipe_allergen_declared"
+  | "recipe_allergen_changed"
   // Schedule activities
   | "schedule_uploaded"
   | "schedule_activated"
@@ -160,6 +167,13 @@ const ACTIVITY_TYPE_TO_CATEGORY: Record<ActivityType, ActivityCategory> = {
   recipe_updated: 'recipes',
   recipe_deleted: 'recipes',
   recipe_status_changed: 'recipes',
+  // Recipe versioning
+  recipe_version_patch: 'recipes',
+  recipe_version_minor: 'recipes',
+  recipe_version_major: 'recipes',
+  // Allergen declarations
+  recipe_allergen_declared: 'recipes',
+  recipe_allergen_changed: 'recipes',
   
   // Inventory
   inventory_updated: 'inventory',
@@ -312,6 +326,28 @@ const ACTIVITY_TOAST_CONFIG: Partial<Record<ActivityType, ToastConfig | null>> =
   recipe_deleted: { 
     message: (d) => `Recipe "${d.name || 'Untitled'}" deleted`,
     severity: 'warning'
+  },
+  // Recipe versioning — communication tiers
+  recipe_version_patch: {
+    message: (d) => `${d.name || 'Recipe'} v${d.version || '?'} — silent update`,
+    severity: 'info',
+  },
+  recipe_version_minor: {
+    message: (d) => `${d.name || 'Recipe'} v${d.version || '?'} — team notified`,
+    severity: 'warning',
+  },
+  recipe_version_major: {
+    message: (d) => `${d.name || 'Recipe'} v${d.version || '?'} — mandatory meeting required`,
+    severity: 'critical',
+  },
+  // Allergen declaration lifecycle
+  recipe_allergen_declared: {
+    message: (d) => `Allergen declaration confirmed for ${d.name || 'recipe'} v${d.version || '?'}`,
+    severity: 'info',
+  },
+  recipe_allergen_changed: {
+    message: (d) => `Allergen profile changed for ${d.name || 'recipe'}: ${d.summary || 'review required'}`,
+    severity: 'critical',
   },
   
   // Inventory

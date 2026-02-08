@@ -1,322 +1,300 @@
-import React, { useState } from 'react';
-import { Shield, Lock, Plus, X, ArrowUp, MessageSquare, ChevronDown } from 'lucide-react';
+import React from 'react';
+import { Shield, FileCheck, Clock, AlertTriangle, ChefHat, Scale } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 import { AllergenBadge } from '@/features/allergens/components/AllergenBadge';
 import { ALLERGENS } from '@/features/allergens/constants';
 import type { AllergenType } from '@/features/allergens/types';
-import type { AllergenWithContext, ManualAllergenOverrides, AutoDetectedAllergens } from './types';
+import type { AllergenDeclaration, AllergenWithContext } from './types';
+import type { Recipe } from '../../../types/recipe';
 
 interface DeclarationPanelProps {
+  /** The computed declaration (contains + mayContain + crossContactNotes) */
+  declaration: AllergenDeclaration;
+  /** Full context for each allergen (source, tier, notes) */
   allergensWithContext: AllergenWithContext[];
-  autoDetected: AutoDetectedAllergens;
-  manualOverrides: ManualAllergenOverrides;
-  onAddManual: (allergen: AllergenType, tier: 'contains' | 'mayContain', note?: string) => void;
-  onRemoveManual: (allergen: AllergenType) => void;
-  onPromote: (allergen: AllergenType) => void;
-  onUnpromote: (allergen: AllergenType) => void;
-  onUpdateNote: (allergen: AllergenType, note: string) => void;
+  /** The recipe being declared */
+  recipe: Recipe;
+  /** Whether the declaration has unsaved changes vs what's in the DB */
+  hasUnsavedChanges: boolean;
+  /** Called when operator confirms the declaration — triggers save */
+  onConfirmDeclaration?: () => void;
 }
 
 /**
- * Badge showing source type (AUTO locked, MANUAL removable, PROMOTED)
- */
-const SourceBadge: React.FC<{ source: 'auto' | 'manual' | 'promoted' }> = ({ source }) => {
-  switch (source) {
-    case 'auto':
-      return (
-        <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">
-          <Lock className="w-2.5 h-2.5" />
-          AUTO
-        </span>
-      );
-    case 'manual':
-      return (
-        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">
-          MANUAL
-        </span>
-      );
-    case 'promoted':
-      return (
-        <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">
-          <ArrowUp className="w-2.5 h-2.5" />
-          PROMOTED
-        </span>
-      );
-  }
-};
-
-/**
- * Single allergen row in the declaration
- */
-const AllergenRow: React.FC<{
-  item: AllergenWithContext;
-  canPromote: boolean;
-  onRemove?: () => void;
-  onPromote?: () => void;
-  onUnpromote?: () => void;
-  onUpdateNote?: (note: string) => void;
-}> = ({ item, canPromote, onRemove, onPromote, onUnpromote, onUpdateNote }) => {
-  const [showNote, setShowNote] = useState(false);
-  const [noteText, setNoteText] = useState(item.note || '');
-  
-  const isRemovable = item.source === 'manual';
-  const isPromotable = canPromote && item.source === 'auto' && item.tier === 'mayContain';
-  const isUnpromotable = item.source === 'promoted';
-  
-  return (
-    <div className="group flex items-center gap-3 p-2 rounded-lg hover:bg-gray-700/30 transition-colors">
-      <AllergenBadge type={item.type} size="sm" disableTooltip />
-      
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-white">{ALLERGENS[item.type]?.label || item.type}</span>
-          <SourceBadge source={item.source} />
-        </div>
-        
-        {item.note && !showNote && (
-          <p className="text-xs text-gray-400 mt-0.5 truncate">"{item.note}"</p>
-        )}
-      </div>
-      
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        {/* Promote button (may contain → contains) */}
-        {isPromotable && onPromote && (
-          <button
-            onClick={onPromote}
-            className="p-1.5 rounded hover:bg-emerald-500/20 text-gray-400 hover:text-emerald-400 transition-colors"
-            title="Promote to Contains"
-          >
-            <ArrowUp className="w-4 h-4" />
-          </button>
-        )}
-        
-        {/* Unpromote button */}
-        {isUnpromotable && onUnpromote && (
-          <button
-            onClick={onUnpromote}
-            className="p-1.5 rounded hover:bg-amber-500/20 text-gray-400 hover:text-amber-400 transition-colors"
-            title="Revert to May Contain"
-          >
-            <ArrowUp className="w-4 h-4 rotate-180" />
-          </button>
-        )}
-        
-        {/* Add/edit note button */}
-        {item.source === 'manual' && onUpdateNote && (
-          <button
-            onClick={() => setShowNote(!showNote)}
-            className="p-1.5 rounded hover:bg-blue-500/20 text-gray-400 hover:text-blue-400 transition-colors"
-            title="Add note"
-          >
-            <MessageSquare className="w-4 h-4" />
-          </button>
-        )}
-        
-        {/* Remove button (manual only) */}
-        {isRemovable && onRemove && (
-          <button
-            onClick={onRemove}
-            className="p-1.5 rounded hover:bg-rose-500/20 text-gray-400 hover:text-rose-400 transition-colors"
-            title="Remove"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        )}
-      </div>
-      
-      {/* Note editor */}
-      {showNote && item.source === 'manual' && (
-        <div className="absolute left-0 right-0 top-full mt-1 p-2 bg-gray-700 rounded-lg shadow-lg z-10">
-          <input
-            type="text"
-            value={noteText}
-            onChange={(e) => setNoteText(e.target.value)}
-            onBlur={() => {
-              onUpdateNote?.(noteText);
-              setShowNote(false);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                onUpdateNote?.(noteText);
-                setShowNote(false);
-              }
-            }}
-            placeholder="Add a note (e.g., 'Shared fryer')"
-            className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-white placeholder:text-gray-500"
-            autoFocus
-          />
-        </div>
-      )}
-    </div>
-  );
-};
-
-/**
- * Add Allergen Dropdown
- */
-const AddAllergenDropdown: React.FC<{
-  existingAllergens: Set<AllergenType>;
-  onAdd: (allergen: AllergenType, tier: 'contains' | 'mayContain') => void;
-}> = ({ existingAllergens, onAdd }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [selectedTier, setSelectedTier] = useState<'contains' | 'mayContain'>('contains');
-  
-  const availableAllergens = Object.keys(ALLERGENS).filter(
-    key => !existingAllergens.has(key as AllergenType)
-  ) as AllergenType[];
-  
-  if (availableAllergens.length === 0) return null;
-  
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-gray-600 text-gray-400 hover:border-primary-500 hover:text-primary-400 transition-colors w-full"
-      >
-        <Plus className="w-4 h-4" />
-        <span className="text-sm">Add manual allergen</span>
-        <ChevronDown className={`w-4 h-4 ml-auto transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
-      
-      {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-2 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-20 max-h-64 overflow-hidden">
-          {/* Tier selector */}
-          <div className="p-2 border-b border-gray-700 flex gap-2">
-            <button
-              onClick={() => setSelectedTier('contains')}
-              className={`flex-1 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                selectedTier === 'contains' 
-                  ? 'bg-rose-500/20 text-rose-400' 
-                  : 'text-gray-400 hover:bg-gray-700'
-              }`}
-            >
-              Contains
-            </button>
-            <button
-              onClick={() => setSelectedTier('mayContain')}
-              className={`flex-1 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                selectedTier === 'mayContain' 
-                  ? 'bg-amber-500/20 text-amber-400' 
-                  : 'text-gray-400 hover:bg-gray-700'
-              }`}
-            >
-              May Contain
-            </button>
-          </div>
-          
-          {/* Allergen list */}
-          <div className="max-h-48 overflow-y-auto p-2">
-            {availableAllergens.map(allergen => (
-              <button
-                key={allergen}
-                onClick={() => {
-                  onAdd(allergen, selectedTier);
-                  setIsOpen(false);
-                }}
-                className="w-full flex items-center gap-2 p-2 rounded hover:bg-gray-700 transition-colors"
-              >
-                <AllergenBadge type={allergen} size="sm" disableTooltip />
-                <span className="text-sm text-gray-300">{ALLERGENS[allergen]?.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-/**
- * Declaration Panel - Editable allergen declaration for the recipe
- * Right side of the two-panel layout
+ * =============================================================================
+ * DECLARATION PANEL — The Legal Bond
+ * =============================================================================
+ * This is NOT a data editor. This is the legal document that stands between
+ * the operator and their customers. It is the output of everything on the
+ * left side — a read-only representation of what will be declared.
+ * 
+ * CRITICAL LEGAL FRAMING:
+ * ChefLife is the conduit, NOT the source. The declaration states:
+ *   "The operator declares this information is accurate based on THEIR
+ *    ingredient data and THEIR professional knowledge."
+ * ChefLife presents. The operator declares. The customer relies.
+ * 
+ * IDENTITY: UUID only. No names, no emails. This prevents doxxing while
+ * maintaining cryptographic traceability through auth.uid(). The UUID can
+ * be resolved to a person through the organization's records if needed
+ * for legal proceedings — but it's never exposed in the UI.
+ *
+ * FUTURE (Auth Identity Bridge):
+ * When team members have linked auth accounts, declarations will be
+ * stored in recipe_allergen_declarations with full metadata: user_id,
+ * declared_at, recipe_version, ingredient_hash, ip_address.
+ * =============================================================================
  */
 export const DeclarationPanel: React.FC<DeclarationPanelProps> = ({
+  declaration,
   allergensWithContext,
-  autoDetected,
-  manualOverrides,
-  onAddManual,
-  onRemoveManual,
-  onPromote,
-  onUnpromote,
-  onUpdateNote
+  recipe,
+  hasUnsavedChanges,
+  onConfirmDeclaration,
 }) => {
-  // Split by tier
+  const { user, organization } = useAuth();
+  
   const containsAllergens = allergensWithContext.filter(a => a.tier === 'contains');
   const mayContainAllergens = allergensWithContext.filter(a => a.tier === 'mayContain');
+  const ingredientCount = recipe.ingredients?.length || 0;
   
-  // Get all existing allergens for the add dropdown
-  const existingAllergens = new Set<AllergenType>(allergensWithContext.map(a => a.type));
+  // Identity: UUID only — no names, no emails in the declaration
+  const userId = user?.id || 'unknown';
+  const userRole = user?.user_metadata?.role || 'operator';
+  const organizationName = organization?.name || '';
+
+  // Previous declaration state
+  const hasPreviousDeclaration = (recipe.allergenInfo?.contains?.length || 0) > 0 
+    || (recipe.allergenInfo?.mayContain?.length || 0) > 0;
+  const hasAnyAllergens = declaration.contains.length > 0 || declaration.mayContain.length > 0;
   
   return (
-    <div className="bg-gray-800/50 rounded-xl border border-gray-700">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-700">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-rose-500/20 flex items-center justify-center">
+    <div className="bg-gray-800/50 rounded-xl border border-gray-700 flex flex-col sticky top-4">
+      
+      {/* ================================================================
+       * DOCUMENT HEADER
+       * ================================================================ */}
+      <div className="p-5 border-b border-gray-700">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-lg bg-rose-500/20 flex items-center justify-center flex-shrink-0">
             <Shield className="w-5 h-5 text-rose-400" />
           </div>
-          <div>
-            <h3 className="text-base font-medium text-white">Recipe Declaration</h3>
-            <p className="text-xs text-gray-400">What customers see</p>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-base font-semibold text-white">Allergen Declaration</h3>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Legal record of allergen disclosure for this recipe
+            </p>
           </div>
+          
+          {/* Status indicator */}
+          {hasUnsavedChanges ? (
+            <span className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 flex-shrink-0">
+              <AlertTriangle className="w-3 h-3" />
+              Pending
+            </span>
+          ) : hasPreviousDeclaration ? (
+            <span className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex-shrink-0">
+              <FileCheck className="w-3 h-3" />
+              Declared
+            </span>
+          ) : hasAnyAllergens ? (
+            <span className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30 flex-shrink-0">
+              <AlertTriangle className="w-3 h-3" />
+              Undeclared
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      {/* ================================================================
+       * RECIPE IDENTITY BLOCK
+       * ================================================================ */}
+      <div className="px-5 py-3 border-b border-gray-700/50 bg-gray-800/30">
+        <div className="flex items-center gap-4 text-xs text-gray-400">
+          <span className="flex items-center gap-1.5">
+            <ChefHat className="w-3.5 h-3.5" />
+            <span className="text-gray-300 font-medium truncate max-w-[200px]">{recipe.name || 'Untitled Recipe'}</span>
+          </span>
+          <span className="text-gray-600">•</span>
+          <span>{ingredientCount} ingredient{ingredientCount !== 1 ? 's' : ''}</span>
+          {recipe.version && (
+            <>
+              <span className="text-gray-600">•</span>
+              <span>v{recipe.version}</span>
+            </>
+          )}
         </div>
       </div>
       
-      {/* Contains Section */}
-      <div className="p-4 border-b border-gray-700">
-        <h4 className="text-sm font-medium text-rose-400 mb-3 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-          CONTAINS ({containsAllergens.length})
-        </h4>
+      {/* ================================================================
+       * DECLARATION BODY — The Legal Statement
+       * ================================================================ */}
+      <div className="flex-1 p-5 space-y-5">
         
-        {containsAllergens.length === 0 ? (
-          <p className="text-sm text-gray-500 italic">No allergens declared</p>
-        ) : (
-          <div className="space-y-1">
-            {containsAllergens.map(item => (
-              <AllergenRow
-                key={item.type}
-                item={item}
-                canPromote={false}
-                onRemove={item.source === 'manual' ? () => onRemoveManual(item.type) : undefined}
-                onUpdateNote={item.source === 'manual' ? (note) => onUpdateNote(item.type, note) : undefined}
-              />
-            ))}
+        {!hasAnyAllergens ? (
+          /* No allergens in your data */
+          <div className="text-center py-8">
+            <Shield className="w-10 h-10 text-emerald-400/40 mx-auto mb-3" />
+            <p className="text-sm text-gray-300 font-medium">No allergens in your data</p>
+            <p className="text-xs text-gray-500 mt-1">
+              Based on {ingredientCount} ingredient{ingredientCount !== 1 ? 's' : ''} in this recipe
+            </p>
           </div>
+        ) : (
+          <>
+            {/* CONTAINS statement */}
+            {declaration.contains.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                  <h4 className="text-xs font-semibold text-rose-400 uppercase tracking-wider">
+                    This recipe contains
+                  </h4>
+                </div>
+                <div className="pl-4 border-l-2 border-rose-500/30">
+                  <div className="flex flex-wrap gap-2">
+                    {containsAllergens.map(item => (
+                      <div
+                        key={item.type}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-rose-500/10 border border-rose-500/20"
+                      >
+                        <AllergenBadge type={item.type} size="sm" disableTooltip />
+                        <span className="text-sm text-rose-200 font-medium">
+                          {ALLERGENS[item.type]?.label || item.type}
+                        </span>
+                        {item.source === 'manual' && (
+                          <span className="text-[9px] px-1 py-0.5 rounded bg-amber-500/20 text-amber-400 uppercase">
+                            manual
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* MAY CONTAIN statement */}
+            {declaration.mayContain.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                  <h4 className="text-xs font-semibold text-amber-400 uppercase tracking-wider">
+                    This recipe may contain
+                  </h4>
+                </div>
+                <div className="pl-4 border-l-2 border-amber-500/30">
+                  <div className="flex flex-wrap gap-2">
+                    {mayContainAllergens.map(item => (
+                      <div
+                        key={item.type}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20"
+                      >
+                        <AllergenBadge type={item.type} size="sm" disableTooltip />
+                        <span className="text-sm text-amber-200 font-medium">
+                          {ALLERGENS[item.type]?.label || item.type}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Cross-contact notes */}
+            {declaration.crossContactNotes.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+                  <h4 className="text-xs font-semibold text-orange-400 uppercase tracking-wider">
+                    Cross-contact risks
+                  </h4>
+                </div>
+                <div className="pl-4 border-l-2 border-orange-500/30 space-y-1.5">
+                  {declaration.crossContactNotes.map((note, idx) => (
+                    <p key={idx} className="text-sm text-gray-300">{note}</p>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
       
-      {/* May Contain Section */}
-      <div className="p-4 border-b border-gray-700">
-        <h4 className="text-sm font-medium text-amber-400 mb-3 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-          MAY CONTAIN ({mayContainAllergens.length})
-        </h4>
+      {/* ================================================================
+       * LEGAL BOUNDARY — Indemnity & Identity
+       * ================================================================ */}
+      <div className="p-5 border-t border-gray-700 bg-gray-800/30 rounded-b-xl space-y-4">
         
-        {mayContainAllergens.length === 0 ? (
-          <p className="text-sm text-gray-500 italic">No potential allergens</p>
-        ) : (
-          <div className="space-y-1">
-            {mayContainAllergens.map(item => (
-              <AllergenRow
-                key={item.type}
-                item={item}
-                canPromote={true}
-                onRemove={item.source === 'manual' ? () => onRemoveManual(item.type) : undefined}
-                onPromote={item.source === 'auto' ? () => onPromote(item.type) : undefined}
-                onUnpromote={item.source === 'promoted' ? () => onUnpromote(item.type) : undefined}
-                onUpdateNote={item.source === 'manual' ? (note) => onUpdateNote(item.type, note) : undefined}
-              />
-            ))}
+        {/* Declarant identity — UUID + timestamp, no avatar */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="min-w-0">
+              <p className="text-[11px] font-mono text-gray-400 truncate" title={userId}>
+                {userId}
+              </p>
+              <p className="text-xs text-gray-500">
+                {userRole}{organizationName ? ` · ${organizationName}` : ''}
+              </p>
+            </div>
+          </div>
+          
+          {/* Declaration timestamp */}
+          <div className="flex items-center gap-1.5">
+            <Clock className="w-3 h-3 text-gray-500 flex-shrink-0" />
+            {hasPreviousDeclaration && !hasUnsavedChanges ? (
+              <span className="text-xs text-gray-400">
+                Declared {recipe.updated_at 
+                  ? new Date(recipe.updated_at).toLocaleDateString('en-US', { 
+                      year: 'numeric', month: 'short', day: 'numeric',
+                      hour: 'numeric', minute: '2-digit'
+                    })
+                  : 'date unknown'}
+              </span>
+            ) : hasUnsavedChanges ? (
+              <span className="text-xs text-amber-400">Awaiting save</span>
+            ) : (
+              <span className="text-xs text-gray-500">No declaration on record</span>
+            )}
+          </div>
+        </div>
+        
+        {/* Confirm Declaration Button */}
+        {hasUnsavedChanges && onConfirmDeclaration && (
+          <div className="pt-3 border-t border-gray-700/50">
+            <button
+              type="button"
+              onClick={onConfirmDeclaration}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 
+                         bg-rose-500/20 hover:bg-rose-500/30 
+                         border border-rose-500/40 hover:border-rose-500/60 
+                         rounded-xl text-sm font-semibold text-rose-300 
+                         transition-all duration-200"
+            >
+              <FileCheck className="w-4 h-4" />
+              Confirm Declaration & Save
+            </button>
+            <p className="text-[10px] text-gray-500 text-center mt-2">
+              By confirming, you accept responsibility for this allergen disclosure
+            </p>
           </div>
         )}
-      </div>
-      
-      {/* Add Manual Allergen */}
-      <div className="p-4">
-        <AddAllergenDropdown
-          existingAllergens={existingAllergens}
-          onAdd={onAddManual}
-        />
+
+        {/* Legal indemnity notice */}
+        <div className="pt-3 border-t border-gray-700/50">
+          <div className="flex items-start gap-2">
+            <Scale className="w-3.5 h-3.5 text-gray-500 mt-0.5 flex-shrink-0" />
+            <p className="text-[10px] text-gray-500 leading-relaxed">
+              <span className="text-gray-400 font-medium">Operator Declaration:</span>{' '}
+              By saving this recipe, the above user declares that the allergen 
+              information is accurate to the best of their knowledge based on 
+              their own ingredient data, supplier disclosures, and professional 
+              assessment. ChefLife presents the operator's data as entered — 
+              the accuracy and completeness of allergen declarations remains 
+              the sole responsibility of the declaring operator and their organization.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );

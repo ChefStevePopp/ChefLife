@@ -252,7 +252,7 @@ export const ATTENDANCE_EVENTS: ModuleEventCategory = {
 export const RECIPES_EVENTS: ModuleEventCategory = {
   moduleId: 'recipes',
   label: 'Recipes',
-  description: 'Recipe management events',
+  description: 'Recipe management and allergen declaration events',
   icon: 'ChefHat',
   color: 'green',
   events: [
@@ -284,6 +284,52 @@ export const RECIPES_EVENTS: ModuleEventCategory = {
       description: 'When recipe status changes (draft, active, archived)',
       defaultChannels: ['in_app'],
       defaultAudience: 4, // Delta+
+    },
+    // -----------------------------------------------------------------------
+    // VERSIONING — MAJOR.MINOR.PATCH Communication Tiers
+    // Patch=trust management (silent), Minor=broadcast, Major=mandatory meeting
+    // -----------------------------------------------------------------------
+    {
+      id: 'recipe_version_patch',
+      label: 'Recipe Patch Update',
+      description: 'Silent update — typo fix, formatting, documentation',
+      defaultChannels: ['in_app'],
+      defaultAudience: 3, // Charlie+ (supervisors see it, team doesn\'t)
+    },
+    {
+      id: 'recipe_version_minor',
+      label: 'Recipe Minor Update',
+      description: 'Broadcast review — team should read when they get a minute',
+      defaultChannels: ['in_app', 'email'],
+      defaultAudience: 5, // Echo (everyone)
+      severity: 'warning',
+    },
+    {
+      id: 'recipe_version_major',
+      label: 'Recipe Major Update',
+      description: 'Mandatory meeting + re-acknowledgment — everyone reads, everyone signs',
+      defaultChannels: ['in_app', 'email', 'sms'],
+      defaultAudience: 5, // Echo (everyone)
+      severity: 'critical',
+    },
+    // -----------------------------------------------------------------------
+    // ALLERGEN DECLARATION LIFECYCLE
+    // -----------------------------------------------------------------------
+    {
+      id: 'recipe_allergen_declared',
+      label: 'Allergen Declaration Confirmed',
+      description: 'When an operator explicitly confirms an allergen declaration',
+      defaultChannels: ['in_app'],
+      defaultAudience: 3, // Charlie+
+    },
+    {
+      id: 'recipe_allergen_changed',
+      label: 'Allergen Profile Changed',
+      description: 'When a recipe\'s allergen CONTAINS or MAY CONTAIN list changes',
+      defaultChannels: ['in_app', 'email'],
+      defaultAudience: 4, // Delta+
+      severity: 'critical',
+      notifyAffectedPerson: true,
     },
   ],
 };

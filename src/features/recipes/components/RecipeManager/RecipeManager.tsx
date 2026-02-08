@@ -19,7 +19,7 @@ import { useRecipeStore } from "@/features/recipes/stores/recipeStore";
 import { useFoodRelationshipsStore } from "@/stores/foodRelationshipsStore";
 import { useRecipeNavigationStore } from "@/stores/recipeNavigationStore";
 import { getLucideIcon } from "@/utils/iconMapping";
-import RecipeCard from "../RecipeCard";
+import { RecipeCardL5 as RecipeCard } from "../RecipeCard/RecipeCardL5";
 import type { Recipe } from "../../types/recipe";
 import { useSupabase } from "@/context/SupabaseContext";
 import { useDebounce } from "@/shared/hooks/useDebounce";
