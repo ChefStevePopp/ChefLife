@@ -14,6 +14,7 @@ import React, { useState, useMemo } from "react";
 import { usePerformanceStore } from "@/stores/performanceStore";
 import { useTeamStore } from "@/stores/teamStore";
 import { useAuth } from "@/hooks/useAuth";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import { supabase } from "@/lib/supabase";
 import { SECURITY_LEVELS } from "@/config/security";
 import toast from "react-hot-toast";
@@ -40,6 +41,8 @@ import {
   X,
   Mail,
   Loader2,
+  Thermometer,
+  Palmtree,
 } from "lucide-react";
 
 // =============================================================================
@@ -65,7 +68,7 @@ interface PersonalDigest {
   coachingStage: number | null;
   mvpContributions: number;
   seniority: number; // years
-  sicKDaysUsed: number;
+  sickDaysUsed: number;
   sickDaysRemaining: number;
   vacationHoursTotal: number;
   vacationHoursUsed: number;
@@ -137,6 +140,7 @@ interface ReportsTabProps {
 }
 
 export const ReportsTab: React.FC<ReportsTabProps> = ({ selectedCycleId }) => {
+  const { showDiagnostics } = useDiagnostics();
   const { user, securityLevel, organizationId } = useAuth();
   const { teamPerformance, currentCycle, cycles, config } = usePerformanceStore();
   const { members } = useTeamStore();
@@ -305,6 +309,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ selectedCycleId }) => {
 
   return (
     <div className="space-y-6">
+      {showDiagnostics && <div className="text-xs text-gray-500 font-mono">src/features/team/components/TeamPerformance/components/ReportsTab.tsx</div>}
       {/* Expandable Info Section */}
       <div className="expandable-info-section">
         <button
@@ -644,6 +649,41 @@ const PersonalDigestPreview: React.FC<PersonalDigestPreviewProps> = ({
   weekOf,
   config,
 }) => {
+  // Calculate real stats from member performance data
+  const stats = useMemo(() => {
+    if (!memberPerf) return null;
+
+    const events = memberPerf.events || [];
+    const { weekStart, weekEnd } = getWeekDates();
+
+    // Points this week (events within the week range)
+    const weekEvents = events.filter(e => e.event_date >= weekStart && e.event_date <= weekEnd);
+    const pointsThisWeek = weekEvents.reduce((sum, e) => sum + (e.points || 0), 0);
+
+    // MVP contributions this cycle (reductions = team assists)
+    const reductions = events.filter(e => 'reduction_type' in e);
+    const mvpCount = reductions.length;
+
+    // Sick day balances
+    const sickUsed = memberPerf.time_off?.sick_days_used ?? 0;
+    const sickAvailable = memberPerf.time_off?.sick_days_available ?? 3;
+    const sickRemaining = Math.max(0, sickAvailable - sickUsed);
+
+    // Vacation balances
+    const vacationUsed = memberPerf.time_off?.vacation_hours_used ?? 0;
+    const vacationAvailable = memberPerf.time_off?.vacation_hours_available ?? 0;
+
+    return {
+      pointsThisWeek,
+      mvpCount,
+      sickUsed,
+      sickAvailable,
+      sickRemaining,
+      vacationUsed,
+      vacationAvailable,
+    };
+  }, [memberPerf]);
+
   if (!memberPerf) {
     return (
       <div className="bg-gray-800/30 rounded-lg border border-gray-700/30 p-8 text-center">
@@ -702,7 +742,7 @@ const PersonalDigestPreview: React.FC<PersonalDigestPreviewProps> = ({
               <Award className="w-4 h-4 text-amber-400" />
               <span className="text-xs text-gray-500 uppercase tracking-wide">Points This Week</span>
             </div>
-            <p className="text-3xl font-bold text-white">0</p>
+            <p className={`text-3xl font-bold ${(stats?.pointsThisWeek ?? 0) === 0 ? 'text-emerald-400' : 'text-amber-400'}`}>{stats?.pointsThisWeek ?? 0}</p>
             <p className="text-xs text-gray-500">points</p>
           </div>
 
@@ -727,34 +767,95 @@ const PersonalDigestPreview: React.FC<PersonalDigestPreviewProps> = ({
           </div>
         </div>
 
-        {/* Attendance Row */}
+        {/* Time-Off Balances Row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="p-4 bg-gray-800/40 rounded-lg border border-gray-700/30">
+          {/* Sick Day Balance */}
+          <div className={`p-4 rounded-lg border ${
+            (stats?.sickRemaining ?? 3) === 0
+              ? 'bg-rose-500/10 border-rose-500/30'
+              : (stats?.sickUsed ?? 0) > 0
+                ? 'bg-amber-500/10 border-amber-500/30'
+                : 'bg-gray-800/40 border-gray-700/30'
+          }`}>
             <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-medium text-gray-300">This Week</span>
-              <span className="text-xs text-gray-500">Attendance</span>
+              <div className="flex items-center gap-2">
+                <Thermometer className={`w-4 h-4 ${
+                  (stats?.sickRemaining ?? 3) === 0 ? 'text-rose-400' :
+                  (stats?.sickUsed ?? 0) > 0 ? 'text-amber-400' : 'text-gray-400'
+                }`} />
+                <span className="text-sm font-medium text-gray-300">ESA Sick Days</span>
+              </div>
+              <span className="text-xs text-gray-500">Calendar Year</span>
             </div>
-            <p className="text-4xl font-bold text-white">100.0%</p>
+            <div className="flex items-baseline gap-2">
+              <p className={`text-3xl font-bold ${
+                (stats?.sickRemaining ?? 3) === 0 ? 'text-rose-400' :
+                (stats?.sickUsed ?? 0) > 0 ? 'text-amber-400' : 'text-emerald-400'
+              }`}>
+                {stats?.sickRemaining ?? 3}
+              </p>
+              <p className="text-sm text-gray-500">remaining of {stats?.sickAvailable ?? 3}</p>
+            </div>
+            {(stats?.sickUsed ?? 0) > 0 && (
+              <p className="text-xs text-gray-500 mt-1">{stats?.sickUsed} day{(stats?.sickUsed ?? 0) !== 1 ? 's' : ''} used this period</p>
+            )}
+            {(stats?.sickRemaining ?? 3) === 0 && (
+              <p className="text-xs text-rose-400 mt-2">
+                ESA allotment exhausted. Additional sick days may not be protected.
+              </p>
+            )}
           </div>
-          
-          <div className="p-4 bg-gray-800/40 rounded-lg border border-gray-700/30">
+
+          {/* Vacation Balance */}
+          <div className={`p-4 rounded-lg border ${
+            (stats?.vacationUsed ?? 0) > 0
+              ? 'bg-sky-500/10 border-sky-500/30'
+              : 'bg-gray-800/40 border-gray-700/30'
+          }`}>
             <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-medium text-gray-300">Year to Date</span>
-              <span className="text-xs text-gray-500">Attendance</span>
+              <div className="flex items-center gap-2">
+                <Palmtree className={`w-4 h-4 ${
+                  (stats?.vacationUsed ?? 0) > 0 ? 'text-sky-400' : 'text-gray-400'
+                }`} />
+                <span className="text-sm font-medium text-gray-300">Vacation</span>
+              </div>
+              <span className="text-xs text-gray-500">Hours Used</span>
             </div>
-            <p className="text-4xl font-bold text-white">98.5%</p>
+            <div className="flex items-baseline gap-2">
+              <p className={`text-3xl font-bold ${
+                (stats?.vacationUsed ?? 0) > 0 ? 'text-sky-400' : 'text-gray-400'
+              }`}>
+                {stats?.vacationUsed ?? 0}h
+              </p>
+              {(stats?.vacationAvailable ?? 0) > 0 && (
+                <p className="text-sm text-gray-500">of {stats?.vacationAvailable}h available</p>
+              )}
+            </div>
+            {(stats?.vacationAvailable ?? 0) === 0 && (
+              <p className="text-xs text-gray-500 mt-1">Vacation accrual tracking coming in Phase 2</p>
+            )}
           </div>
         </div>
 
         {/* MVP Contributions */}
-        <div className="p-4 bg-lime-500/10 rounded-lg border border-lime-500/30">
+        <div className={`p-4 rounded-lg border ${
+          (stats?.mvpCount ?? 0) > 0
+            ? 'bg-lime-500/10 border-lime-500/30'
+            : 'bg-gray-800/40 border-gray-700/30'
+        }`}>
           <div className="flex items-center gap-2 mb-2">
-            <Sparkles className="w-5 h-5 text-lime-400" />
-            <span className="text-sm font-medium text-lime-300">Team MVP Contributions</span>
+            <Sparkles className={`w-5 h-5 ${(stats?.mvpCount ?? 0) > 0 ? 'text-lime-400' : 'text-gray-500'}`} />
+            <span className={`text-sm font-medium ${(stats?.mvpCount ?? 0) > 0 ? 'text-lime-300' : 'text-gray-400'}`}>Team MVP Contributions</span>
           </div>
-          <p className="text-sm text-gray-300">
-            🤝 Thanks for helping the team out <strong className="text-white">0 times</strong> so far this cycle
-          </p>
+          {(stats?.mvpCount ?? 0) > 0 ? (
+            <p className="text-sm text-gray-300">
+              🤝 Thanks for helping the team out <strong className="text-white">{stats?.mvpCount} time{(stats?.mvpCount ?? 0) !== 1 ? 's' : ''}</strong> so far this cycle — that's the kind of leadership that lifts everyone up.
+            </p>
+          ) : (
+            <p className="text-sm text-gray-400">
+              No point reductions earned yet this cycle. Cover a shift, stay late, or mentor a teammate to earn MVP credit.
+            </p>
+          )}
         </div>
 
         {/* Being Present Section */}

@@ -3,6 +3,7 @@ import { AlertTriangle } from "lucide-react";
 import { AllergenBadge } from "@/features/allergens/components/AllergenBadge";
 import { useDiagnostics } from "@/hooks/useDiagnostics";
 import type { Recipe } from "../../../types/recipe";
+import { getRecipeAllergenBooleans } from '@/features/allergens/utils';
 
 interface AllergensProps {
   recipe: Recipe;
@@ -11,22 +12,13 @@ interface AllergensProps {
 export const Allergens: React.FC<AllergensProps> = ({ recipe }) => {
   const { showDiagnostics } = useDiagnostics();
   
-  // Check for allergens in the allergenInfo field (case sensitive)
-  const allergenData = recipe.allergenInfo || {};
-
-  // Log the recipe data to help with debugging
-  console.log("Recipe data in Allergens component:", recipe);
-  console.log("Allergen data being used:", allergenData);
-
-  // Extract allergen arrays with fallbacks
-  const containsAllergens = Array.isArray(allergenData.contains)
-    ? allergenData.contains
-    : [];
-  const mayContainAllergens = Array.isArray(allergenData.mayContain)
-    ? allergenData.mayContain
-    : [];
-  const crossContactAllergens = Array.isArray(allergenData.crossContactRisk)
-    ? allergenData.crossContactRisk
+  // Read from boolean columns (Phase 3) — the new source of truth
+  const booleans = getRecipeAllergenBooleans(recipe);
+  const containsAllergens = booleans.contains;
+  const mayContainAllergens = booleans.mayContain;
+  // Cross-contact notes remain in allergenInfo (text notes, no boolean equivalent)
+  const crossContactAllergens = Array.isArray(recipe.allergenInfo?.crossContactRisk)
+    ? recipe.allergenInfo.crossContactRisk
     : [];
 
   // Check if we have any allergen data at all

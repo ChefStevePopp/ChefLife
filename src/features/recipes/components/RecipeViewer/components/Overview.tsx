@@ -11,6 +11,7 @@ import {
 import { AllergenBadge } from "@/features/allergens/components/AllergenBadge";
 import { useDiagnostics } from "@/hooks/useDiagnostics";
 import type { Recipe } from "../../../types/recipe";
+import { getRecipeAllergenBooleans } from '@/features/allergens/utils';
 
 /**
  * =============================================================================
@@ -95,16 +96,13 @@ const ViewerCard: React.FC<ViewerCardProps> = ({
 export const Overview: React.FC<OverviewProps> = ({ recipe }) => {
   const { showDiagnostics } = useDiagnostics();
 
-  // Extract allergen data - SAME LOGIC AS ALLERGENS TAB
-  const allergenData = recipe.allergenInfo || {};
-  const containsAllergens = Array.isArray(allergenData.contains)
-    ? allergenData.contains
-    : [];
-  const mayContainAllergens = Array.isArray(allergenData.mayContain)
-    ? allergenData.mayContain
-    : [];
-  const crossContactAllergens = Array.isArray(allergenData.crossContactRisk)
-    ? allergenData.crossContactRisk
+  // Read from boolean columns (Phase 3) — the new source of truth
+  const booleans = getRecipeAllergenBooleans(recipe);
+  const containsAllergens = booleans.contains;
+  const mayContainAllergens = booleans.mayContain;
+  // Cross-contact notes remain in allergenInfo (text notes, no boolean equivalent)
+  const crossContactAllergens = Array.isArray(recipe.allergenInfo?.crossContactRisk)
+    ? recipe.allergenInfo.crossContactRisk
     : [];
   const hasAllergens =
     containsAllergens.length > 0 ||

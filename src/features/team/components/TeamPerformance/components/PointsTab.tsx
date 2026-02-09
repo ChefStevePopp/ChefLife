@@ -1,14 +1,16 @@
 /**
- * PointsTab - Points Management & Team Ledger
+ * PointsTab - Points Management, Team Ledger & Gap Audit
  * 
- * L5 Design: Two view modes:
+ * L5 Design: Three view modes:
  * - By Member: Card grid, click to expand individual ledger
  * - Team Ledger: Chronological feed of ALL events across team
+ * - Gap Audit: Scheduled-vs-worked shift gap resolution (Alpha/Omega only)
  */
 
 import React, { useState, useMemo } from "react";
 import { usePerformanceStore } from "@/stores/performanceStore";
 import { useAuth } from "@/hooks/useAuth";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import { supabase } from "@/lib/supabase";
 import { nexus } from "@/lib/nexus";
 import { formatDateForDisplay, formatDateShort, formatDateLong } from "@/utils/dateUtils";
@@ -33,15 +35,20 @@ import {
   Users,
   List,
   Calendar,
+  CalendarCheck,
   Filter,
   Download,
   TrendingUp,
   TrendingDown,
+  Thermometer,
+  Palmtree,
 } from "lucide-react";
 import { AddPointEventModal } from "./AddPointEventModal";
 import { AddPointReductionModal } from "./AddPointReductionModal";
 import { ActionLegend } from "./ActionLegend";
 import type { TeamMemberPerformance, PointEvent, PointReduction } from "@/features/team/types";
+import { GapScannerTab } from "./GapScannerTab";
+import { SECURITY_LEVELS } from "@/config/security";
 
 // =============================================================================
 // CONSTANTS
@@ -106,13 +113,14 @@ const EXCUSE_OPTIONS = [
 const MANAGER_SECURITY_LEVELS = [0, 1, 2, 3];
 
 // View mode type
-type ViewMode = 'by_member' | 'team_ledger';
+type ViewMode = 'by_member' | 'team_ledger' | 'gap_audit';
 
 // =============================================================================
 // MAIN COMPONENT
 // =============================================================================
 
 export const PointsTab: React.FC = () => {
+  const { showDiagnostics } = useDiagnostics();
   const { 
     teamPerformance, 
     config, 
@@ -229,6 +237,56 @@ export const PointsTab: React.FC = () => {
   const reductionsUsed = selectedMemberId ? Math.abs(getReductionsInLast30Days(selectedMemberId)) : 0;
   const reductionsRemaining = config.max_reduction_per_30_days - reductionsUsed;
 
+  // Absence types that count against attendance
+  const ABSENCE_EVENT_TYPES = ['no_call_no_show', 'dropped_shift_no_coverage', 'unexcused_absence'];
+
+  // Calculate attendance metrics for selected member
+  const attendanceMetrics = useMemo(() => {
+    if (!selectedMember) return { absenceCount: 0, sickDays: 0, totalMissed: 0 };
+    
+    const absenceCount = selectedMember.events.filter(e => 
+      'event_type' in e && ABSENCE_EVENT_TYPES.includes(e.event_type)
+    ).length;
+    const sickDays = selectedMember.time_off?.sick_days_used ?? 0;
+    const totalMissed = absenceCount + sickDays;
+    
+    return { absenceCount, sickDays, totalMissed };
+  }, [selectedMember]);
+
+  // Build interleaved ledger: point events + sick day entries
+  const interleavedLedger = useMemo(() => {
+    if (!selectedMember) return [];
+
+    // Start with real point events/reductions
+    const entries: Array<{
+      type: 'event' | 'reduction' | 'sick_day';
+      id: string;
+      event_date: string;
+      data: any;
+    }> = selectedMember.events.map(e => ({
+      type: 'reduction_type' in e ? 'reduction' : 'event',
+      id: e.id,
+      event_date: e.event_date,
+      data: e,
+    }));
+
+    // Add sick day entries from time_off dates
+    const sickDayDates = selectedMember.time_off?.sick_day_dates || [];
+    sickDayDates.forEach((date, idx) => {
+      entries.push({
+        type: 'sick_day',
+        id: `sick-${date}-${idx}`,
+        event_date: date,
+        data: { event_date: date },
+      });
+    });
+
+    // Sort by date ascending (oldest first), then reversed for display
+    entries.sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime());
+
+    return entries;
+  }, [selectedMember]);
+
   // Detect duplicate entries (same type + same date)
   const duplicateKeys = useMemo(() => {
     if (!selectedMember?.events) return new Set<string>();
@@ -269,6 +327,7 @@ export const PointsTab: React.FC = () => {
       points: number;
       notes?: string;
       isReduction: boolean;
+      isSickDay: boolean;
       runningBalance: number;
       createdAt?: string;
     }> = [];
@@ -293,8 +352,29 @@ export const PointsTab: React.FC = () => {
           points: entry.points,
           notes: entry.notes,
           isReduction,
+          isSickDay: false,
           runningBalance: (entry as any).running_balance || 0,
           createdAt: entry.created_at,
+        });
+      });
+
+      // Add sick day entries from time_off
+      member.time_off?.sick_day_dates?.forEach((date, idx) => {
+        entries.push({
+          id: `sick-${member.team_member_id}-${date}-${idx}`,
+          memberId: member.team_member_id,
+          memberName,
+          memberAvatar: member.team_member.avatar_url,
+          memberTier: member.tier,
+          eventDate: date,
+          eventType: 'sick_day',
+          eventLabel: 'ESA Sick Day',
+          points: 0,
+          notes: 'Protected under Ontario ESA',
+          isReduction: false,
+          isSickDay: true,
+          runningBalance: 0,
+          createdAt: undefined,
         });
       });
     });
@@ -541,6 +621,7 @@ export const PointsTab: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {showDiagnostics && <div className="text-xs text-gray-500 font-mono">src/features/team/components/TeamPerformance/components/PointsTab.tsx</div>}
       {/* Help Legend */}
       <ActionLegend context="points" />
 
@@ -576,6 +657,22 @@ export const PointsTab: React.FC = () => {
             <List className="w-4 h-4" />
             Team Ledger
           </button>
+          {/* Gap Audit — Alpha/Omega only */}
+          {(securityLevel === SECURITY_LEVELS.OMEGA || securityLevel === SECURITY_LEVELS.ALPHA) && (
+            <button
+              onClick={() => setViewMode('gap_audit')}
+              className={`
+                flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all
+                ${viewMode === 'gap_audit'
+                  ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                  : 'text-gray-400 hover:text-gray-300 border border-transparent'
+                }
+              `}
+            >
+              <Search className="w-4 h-4" />
+              Gap Audit
+            </button>
+          )}
         </div>
 
         {/* Cycle indicator */}
@@ -782,8 +879,74 @@ export const PointsTab: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Action Buttons */}
+                {/* Attendance + Time Off Pills + Action Buttons */}
                 <div className="flex items-center gap-2">
+                  {/* Attendance Pill */}
+                  <div
+                    className={`
+                      flex items-center gap-1.5 px-2.5 py-1.5 rounded-full
+                      border transition-all duration-200
+                      ${attendanceMetrics.absenceCount === 0
+                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                        : attendanceMetrics.absenceCount <= 2
+                          ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                          : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+                      }
+                    `}
+                    title={`Attendance: ${attendanceMetrics.absenceCount} unexcused absence(s) this cycle`}
+                  >
+                    <CalendarCheck className="w-3.5 h-3.5" />
+                    <span className="text-xs font-medium">
+                      {attendanceMetrics.absenceCount === 0
+                        ? 'No absences'
+                        : `${attendanceMetrics.absenceCount} absence${attendanceMetrics.absenceCount !== 1 ? 's' : ''}`
+                      }
+                    </span>
+                  </div>
+
+                  {/* Sick Day Pill */}
+                  <div
+                    className={`
+                      flex items-center gap-1.5 px-2.5 py-1.5 rounded-full
+                      border transition-all duration-200
+                      ${selectedMember?.time_off && selectedMember.time_off.sick_days_used >= selectedMember.time_off.sick_days_available
+                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+                        : selectedMember?.time_off && selectedMember.time_off.sick_days_used > 0
+                          ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                          : 'bg-gray-700/30 border-gray-600/30 text-gray-400'
+                      }
+                    `}
+                    title={`ESA Sick Days: ${selectedMember?.time_off?.sick_days_used ?? 0} of ${selectedMember?.time_off?.sick_days_available ?? 3} used`}
+                  >
+                    <Thermometer className="w-3.5 h-3.5" />
+                    <span className="text-xs font-medium">
+                      {selectedMember?.time_off?.sick_days_used ?? 0}/{selectedMember?.time_off?.sick_days_available ?? 3} sick
+                    </span>
+                  </div>
+
+                  {/* Vacation Pill */}
+                  <div
+                    className={`
+                      flex items-center gap-1.5 px-2.5 py-1.5 rounded-full
+                      border transition-all duration-200
+                      ${selectedMember?.time_off && (selectedMember.time_off.vacation_hours_used || 0) >= (selectedMember.time_off.vacation_hours_available || 1)
+                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+                        : selectedMember?.time_off && (selectedMember.time_off.vacation_hours_used || 0) > 0
+                          ? 'bg-sky-500/10 border-sky-500/30 text-sky-400'
+                          : 'bg-gray-700/30 border-gray-600/30 text-gray-400'
+                      }
+                    `}
+                    title={`Vacation: ${selectedMember?.time_off?.vacation_hours_used ?? 0}h of ${selectedMember?.time_off?.vacation_hours_available ?? 0}h used`}
+                  >
+                    <Palmtree className="w-3.5 h-3.5" />
+                    <span className="text-xs font-medium">
+                      {selectedMember?.time_off?.vacation_hours_used ?? 0}h vacation
+                    </span>
+                  </div>
+
+                  <div className="w-px h-6 bg-gray-700/50" />
+
+                  {/* Action Buttons */}
                   <button
                     onClick={() => setShowAddReductionModal(true)}
                     className="btn-ghost text-sm"
@@ -834,17 +997,47 @@ export const PointsTab: React.FC = () => {
                   )}
                 </div>
                 
-                {selectedMember?.events && selectedMember.events.length > 0 ? (
+                {interleavedLedger.length > 0 ? (
                   <div className="divide-y divide-gray-700/30">
-                    {[...selectedMember.events].reverse().map((entry, idx) => {
-                      const isReduction = 'reduction_type' in entry;
+                    {[...interleavedLedger].reverse().map((item) => {
+                      // Sick day row — informational, no points
+                      if (item.type === 'sick_day') {
+                        return (
+                          <div
+                            key={item.id}
+                            className="flex items-center justify-between px-4 py-3 hover:bg-gray-800/50"
+                          >
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-amber-500/20">
+                                <Thermometer className="w-4 h-4 text-amber-400" />
+                              </div>
+                              <div className="min-w-0">
+                                <span className="text-sm text-amber-300">ESA Sick Day</span>
+                                <div className="flex items-center gap-2 text-xs text-gray-500">
+                                  <Clock className="w-3 h-3" />
+                                  {formatDateForDisplay(item.event_date)}
+                                  <span>• Protected under Ontario ESA</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 ml-3">
+                              <span className="text-sm font-medium text-amber-400/60">—</span>
+                              <span className="text-xs text-gray-600 italic">No points</span>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // Regular point event or reduction
+                      const entry = item.data;
+                      const isReduction = item.type === 'reduction';
                       const eventType = isReduction ? entry.reduction_type : entry.event_type;
                       const dupeKey = `${eventType}|${entry.event_date}`;
                       const isDuplicate = duplicateKeys.has(dupeKey);
                       
                       return (
                         <LedgerEntryRow
-                          key={entry.id || idx}
+                          key={entry.id}
                           entry={entry}
                           canManage={canManagePoints}
                           isProcessing={processingEntryId === entry.id}
@@ -1105,6 +1298,11 @@ export const PointsTab: React.FC = () => {
           )}
         </div>
       )}
+
+      {/* =========================================================================
+          GAP AUDIT VIEW
+          ========================================================================= */}
+      {viewMode === 'gap_audit' && <GapScannerTab />}
 
       {/* Modals */}
       {selectedMemberId && (
@@ -1384,6 +1582,7 @@ interface TeamLedgerRowProps {
     points: number;
     notes?: string;
     isReduction: boolean;
+    isSickDay?: boolean;
   };
   canManage: boolean;
   isProcessing: boolean;

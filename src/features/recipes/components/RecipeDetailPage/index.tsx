@@ -45,6 +45,7 @@ import { TrainingModule } from "../RecipeEditor/TrainingModule";
 import { VersionHistory } from "../RecipeEditor/VersionHistory";
 
 import type { Recipe } from "../../types/recipe";
+import { getRecipeAllergenBooleans } from '@/features/allergens/utils';
 
 /**
  * =============================================================================
@@ -215,16 +216,19 @@ export const RecipeDetailPage: React.FC = () => {
   const prevAllergenFingerprintRef = useRef<string>('');
   useEffect(() => {
     if (!formData) return;
+    // Read from boolean columns (Phase 3)
+    const bools = getRecipeAllergenBooleans(formData);
     const fp = JSON.stringify({
-      c: (formData.allergenInfo?.contains || []).slice().sort(),
-      m: (formData.allergenInfo?.mayContain || []).slice().sort(),
+      c: [...bools.contains].sort(),
+      m: [...bools.mayContain].sort(),
     });
     if (prevAllergenFingerprintRef.current && fp !== prevAllergenFingerprintRef.current) {
       // Allergens changed — require explicit confirmation again
       allergenReviewedRef.current = false;
     }
     prevAllergenFingerprintRef.current = fp;
-  }, [formData?.allergenInfo]);
+  // Re-run when any boolean column changes (formData reference updates on every onChange)
+  }, [formData]);
 
   // ---------------------------------------------------------------------------
   // FETCH SETTINGS
@@ -412,11 +416,13 @@ export const RecipeDetailPage: React.FC = () => {
     // Life-safety: both additions AND removals require review.
     // -----------------------------------------------------------------------
     if (!isNew && originalData && !allergenReviewedRef.current) {
-      // Check 1: allergenInfo already differs
-      const origContains = JSON.stringify((originalData.allergenInfo?.contains || []).slice().sort());
-      const origMayContain = JSON.stringify((originalData.allergenInfo?.mayContain || []).slice().sort());
-      const currContains = JSON.stringify((formData.allergenInfo?.contains || []).slice().sort());
-      const currMayContain = JSON.stringify((formData.allergenInfo?.mayContain || []).slice().sort());
+      // Check 1: boolean allergen columns differ from baseline
+      const origBools = getRecipeAllergenBooleans(originalData);
+      const currBools = getRecipeAllergenBooleans(formData);
+      const origContains = JSON.stringify([...origBools.contains].sort());
+      const origMayContain = JSON.stringify([...origBools.mayContain].sort());
+      const currContains = JSON.stringify([...currBools.contains].sort());
+      const currMayContain = JSON.stringify([...currBools.mayContain].sort());
       const allergenInfoDiffers = origContains !== currContains || origMayContain !== currMayContain;
 
       // Check 2: ingredient composition changed (catches auto-sync race)
@@ -527,6 +533,11 @@ export const RecipeDetailPage: React.FC = () => {
           toast.error("Cannot update recipe: No ID found");
           return;
         }
+        // Stamp declaration timestamp when operator explicitly confirmed
+        if (allergenReviewedRef.current) {
+          saveData.allergen_declared_at = new Date().toISOString();
+        }
+
         await updateRecipe(saveData.id, saveData);
         toast.success("Recipe saved successfully");
 
@@ -568,18 +579,19 @@ export const RecipeDetailPage: React.FC = () => {
             });
           }
 
-          // --- Allergen declaration change detection ---
-          const origContains = JSON.stringify((originalData.allergenInfo?.contains || []).slice().sort());
-          const origMayContain = JSON.stringify((originalData.allergenInfo?.mayContain || []).slice().sort());
-          const currContains = JSON.stringify((saveData.allergenInfo?.contains || []).slice().sort());
-          const currMayContain = JSON.stringify((saveData.allergenInfo?.mayContain || []).slice().sort());
+          // --- Allergen declaration change detection (from boolean columns) ---
+          const origBoolsN = getRecipeAllergenBooleans(originalData);
+          const saveBoolsN = getRecipeAllergenBooleans(saveData);
+          const origContainsN = JSON.stringify([...origBoolsN.contains].sort());
+          const origMayContainN = JSON.stringify([...origBoolsN.mayContain].sort());
+          const currContainsN = JSON.stringify([...saveBoolsN.contains].sort());
+          const currMayContainN = JSON.stringify([...saveBoolsN.mayContain].sort());
 
-          if (origContains !== currContains || origMayContain !== currMayContain) {
-            // Build a human-readable summary of what changed
-            const origC = new Set((originalData.allergenInfo?.contains || []).map((s: string) => s.toLowerCase()));
-            const currC = new Set((saveData.allergenInfo?.contains || []).map((s: string) => s.toLowerCase()));
-            const addedC = [...currC].filter(a => !origC.has(a));
-            const removedC = [...origC].filter(a => !currC.has(a));
+          if (origContainsN !== currContainsN || origMayContainN !== currMayContainN) {
+            const origCSet = new Set(origBoolsN.contains);
+            const currCSet = new Set(saveBoolsN.contains);
+            const addedC = [...currCSet].filter(a => !origCSet.has(a));
+            const removedC = [...origCSet].filter(a => !currCSet.has(a));
             const summaryParts: string[] = [];
             if (addedC.length) summaryParts.push(`+${addedC.join(', ')}`);
             if (removedC.length) summaryParts.push(`-${removedC.join(', ')}`);
@@ -596,10 +608,10 @@ export const RecipeDetailPage: React.FC = () => {
                 summary: summaryParts.join(', ') || 'allergen profile updated',
                 contains_added: addedC,
                 contains_removed: removedC,
-                new_contains: saveData.allergenInfo?.contains || [],
-                new_may_contain: saveData.allergenInfo?.mayContain || [],
-                previous_contains: originalData.allergenInfo?.contains || [],
-                previous_may_contain: originalData.allergenInfo?.mayContain || [],
+                new_contains: [...saveBoolsN.contains],
+                new_may_contain: [...saveBoolsN.mayContain],
+                previous_contains: [...origBoolsN.contains],
+                previous_may_contain: [...origBoolsN.mayContain],
               },
             });
           }
@@ -614,9 +626,64 @@ export const RecipeDetailPage: React.FC = () => {
                 recipe_id: recipeId,
                 name: recipeName,
                 version: saveData.version,
-                contains: saveData.allergenInfo?.contains || [],
-                may_contain: saveData.allergenInfo?.mayContain || [],
+                contains: [...saveBoolsN.contains],
+                may_contain: [...saveBoolsN.mayContain],
               },
+            });
+
+            // =============================================================
+            // LEGAL AUDIT TRAIL — Immutable declaration record
+            // =============================================================
+            // Every "Confirm Declaration & Save" creates a permanent row in
+            // recipe_allergen_declarations. This is the legal receipt:
+            // who accepted responsibility, what was disclosed, and what
+            // ingredients were present. No updates, no deletes, ever.
+            // =============================================================
+            const ingredientIds = (saveData.ingredients || [])
+              .map((i: any) => i.master_ingredient_id || i.prepared_recipe_id || i.name || i.id)
+              .filter(Boolean)
+              .sort();
+            const ingredientHash = ingredientIds.join('|');
+
+            // Compute delta from previous declaration (original baseline)
+            const origCSetAudit = new Set(origBoolsN.contains);
+            const currCSetAudit = new Set(saveBoolsN.contains);
+            const origMSetAudit = new Set(origBoolsN.mayContain);
+            const currMSetAudit = new Set(saveBoolsN.mayContain);
+
+            // Fetch previous declaration ID for chain linking
+            const { data: prevDecl } = await supabase
+              .from('recipe_allergen_declarations')
+              .select('id')
+              .eq('recipe_id', recipeId)
+              .order('declared_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            supabase.from('recipe_allergen_declarations').insert({
+              recipe_id: recipeId,
+              organization_id: organizationId,
+              declared_by: user.id,
+              declared_at: new Date().toISOString(),
+              recipe_version: saveData.version || '1.0.0',
+              recipe_name: recipeName,
+              ingredient_hash: ingredientHash,
+              ingredient_count: ingredientIds.length,
+              contains: [...saveBoolsN.contains],
+              may_contain: [...saveBoolsN.mayContain],
+              cross_contact_notes: saveData.allergenInfo?.crossContactRisk || [],
+              manual_overrides: saveData.allergenManualOverrides || null,
+              previous_declaration_id: prevDecl?.id || null,
+              contains_added: [...currCSetAudit].filter(a => !origCSetAudit.has(a)),
+              contains_removed: [...origCSetAudit].filter(a => !currCSetAudit.has(a)),
+              may_contain_added: [...currMSetAudit].filter(a => !origMSetAudit.has(a)),
+              may_contain_removed: [...origMSetAudit].filter(a => !currMSetAudit.has(a)),
+              declaration_method: 'editor',
+            }).then(({ error: declError }) => {
+              if (declError) {
+                console.error('Failed to write allergen declaration audit record:', declError);
+                // Non-blocking — save already succeeded, audit is supplementary
+              }
             });
           }
         }
@@ -738,19 +805,57 @@ export const RecipeDetailPage: React.FC = () => {
         </div>
       )}
 
-      {/* Navigation Bar */}
+      {/* Navigation Bar — Pill + Breadcrumb */}
       <div className="mb-4">
         <div className="flex items-center justify-between">
-          <button
-            onClick={handleBack}
-            className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            {backLabel}
-          </button>
+          <div className="flex items-center gap-2 min-w-0">
+            {/* Back pill — clear clickable affordance, can't be confused with global nav */}
+            <button
+              onClick={handleBack}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg 
+                         bg-gray-800/60 border border-gray-700/50 
+                         text-sm text-gray-300 hover:text-white hover:bg-gray-700/60 
+                         hover:border-gray-600 transition-all flex-shrink-0"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              Back
+            </button>
 
+            {/* Breadcrumb trail — spatial context */}
+            <div className="flex items-center gap-1.5 text-xs text-gray-500 min-w-0 overflow-hidden">
+              <ChevronRight className="w-3 h-3 flex-shrink-0" />
+              <button
+                onClick={handleBack}
+                className="hover:text-gray-300 transition-colors flex-shrink-0"
+              >
+                Recipes
+              </button>
+              {(formData as Recipe).major_group_name && (
+                <>
+                  <ChevronRight className="w-3 h-3 flex-shrink-0" />
+                  <span className="text-gray-500 flex-shrink-0">
+                    {(formData as Recipe).major_group_name}
+                  </span>
+                </>
+              )}
+              {(formData as Recipe).sub_category_name && (
+                <>
+                  <ChevronRight className="w-3 h-3 flex-shrink-0" />
+                  <span className="text-gray-500 flex-shrink-0">
+                    {(formData as Recipe).sub_category_name}
+                  </span>
+                </>
+              )}
+              <ChevronRight className="w-3 h-3 flex-shrink-0" />
+              <span className="text-gray-300 font-medium truncate">
+                {formData.name || (isNew ? 'New Recipe' : 'Untitled')}
+              </span>
+            </div>
+          </div>
+
+          {/* Prev/Next navigation */}
           {position && recipeIds.length > 1 && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-shrink-0">
               <span className="text-xs text-gray-500">
                 {position.current} of {position.total}
               </span>
@@ -872,10 +977,15 @@ export const RecipeDetailPage: React.FC = () => {
             onConfirmDeclaration={handleConfirmDeclaration}
             allergensDirty={
               originalData
-                ? JSON.stringify((formData.allergenInfo?.contains || []).slice().sort()) !==
-                    JSON.stringify((originalData.allergenInfo?.contains || []).slice().sort()) ||
-                  JSON.stringify((formData.allergenInfo?.mayContain || []).slice().sort()) !==
-                    JSON.stringify((originalData.allergenInfo?.mayContain || []).slice().sort())
+                ? (() => {
+                    // Phase 3: Read from boolean columns, not JSONB
+                    const currBools = getRecipeAllergenBooleans(formData);
+                    const origBools = getRecipeAllergenBooleans(originalData);
+                    return JSON.stringify([...currBools.contains].sort()) !==
+                      JSON.stringify([...origBools.contains].sort()) ||
+                      JSON.stringify([...currBools.mayContain].sort()) !==
+                      JSON.stringify([...origBools.mayContain].sort());
+                  })()
                 : false
             }
           />

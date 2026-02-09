@@ -9,3 +9,4 @@ export { AddPointReductionModal } from './AddPointReductionModal';
 export { AddSickDayModal } from './AddSickDayModal';
 export { AddVacationModal } from './AddVacationModal';
 export { ReportsTab } from './ReportsTab';
+export { GapScannerTab } from './GapScannerTab';

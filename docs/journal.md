@@ -8,6 +8,12 @@
 
 | Date | Handoff File | Focus Area |
 |------|--------------|------------|
+| 2026-02-08 | `handoffs/HANDOFF-SESSION-81-TeamPerformance-DataFlow-Audit.md` | Complete end-to-end data pipeline audit — CSV import → Delta Engine → staging → approval → store aggregation → UI display → NEXUS audit trail |
+| 2026-02-08 | `handoffs/HANDOFF-Session-80-Allergen-Boolean-Phase1-Phase2-Phase3.md` | Allergen boolean migration — 76 columns, backfill, dual-write, read migration |
+| 2026-02-07 | `handoffs/HANDOFF-SESSION-79-VersionStatus-L5-Complete.md` | Version Status L5 complete |
+| 2026-02-07 | `handoffs/HANDOFF-SESSION-78-VersionStatus-L5-Prep.md` | Version Status L5 prep |
+| 2026-02-06 | `handoffs/HANDOFF-SESSION-73-InlinePendingChanges-ChangeDetection.md` | Inline pending changes panel + change detection |
+| 2026-02-06 | `handoffs/HANDOFF-SESSION-72-RecipeVersioning-Supersession.md` | Recipe MAJOR.MINOR.PATCH + Communication Tiers + Supersession Pattern |
 | 2026-02-05 | `handoffs/HANDOFF-SESSION-71-PolicyForm-UX-TypeCleanup.md` | Soft toggles, plain-English explainers, type system single source of truth |
 | 2026-02-04 | `handoffs/HANDOFF-SESSION-70-HR-Policy-Architecture.md` | Roadmap, PolicyCard visual entity, L5 color corrections, btn-soft |
 | 2026-01-31 | `HANDOFF-2026-01-31-IngredientsInput-L5-L6-Rebuild.md` | IngredientsInput rebuild, table/tablet/guided modes |
@@ -41,6 +47,7 @@ Transcripts are stored in `/mnt/transcripts/` and contain full conversation hist
 | 2026-01-17 | `2026-01-17-00-24-46-vendor-analytics-guided-mode-sections.txt` | VendorAnalytics 4-section story, NEXUS analytics events, ActivityFeed audit |
 | 2026-01-12 | `2026-01-12-13-23-45-price-source-tracking-implementation.txt` | Price source tracking, TwoStageButton enhancement, override protection |
 | 2026-01-12 | `2026-01-12-00-06-37-triage-filter-fixes-visual-hierarchy.txt` | Triage badge, filterType, L5 Icon Badge Pattern, visual hierarchy |
+| 2026-02-08 | `2026-02-08-20-49-51-team-performance-data-flow-audit.txt` | Session 81: Team Performance complete data pipeline audit |
 | 2026-01-31 | `2026-01-31-22-13-29-ingredients-input-l5-redesign.txt` | IngredientsInput L5/L6 rebuild - Table/Tablet/Guided modes, Sandbox ingredients |
 | 2026-01-11 | `2026-01-11-23-54-14-triage-badge-count-filter-fixes.txt` | Triage badge count, filter fixes |
 | 2026-01-11 | `2026-01-11-23-42-09-vim-layout-triage-badge-import-icons.txt` | VIM layout, triage badge, import icons |
@@ -76,6 +83,16 @@ Transcripts are stored in `/mnt/transcripts/` and contain full conversation hist
 ## Quick Reference: Current Focus Areas
 
 ### Recently Completed
+- ✅ **Team Performance Data Flow Audit** (February 8, 2026)
+  - End-to-end pipeline verified: CSV → Delta Engine → Staging → Approval → Store → UI
+  - All 8 database tables reviewed, all NEXUS audit trails confirmed
+  - No issues found — architecture is sound
+- ✅ **Allergen Boolean Migration Phase 1-3** (February 8, 2026)
+  - 76 boolean columns added to recipes table, backfilled from JSONB
+  - Dual-write + read migration complete, only JSONB drop (Phase 4) remains
+- ✅ **Recipe Version Status L5** (February 7, 2026)
+- ✅ **Recipe Versioning MAJOR.MINOR.PATCH** (February 6, 2026)
+  - Supersession Pattern, Communication Tiers, Inline Pending Changes
 - ✅ **IngredientsInput L5/L6 Rebuild** (January 31, 2026)
   - Three-mode architecture: Table / Tablet / Guided
   - Sandbox ingredients concept (verify later via invoice)
@@ -157,4 +174,4 @@ YYYY-MM-DD-HH-MM-SS-[description].txt
 
 ---
 
-*Last updated: February 5, 2026 (HR Policy Type System Cleanup — Session 71)*
+*Last updated: February 8, 2026 (Team Performance Data Flow Audit — Session 81)*

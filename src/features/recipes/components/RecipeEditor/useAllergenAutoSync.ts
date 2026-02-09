@@ -17,6 +17,11 @@
  * AllergenControl still owns the full UI — add/remove manual overrides,
  * promotions, cross-contact notes. But the CASCADE runs here, always.
  * 
+ * DUAL-WRITE (Phase 2): This hook now writes BOTH the legacy allergenInfo
+ * JSONB AND the new boolean columns. This ensures both storage formats
+ * stay in sync during the migration period. See:
+ * docs/roadmaps/ROADMAP-Allergen-Boolean-Migration.md
+ * 
  * LIFE-SAFETY: If someone dies, we need to know that the allergen declaration
  * was current at the moment of save — not stale from a tab that wasn't mounted.
  * =============================================================================
@@ -27,53 +32,7 @@ import { useMasterIngredientsStore } from '@/stores/masterIngredientsStore';
 import { useRecipeStore } from '@/stores/recipeStore';
 import type { AllergenType } from '@/features/allergens/types';
 import type { Recipe } from '../../types/recipe';
-
-// All allergen keys — must match useAllergenCascade.ts
-const ALLERGEN_KEYS: AllergenType[] = [
-  'peanut', 'crustacean', 'treenut', 'shellfish', 'sesame',
-  'soy', 'fish', 'wheat', 'milk', 'sulphite', 'egg',
-  'gluten', 'mustard', 'celery', 'garlic', 'onion',
-  'nitrite', 'mushroom', 'hot_pepper', 'citrus', 'pork'
-];
-
-/**
- * Extract allergens from a master ingredient record.
- * Duplicated from useAllergenCascade to avoid circular dependency.
- * Both read the same MIL fields — keep in sync.
- */
-function extractFromMasterIngredient(mi: any): { contains: AllergenType[]; mayContain: AllergenType[] } {
-  const contains: AllergenType[] = [];
-  const mayContain: AllergenType[] = [];
-  if (!mi) return { contains, mayContain };
-
-  for (const key of ALLERGEN_KEYS) {
-    const cv = mi[`allergen_${key}`];
-    if (cv === true || cv === 'true' || cv === 1) {
-      contains.push(key);
-    }
-    const mcv = mi[`allergen_${key}_may_contain`];
-    if ((mcv === true || mcv === 'true' || mcv === 1) && !contains.includes(key)) {
-      mayContain.push(key);
-    }
-  }
-
-  // Custom allergens
-  for (let i = 1; i <= 3; i++) {
-    const active = mi[`allergen_custom${i}_active`];
-    const name = mi[`allergen_custom${i}_name`];
-    const mc = mi[`allergen_custom${i}_may_contain`];
-    if ((active === true || active === 'true' || active === 1) && name) {
-      const customKey = name.toLowerCase() as AllergenType;
-      if (mc === true || mc === 'true' || mc === 1) {
-        mayContain.push(customKey);
-      } else {
-        contains.push(customKey);
-      }
-    }
-  }
-
-  return { contains, mayContain };
-}
+import { extractFromMasterIngredient, allergenArraysToBooleans, getRecipeAllergenBooleans } from '@/features/allergens/utils';
 
 interface UseAllergenAutoSyncProps {
   recipe: Recipe | Omit<Recipe, 'id'> | null;
@@ -83,36 +42,62 @@ interface UseAllergenAutoSyncProps {
 /**
  * Auto-sync allergenInfo from ingredients + persisted manual overrides.
  * Runs at RecipeEditor level — always mounted, always current.
+ *
+ * DUAL-WRITE: Writes both allergenInfo JSONB and boolean columns.
  */
 export function useAllergenAutoSync({ recipe, onChange }: UseAllergenAutoSyncProps) {
   const { ingredients: masterIngredients } = useMasterIngredientsStore();
   const { recipes: allRecipes } = useRecipeStore();
 
   // Fingerprint ingredients list for change detection
+  // Uses name fallback for legacy ingredients that lack master_ingredient_id
   const ingredientFingerprint = useMemo(() => {
     if (!recipe) return '';
     return (recipe.ingredients || [])
-      .map(ing => `${ing.id}:${ing.master_ingredient_id || ''}:${ing.prepared_recipe_id || ''}`)
+      .map(ing => {
+        const miId = ing.master_ingredient_id || ((!ing.ingredient_type || ing.ingredient_type === 'raw' || ing.type === 'raw') ? ing.name : '');
+        const prId = ing.prepared_recipe_id || ((ing.ingredient_type === 'prepared' || ing.type === 'prepared') ? ing.name : '');
+        return `${ing.id}:${miId || ''}:${prId || ''}`;
+      })
       .sort()
       .join('|');
   }, [recipe?.ingredients]);
+
+  // ---------------------------------------------------------------------------
+  // INGREDIENT ID RESOLUTION
+  // Ingredients JSONB uses 'name' to hold the MIL/recipe UUID (legacy schema).
+  // Some newer records may also have master_ingredient_id / prepared_recipe_id.
+  // We resolve with fallback: explicit field → legacy 'name' field.
+  // ---------------------------------------------------------------------------
+  const resolveRawId = (ing: any): string | undefined => {
+    const ingType = ing.ingredient_type || (ing.type as string) || 'raw';
+    if (ingType !== 'raw') return undefined;
+    return ing.master_ingredient_id || ing.name || undefined;
+  };
+
+  const resolvePreparedId = (ing: any): string | undefined => {
+    const ingType = ing.ingredient_type || (ing.type as string) || 'raw';
+    if (ingType !== 'prepared') return undefined;
+    return ing.prepared_recipe_id || ing.name || undefined;
+  };
 
   // Compute auto-detected allergens from current ingredients
   const autoContains = useMemo(() => {
     const result = new Set<string>();
     if (!recipe) return result;
     for (const ing of recipe.ingredients || []) {
-      const ingType = ing.ingredient_type || (ing.type as 'raw' | 'prepared') || 'raw';
+      const rawId = resolveRawId(ing);
+      const prepId = resolvePreparedId(ing);
 
-      if (ingType === 'raw' && ing.master_ingredient_id) {
-        const mi = masterIngredients.find(m => m.id === ing.master_ingredient_id);
+      if (rawId) {
+        const mi = masterIngredients.find(m => m.id === rawId);
         if (mi) {
           for (const a of extractFromMasterIngredient(mi).contains) result.add(a);
         }
-      } else if (ingType === 'prepared' && ing.prepared_recipe_id) {
-        const sub = allRecipes.find(r => r.id === ing.prepared_recipe_id);
-        if (sub?.allergenInfo?.contains) {
-          for (const a of sub.allergenInfo.contains) result.add(a);
+      } else if (prepId) {
+        const sub = allRecipes.find(r => r.id === prepId);
+        if (sub) {
+          for (const a of getRecipeAllergenBooleans(sub).contains) result.add(a);
         }
       }
     }
@@ -123,19 +108,20 @@ export function useAllergenAutoSync({ recipe, onChange }: UseAllergenAutoSyncPro
     const result = new Set<string>();
     if (!recipe) return result;
     for (const ing of recipe.ingredients || []) {
-      const ingType = ing.ingredient_type || (ing.type as 'raw' | 'prepared') || 'raw';
+      const rawId = resolveRawId(ing);
+      const prepId = resolvePreparedId(ing);
 
-      if (ingType === 'raw' && ing.master_ingredient_id) {
-        const mi = masterIngredients.find(m => m.id === ing.master_ingredient_id);
+      if (rawId) {
+        const mi = masterIngredients.find(m => m.id === rawId);
         if (mi) {
           for (const a of extractFromMasterIngredient(mi).mayContain) {
             if (!autoContains.has(a)) result.add(a);
           }
         }
-      } else if (ingType === 'prepared' && ing.prepared_recipe_id) {
-        const sub = allRecipes.find(r => r.id === ing.prepared_recipe_id);
-        if (sub?.allergenInfo?.mayContain) {
-          for (const a of sub.allergenInfo.mayContain) {
+      } else if (prepId) {
+        const sub = allRecipes.find(r => r.id === prepId);
+        if (sub) {
+          for (const a of getRecipeAllergenBooleans(sub).mayContain) {
             if (!autoContains.has(a)) result.add(a);
           }
         }
@@ -175,7 +161,7 @@ export function useAllergenAutoSync({ recipe, onChange }: UseAllergenAutoSyncPro
     return Array.from(result).sort();
   }, [autoMayContain, finalContains, manual.manualMayContain]);
 
-  // Sync to recipe.allergenInfo when declaration changes
+  // Sync to recipe.allergenInfo AND boolean columns when declaration changes
   // Use ref to avoid stale closure on onChange
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -189,16 +175,33 @@ export function useAllergenAutoSync({ recipe, onChange }: UseAllergenAutoSyncPro
     if (newFingerprint === prevFingerprintRef.current || !recipe) return;
     prevFingerprintRef.current = newFingerprint;
 
-    const current = recipe.allergenInfo;
-    const currentFingerprint = `${(current?.contains || []).slice().sort().join(',')}|${(current?.mayContain || []).slice().sort().join(',')}|${(current?.crossContactRisk || []).join(',')}`;
+    // Phase 3: Read contains/mayContain from boolean columns (source of truth)
+    // CrossContactRisk stays in allergenInfo (text notes, no boolean equivalent)
+    const currentBools = getRecipeAllergenBooleans(recipe);
+    const currentFingerprint = `${[...currentBools.contains].sort().join(',')}|${[...currentBools.mayContain].sort().join(',')}|${(recipe.allergenInfo?.crossContactRisk || []).join(',')}`;
 
     if (newFingerprint !== currentFingerprint) {
+      // Build boolean columns from the computed arrays
+      const booleanColumns = allergenArraysToBooleans(
+        finalContains,
+        finalMayContain,
+        // Environment tier: preserve existing values (manual-only, not computed)
+        // During dual-write, environment booleans are not yet populated
+      );
+
       onChangeRef.current({
+        // Legacy JSONB (keep for backward compat during migration)
         allergenInfo: {
           contains: finalContains,
           mayContain: finalMayContain,
           crossContactRisk: manual.crossContactNotes || [],
         },
+        // New boolean columns (Phase 2 dual-write)
+        ...booleanColumns,
+        // NOTE: allergen_declared_at is NOT set here. That timestamp is
+        // exclusively owned by the "Confirm Declaration & Save" flow in
+        // RecipeDetailPage. Auto-sync computes what the declaration SHOULD
+        // be — but only the operator's explicit confirmation makes it official.
       });
     }
   }, [finalContains, finalMayContain, manual.crossContactNotes]);

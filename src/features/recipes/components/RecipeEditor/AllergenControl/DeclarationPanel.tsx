@@ -64,8 +64,10 @@ export const DeclarationPanel: React.FC<DeclarationPanelProps> = ({
   const organizationName = organization?.name || '';
 
   // Previous declaration state
-  const hasPreviousDeclaration = (recipe.allergenInfo?.contains?.length || 0) > 0 
-    || (recipe.allergenInfo?.mayContain?.length || 0) > 0;
+  // allergen_declared_at is the definitive record that a declaration was saved.
+  // More reliable than re-reading booleans, which may not have stabilized
+  // after auto-sync render cycles.
+  const hasPreviousDeclaration = !!recipe.allergen_declared_at;
   const hasAnyAllergens = declaration.contains.length > 0 || declaration.mayContain.length > 0;
   
   return (
@@ -244,8 +246,8 @@ export const DeclarationPanel: React.FC<DeclarationPanelProps> = ({
             <Clock className="w-3 h-3 text-gray-500 flex-shrink-0" />
             {hasPreviousDeclaration && !hasUnsavedChanges ? (
               <span className="text-xs text-gray-400">
-                Declared {recipe.updated_at 
-                  ? new Date(recipe.updated_at).toLocaleDateString('en-US', { 
+                Declared {recipe.allergen_declared_at 
+                  ? new Date(recipe.allergen_declared_at).toLocaleDateString('en-US', { 
                       year: 'numeric', month: 'short', day: 'numeric',
                       hour: 'numeric', minute: '2-digit'
                     })

@@ -317,83 +317,87 @@ export const usePerformanceStore = create<PerformanceStore>((set, get) => ({
         sick_reset_period: timeOffConfig.sick_reset_period,
       });
 
-      // Fetch all team members
-      const { data: members, error: membersError } = await supabase
-        .from("organization_team_members")
-        .select("*")
-        .eq("organization_id", organizationId)
-        .eq("is_active", true);
-
-      if (membersError) throw membersError;
-
-      // Fetch all point events for cycle
-      const { data: events, error: eventsError } = await supabase
-        .from("performance_point_events")
-        .select("*")
-        .eq("organization_id", organizationId)
-        .eq("cycle_id", finalCycleId);
-
-      if (eventsError) throw eventsError;
-
-      // Fetch all point reductions for cycle
-      const { data: reductions, error: reductionsError } = await supabase
-        .from("performance_point_reductions")
-        .select("*")
-        .eq("organization_id", organizationId)
-        .eq("cycle_id", finalCycleId);
-
-      if (reductionsError) throw reductionsError;
-
-      // Fetch all coaching records
-      const { data: coaching, error: coachingError } = await supabase
-        .from("performance_coaching_records")
-        .select("*")
-        .eq("organization_id", organizationId);
-
-      if (coachingError) throw coachingError;
-
-      // Fetch all active PIPs
-      const { data: pips, error: pipsError } = await supabase
-        .from("performance_improvement_plans")
-        .select("*")
-        .eq("organization_id", organizationId)
-        .eq("status", "active");
-
-      if (pipsError) throw pipsError;
-
-      // Fetch sick day usage from activity_logs (NEXUS)
-      // Use local year for baseline - avoids timezone issues
+      // Parallel fetch - all 7 queries run simultaneously
       const currentYear = getLocalYear();
       const baselineDate = `${currentYear}-01-01T00:00:00.000Z`;
-      const todayLocal = getLocalDateString();
       
-      console.log('[TeamPerformance] Local date:', todayLocal);
-      console.log('[TeamPerformance] Local year:', currentYear);
-      console.log('[TeamPerformance] Fetching sick logs since:', baselineDate);
-      
-      const { data: sickDayLogs, error: sickError } = await supabase
-        .from("activity_logs")
-        .select("created_at, details")
-        .eq("organization_id", organizationId)
-        .eq("activity_type", "performance_event_excused")
-        .gte("created_at", baselineDate);
+      console.log('[TeamPerformance] Parallel fetch starting...', { currentYear, baselineDate });
 
-      if (sickError) {
-        console.warn("Could not fetch sick day logs:", sickError);
-      } else {
-        console.log('[TeamPerformance] Sick day logs found:', sickDayLogs?.length || 0);
-        // Log ALL fetched logs to see what we're working with
-        sickDayLogs?.forEach((log, i) => {
-          const details = log.details as any;
-          console.log(`[TeamPerformance] Log ${i}:`, {
-            created_at: log.created_at,
-            reason: details?.reason,
-            name: details?.name,
-            team_member_id: details?.team_member_id,
-            event_date: details?.event_date,
-          });
-        });
-      }
+      const [
+        membersResult,
+        eventsResult,
+        reductionsResult,
+        coachingResult,
+        pipsResult,
+        sickResult,
+        vacationResult,
+      ] = await Promise.all([
+        supabase
+          .from("organization_team_members")
+          .select("*")
+          .eq("organization_id", organizationId)
+          .eq("is_active", true),
+        supabase
+          .from("performance_point_events")
+          .select("*")
+          .eq("organization_id", organizationId)
+          .eq("cycle_id", finalCycleId),
+        supabase
+          .from("performance_point_reductions")
+          .select("*")
+          .eq("organization_id", organizationId)
+          .eq("cycle_id", finalCycleId),
+        supabase
+          .from("performance_coaching_records")
+          .select("*")
+          .eq("organization_id", organizationId),
+        supabase
+          .from("performance_improvement_plans")
+          .select("*")
+          .eq("organization_id", organizationId)
+          .eq("status", "active"),
+        supabase
+          .from("activity_logs")
+          .select("created_at, details")
+          .eq("organization_id", organizationId)
+          .eq("activity_type", "performance_event_excused")
+          .gte("created_at", baselineDate),
+        supabase
+          .from("activity_logs")
+          .select("created_at, details")
+          .eq("organization_id", organizationId)
+          .eq("activity_type", "performance_vacation_logged")
+          .gte("created_at", baselineDate),
+      ]);
+
+      // Validate critical results (throw on failure)
+      if (membersResult.error) throw membersResult.error;
+      if (eventsResult.error) throw eventsResult.error;
+      if (reductionsResult.error) throw reductionsResult.error;
+      if (coachingResult.error) throw coachingResult.error;
+      if (pipsResult.error) throw pipsResult.error;
+
+      // Non-critical: warn but continue
+      if (sickResult.error) console.warn("Could not fetch sick day logs:", sickResult.error);
+      if (vacationResult.error) console.warn("Could not fetch vacation logs:", vacationResult.error);
+
+      const members = membersResult.data;
+      const events = eventsResult.data;
+      const reductions = reductionsResult.data;
+      const coaching = coachingResult.data;
+      const pips = pipsResult.data;
+      const sickDayLogs = sickResult.data;
+      const vacationLogs = vacationResult.data;
+
+      console.log('[TeamPerformance] Parallel fetch complete:', {
+        members: members?.length || 0,
+        events: events?.length || 0,
+        reductions: reductions?.length || 0,
+        coaching: coaching?.length || 0,
+        pips: pips?.length || 0,
+        sickLogs: sickDayLogs?.length || 0,
+        vacationLogs: vacationLogs?.length || 0,
+      });
 
       // Build performance map
       const performanceMap = new Map<string, TeamMemberPerformance>();
@@ -468,11 +472,27 @@ export const usePerformanceStore = create<PerformanceStore>((set, get) => ({
         // Count unique sick days (not individual excuse events)
         const sickDaysUsed = memberSickDayDates.size;
 
+        // Calculate vacation hours used for this member
+        // Sum hours from all vacation logs matching this member
+        const memberVacationHours = (vacationLogs || []).reduce((total, log) => {
+          const details = log.details as any;
+          // Match by team_member_id (primary) or name (legacy)
+          const matches = details?.team_member_id === member.id || details?.name === memberFullName;
+          if (!matches) return total;
+          
+          // Use the period start for filtering (same as sick days)
+          const logDate = (details?.start_date || log.created_at.split('T')[0]).split('T')[0];
+          if (logDate < periodStart) return total;
+          
+          return total + (details?.hours || 0);
+        }, 0);
+
         const timeOffData: TimeOffUsage = {
           sick_days_used: sickDaysUsed,
           sick_days_available: timeOffConfig.protected_sick_days ?? 3, // Ontario ESA default
           sick_period_start: periodStart,
-          vacation_hours_used: 0,      // Phase 2: will come from time_off_usage table
+          sick_day_dates: Array.from(memberSickDayDates).sort(), // Expose individual dates for ledger display
+          vacation_hours_used: memberVacationHours,
           vacation_hours_available: 0, // Phase 2: will come from config accrual calculation
         };
 

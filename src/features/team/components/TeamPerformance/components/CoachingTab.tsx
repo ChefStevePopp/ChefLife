@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { usePerformanceStore } from "@/stores/performanceStore";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import { 
   MessageSquare, 
   AlertTriangle,
@@ -22,6 +23,7 @@ interface StageConfig {
 }
 
 export const CoachingTab: React.FC = () => {
+  const { showDiagnostics } = useDiagnostics();
   const { 
     teamPerformance, 
     config,
@@ -114,6 +116,7 @@ export const CoachingTab: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {showDiagnostics && <div className="text-xs text-gray-500 font-mono">src/features/team/components/TeamPerformance/components/CoachingTab.tsx</div>}
       {/* Pipeline View */}
       <div>
         <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">

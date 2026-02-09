@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { usePerformanceStore } from "@/stores/performanceStore";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import { 
   Star, 
   Users, 
@@ -22,6 +23,7 @@ interface TierConfig {
 }
 
 export const TiersTab: React.FC = () => {
+  const { showDiagnostics } = useDiagnostics();
   const { teamPerformance, config } = usePerformanceStore();
   const performanceArray = Array.from(teamPerformance.values());
 
@@ -80,6 +82,7 @@ export const TiersTab: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      {showDiagnostics && <div className="text-xs text-gray-500 font-mono">src/features/team/components/TeamPerformance/components/TiersTab.tsx</div>}
       {membersByTier.map((tier) => {
         const isCollapsed = collapsedTiers.has(tier.tier);
         const hasMembers = tier.members.length > 0;

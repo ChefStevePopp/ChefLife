@@ -2,15 +2,8 @@ import { useMemo } from 'react';
 import { useMasterIngredientsStore } from '@/stores/masterIngredientsStore';
 import { useRecipeStore } from '@/stores/recipeStore';
 import type { AllergenType } from '@/features/allergens/types';
+import { extractFromMasterIngredient, getRecipeAllergenBooleans } from '@/features/allergens/utils';
 import type { AutoDetectedAllergens, AllergenSource, ManualAllergenOverrides, AllergenDeclaration, AllergenWithContext } from './types';
-
-// All allergen keys we track
-const ALLERGEN_KEYS: AllergenType[] = [
-  'peanut', 'crustacean', 'treenut', 'shellfish', 'sesame',
-  'soy', 'fish', 'wheat', 'milk', 'sulphite', 'egg',
-  'gluten', 'mustard', 'celery', 'garlic', 'onion',
-  'nitrite', 'mushroom', 'hot_pepper', 'citrus', 'pork'
-];
 
 interface UseAllergenCascadeProps {
   ingredients: Array<{
@@ -36,52 +29,6 @@ interface UseAllergenCascadeResult {
   
   // Loading state
   isLoading: boolean;
-}
-
-/**
- * Extract allergens from a master ingredient record
- * Reads both "contains" (allergen_x) and "may contain" (allergen_x_may_contain) fields
- */
-function extractFromMasterIngredient(mi: any): { contains: AllergenType[]; mayContain: AllergenType[] } {
-  const contains: AllergenType[] = [];
-  const mayContain: AllergenType[] = [];
-  
-  if (!mi) return { contains, mayContain };
-  
-  for (const key of ALLERGEN_KEYS) {
-    // Check "contains" field (e.g., allergen_peanut)
-    const containsField = `allergen_${key}`;
-    if (mi[containsField] === true || mi[containsField] === 'true' || mi[containsField] === 1) {
-      contains.push(key);
-    }
-    
-    // Check "may contain" field (e.g., allergen_peanut_may_contain)
-    const mayContainField = `allergen_${key}_may_contain`;
-    if (mi[mayContainField] === true || mi[mayContainField] === 'true' || mi[mayContainField] === 1) {
-      // Only add to mayContain if not already in contains
-      if (!contains.includes(key)) {
-        mayContain.push(key);
-      }
-    }
-  }
-  
-  // Handle custom allergens
-  for (let i = 1; i <= 3; i++) {
-    const activeField = `allergen_custom${i}_active`;
-    const nameField = `allergen_custom${i}_name`;
-    const mayContainField = `allergen_custom${i}_may_contain`;
-    
-    if ((mi[activeField] === true || mi[activeField] === 'true' || mi[activeField] === 1) && mi[nameField]) {
-      const customName = mi[nameField].toLowerCase() as AllergenType;
-      if (mi[mayContainField] === true || mi[mayContainField] === 'true' || mi[mayContainField] === 1) {
-        mayContain.push(customName);
-      } else {
-        contains.push(customName);
-      }
-    }
-  }
-  
-  return { contains, mayContain };
 }
 
 /**
@@ -140,12 +87,13 @@ export function useAllergenCascade({
           }
         }
       } else if (ingredient.ingredient_type === 'prepared' && ingredient.prepared_recipe_id) {
-        // Prepared ingredient - look up in recipes
+        // Prepared ingredient - read from boolean columns (Phase 3)
         const recipe = recipes.find(r => r.id === ingredient.prepared_recipe_id);
-        if (recipe?.allergenInfo) {
+        if (recipe) {
+          const subAllergens = getRecipeAllergenBooleans(recipe);
+          
           // Contains from sub-recipe
-          for (const allergen of (recipe.allergenInfo.contains || [])) {
-            const allergenKey = allergen as AllergenType;
+          for (const allergen of subAllergens.contains) {
             const source: AllergenSource = {
               ingredientId: ingredient.id,
               ingredientName: recipe.name || ingredient.ingredient_name || 'Unknown Recipe',
@@ -153,15 +101,14 @@ export function useAllergenCascade({
               tier: 'contains'
             };
             
-            if (!contains.has(allergenKey)) {
-              contains.set(allergenKey, []);
+            if (!contains.has(allergen)) {
+              contains.set(allergen, []);
             }
-            contains.get(allergenKey)!.push(source);
+            contains.get(allergen)!.push(source);
           }
           
           // May contain from sub-recipe
-          for (const allergen of (recipe.allergenInfo.mayContain || [])) {
-            const allergenKey = allergen as AllergenType;
+          for (const allergen of subAllergens.mayContain) {
             const source: AllergenSource = {
               ingredientId: ingredient.id,
               ingredientName: recipe.name || ingredient.ingredient_name || 'Unknown Recipe',
@@ -169,10 +116,10 @@ export function useAllergenCascade({
               tier: 'mayContain'
             };
             
-            if (!mayContain.has(allergenKey)) {
-              mayContain.set(allergenKey, []);
+            if (!mayContain.has(allergen)) {
+              mayContain.set(allergen, []);
             }
-            mayContain.get(allergenKey)!.push(source);
+            mayContain.get(allergen)!.push(source);
           }
         }
       }

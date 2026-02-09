@@ -19,6 +19,7 @@ import { useFoodRelationshipsStore } from "@/stores/foodRelationshipsStore";
 import { getLucideIcon } from "@/utils/iconMapping";
 import { getRecipeConfig } from "@/features/recipes/hooks/useRecipeConfig";
 import type { Recipe } from "../../types/recipe";
+import { getRecipeAllergenBooleans } from '@/features/allergens/utils';
 
 /**
  * =============================================================================
@@ -114,13 +115,13 @@ export const RecipeFlipCard: React.FC<RecipeFlipCardProps> = ({
 
   // ALL allergens - food safety, no truncation!
   const allergenList = useMemo(() => {
-    const allergens = recipe.allergenInfo?.contains || [];
+    const allergens = getRecipeAllergenBooleans(recipe).contains;
     if (allergens.length === 0) return null;
     return allergens.map((a) => {
       const key = a.startsWith("allergen_") ? a.substring(9) : a;
       return key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, " ");
     });
-  }, [recipe.allergenInfo]);
+  }, [recipe]);
 
   // Status config
   const statusConfig = useMemo(() => {

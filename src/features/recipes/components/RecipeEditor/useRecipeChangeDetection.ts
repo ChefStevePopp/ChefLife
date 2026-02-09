@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useMasterIngredientsStore } from '@/stores/masterIngredientsStore';
 import { useRecipeStore } from '@/stores/recipeStore';
 import type { AllergenType } from '@/features/allergens/types';
+import { extractFromMasterIngredient, ALLERGEN_KEYS, getRecipeAllergenBooleans } from '@/features/allergens/utils';
 import type { Recipe, RecipeIngredient } from '../../types/recipe';
 
 // ============================================================================
@@ -94,56 +95,9 @@ function diffIngredients(
 }
 
 // ============================================================================
-// ALLERGEN EXTRACTION FROM BOOLEAN FIELDS
+// ALLERGEN EXTRACTION — Now imported from shared allergenUtils.ts
+// Previously duplicated here, in useAllergenAutoSync, and useAllergenCascade.
 // ============================================================================
-// The master_ingredients.allergens TEXT[] column is a dead field — never
-// populated. Allergens are stored as individual booleans (allergen_peanut,
-// allergen_wheat, etc.). This extraction logic mirrors useAllergenAutoSync
-// and useAllergenCascade. All three should stay in sync.
-//
-// TODO: Consolidate into shared utility when boolean columns land on recipes.
-// ============================================================================
-
-const ALLERGEN_KEYS: AllergenType[] = [
-  'peanut', 'crustacean', 'treenut', 'shellfish', 'sesame',
-  'soy', 'fish', 'wheat', 'milk', 'sulphite', 'egg',
-  'gluten', 'mustard', 'celery', 'garlic', 'onion',
-  'nitrite', 'mushroom', 'hot_pepper', 'citrus', 'pork'
-];
-
-function extractFromMasterIngredient(mi: any): { contains: AllergenType[]; mayContain: AllergenType[] } {
-  const contains: AllergenType[] = [];
-  const mayContain: AllergenType[] = [];
-  if (!mi) return { contains, mayContain };
-
-  for (const key of ALLERGEN_KEYS) {
-    const cv = mi[`allergen_${key}`];
-    if (cv === true || cv === 'true' || cv === 1) {
-      contains.push(key);
-    }
-    const mcv = mi[`allergen_${key}_may_contain`];
-    if ((mcv === true || mcv === 'true' || mcv === 1) && !contains.includes(key)) {
-      mayContain.push(key);
-    }
-  }
-
-  // Custom allergens
-  for (let i = 1; i <= 3; i++) {
-    const active = mi[`allergen_custom${i}_active`];
-    const name = mi[`allergen_custom${i}_name`];
-    const mc = mi[`allergen_custom${i}_may_contain`];
-    if ((active === true || active === 'true' || active === 1) && name) {
-      const customKey = name.toLowerCase() as AllergenType;
-      if (mc === true || mc === 'true' || mc === 1) {
-        mayContain.push(customKey);
-      } else {
-        contains.push(customKey);
-      }
-    }
-  }
-
-  return { contains, mayContain };
-}
 
 // ============================================================================
 // INGREDIENT-LEVEL ALLERGEN ANALYSIS
@@ -175,9 +129,10 @@ function collectIngredientAllergens(
       }
     } else if (ingType === 'prepared' && ing.prepared_recipe_id) {
       const sub = allRecipes.find(r => r.id === ing.prepared_recipe_id);
-      if (sub?.allergenInfo) {
-        for (const a of sub.allergenInfo.contains || []) allergens.add(a.toLowerCase());
-        for (const a of sub.allergenInfo.mayContain || []) allergens.add(a.toLowerCase());
+      if (sub) {
+        const subBooleans = getRecipeAllergenBooleans(sub);
+        for (const a of subBooleans.contains) allergens.add(a);
+        for (const a of subBooleans.mayContain) allergens.add(a);
       }
     }
   }
@@ -203,8 +158,8 @@ function getIngredientAllergens(
     }
   } else if (ingType === 'prepared' && ing.prepared_recipe_id) {
     const sub = allRecipes.find(r => r.id === ing.prepared_recipe_id);
-    if (sub?.allergenInfo?.contains) {
-      return [...sub.allergenInfo.contains];
+    if (sub) {
+      return [...getRecipeAllergenBooleans(sub).contains];
     }
   }
   return [];
@@ -272,8 +227,9 @@ export function useRecipeChangeDetection(
     // ------------------------------------------------------------------
     // 1. ALLERGEN — CONTAINS (MAJOR floor — life safety)
     // ------------------------------------------------------------------
-    const currentContains = currentRecipe.allergenInfo?.contains || currentRecipe.allergens?.contains || [];
-    const previousContains = lastSavedRecipe.allergenInfo?.contains || lastSavedRecipe.allergens?.contains || [];
+    // Read from boolean columns (Phase 3) — the new source of truth
+    const currentContains = getRecipeAllergenBooleans(currentRecipe).contains as string[];
+    const previousContains = getRecipeAllergenBooleans(lastSavedRecipe).contains as string[];
     const containsDiff = arrayDiff(currentContains, previousContains);
 
     for (const allergen of containsDiff.added) {
@@ -301,8 +257,8 @@ export function useRecipeChangeDetection(
     // ------------------------------------------------------------------
     // 2. ALLERGEN — MAY CONTAIN (MINOR)
     // ------------------------------------------------------------------
-    const currentMayContain = currentRecipe.allergenInfo?.mayContain || currentRecipe.allergens?.mayContain || [];
-    const previousMayContain = lastSavedRecipe.allergenInfo?.mayContain || lastSavedRecipe.allergens?.mayContain || [];
+    const currentMayContain = getRecipeAllergenBooleans(currentRecipe).mayContain as string[];
+    const previousMayContain = getRecipeAllergenBooleans(lastSavedRecipe).mayContain as string[];
     const mayContainDiff = arrayDiff(currentMayContain, previousMayContain);
 
     for (const allergen of mayContainDiff.added) {
@@ -330,8 +286,9 @@ export function useRecipeChangeDetection(
     // ------------------------------------------------------------------
     // 3. ALLERGEN — CROSS CONTACT (PATCH)
     // ------------------------------------------------------------------
-    const currentCrossContact = currentRecipe.allergenInfo?.crossContactRisk || currentRecipe.allergens?.crossContactRisk || [];
-    const previousCrossContact = lastSavedRecipe.allergenInfo?.crossContactRisk || lastSavedRecipe.allergens?.crossContactRisk || [];
+    // Cross-contact notes remain in allergenInfo (text notes, no boolean equivalent)
+    const currentCrossContact = currentRecipe.allergenInfo?.crossContactRisk || [];
+    const previousCrossContact = lastSavedRecipe.allergenInfo?.crossContactRisk || [];
     const crossContactDiff = arrayDiff(currentCrossContact, previousCrossContact);
 
     if (crossContactDiff.added.length > 0 || crossContactDiff.removed.length > 0) {

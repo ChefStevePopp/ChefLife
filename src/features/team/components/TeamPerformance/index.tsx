@@ -34,6 +34,7 @@ import { CoachingTab } from "./components/CoachingTab";
 import { PIPsTab } from "./components/PIPsTab";
 import { ImportTab } from "../ImportTab";
 import { ReportsTab } from "./components/ReportsTab";
+// GapScannerTab lives inside PointsTab as the "Gap Audit" view mode
 
 type TabType = "overview" | "team" | "points" | "coaching" | "pips" | "reports" | "import";
 
@@ -69,6 +70,54 @@ export const TeamPerformance: React.FC = () => {
   } = usePerformanceStore();
 
   const { members, fetchTeamMembers } = useTeamStore();
+
+  // Staged events count for pending badge
+  const [stagedEventsCount, setStagedEventsCount] = useState(0);
+  const [stagedAnimating, setStagedAnimating] = useState(false);
+  
+  // Gap count for Points tab badge (Gap Audit view mode)
+  const [gapCount, setGapCount] = useState(0);
+  const [gapAnimating, setGapAnimating] = useState(false);
+
+  const fetchStagedCount = async () => {
+    if (!organizationId) return;
+    try {
+      const { count, error } = await supabase
+        .from('staged_events')
+        .select('*', { count: 'exact', head: true })
+        .eq('organization_id', organizationId);
+      if (!error && count !== null) {
+        // Trigger ping animation when count increases
+        if (count > stagedEventsCount && stagedEventsCount > 0) {
+          setStagedAnimating(true);
+          setTimeout(() => setStagedAnimating(false), 1500);
+        }
+        setStagedEventsCount(count);
+      }
+    } catch (err) {
+      console.warn('Could not fetch staged events count:', err);
+    }
+  };
+
+  const fetchGapCount = async () => {
+    if (!organizationId) return;
+    try {
+      const { count, error } = await supabase
+        .from('shift_attendance_gaps')
+        .select('*', { count: 'exact', head: true })
+        .eq('organization_id', organizationId);
+      if (!error && count !== null) {
+        // Trigger ping animation when count increases
+        if (count > gapCount && gapCount > 0) {
+          setGapAnimating(true);
+          setTimeout(() => setGapAnimating(false), 1500);
+        }
+        setGapCount(count);
+      }
+    } catch (err) {
+      console.warn('Could not fetch gap count:', err);
+    }
+  };
 
   // Check module enablement first
   useEffect(() => {
@@ -108,6 +157,8 @@ export const TeamPerformance: React.FC = () => {
         await fetchAllCycles();
         await fetchTeamMembers();
         await fetchTeamPerformance();
+        await fetchStagedCount();
+        await fetchGapCount();
         
         // Check if we have any data
         const performanceArray = Array.from(teamPerformance.values());
@@ -161,6 +212,14 @@ export const TeamPerformance: React.FC = () => {
     return () => document.removeEventListener('click', handleClickOutside);
   }, [showCycleDropdown]);
 
+  // Re-fetch staged count when switching to Team tab or when performance data updates
+  useEffect(() => {
+    if (moduleState === 'ready') {
+      fetchStagedCount();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, teamPerformance]);
+
   // Re-check state when data changes - only check for no_data condition
   useEffect(() => {
     if (moduleState === 'no_data') {
@@ -176,8 +235,7 @@ export const TeamPerformance: React.FC = () => {
   const tier3Count = performanceArray.filter(p => p.tier === 3).length;
   const coachingCount = performanceArray.filter(p => p.coaching_stage && p.coaching_stage >= 1).length;
   const activePIPCount = performanceArray.filter(p => p.active_pip).length;
-  // TODO: pendingEventsCount will come from staged_events table
-  const pendingEventsCount = 0;
+  const pendingEventsCount = stagedEventsCount;
 
   // Selected cycle info
   const selectedCycle = useMemo(() => {
@@ -200,13 +258,7 @@ export const TeamPerformance: React.FC = () => {
 
   const tabs: TabConfig[] = [
     { id: "overview", label: "Overview", icon: TrendingUp, color: "primary" },
-    { 
-      id: "team", 
-      label: "Team", 
-      icon: Users, 
-      color: "green",
-      badge: pendingEventsCount > 0 ? pendingEventsCount : undefined,
-    },
+    { id: "team", label: "Team", icon: Users, color: "green" },
     { id: "points", label: "Points", icon: Award, color: "amber" },
     { 
       id: "coaching", 
@@ -764,16 +816,60 @@ export const TeamPerformance: React.FC = () => {
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
+              const isTeamTab = tab.id === 'team';
+              const isPointsTab = tab.id === 'points';
+              // Points tab gets VIM badge when Alpha/Omega + gaps > 0
+              const showPointsBadge = isPointsTab && securityLevel <= SECURITY_LEVELS.ALPHA && gapCount > 0;
+              const hasVimBadge = (isTeamTab && pendingEventsCount > 0) || showPointsBadge;
               
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`tab ${tab.color} ${isActive ? 'active' : ''}`}
+                  className={`tab ${tab.color} ${isActive ? 'active' : ''} relative`}
                 >
                   <Icon className="w-4 h-4" />
                   <span>{tab.label}</span>
-                  {tab.badge !== undefined && (
+                  {/* Team tab: VIM-style red badge */}
+                  {isTeamTab && pendingEventsCount > 0 && (
+                    <span
+                      className="
+                        absolute -top-1.5 -right-1.5 min-w-[20px] h-[20px]
+                        flex items-center justify-center
+                        text-[10px] font-bold rounded-full px-1
+                        transition-colors duration-300
+                        text-white bg-red-700
+                      "
+                    >
+                      {stagedAnimating && (
+                        <span className="absolute inset-0 rounded-full bg-white animate-ping opacity-60" />
+                      )}
+                      <span className="relative z-10">
+                        {pendingEventsCount > 99 ? '99+' : pendingEventsCount}
+                      </span>
+                    </span>
+                  )}
+                  {/* Points tab: VIM-style red badge for gap audit (Alpha/Omega only) */}
+                  {showPointsBadge && (
+                    <span
+                      className="
+                        absolute -top-1.5 -right-1.5 min-w-[20px] h-[20px]
+                        flex items-center justify-center
+                        text-[10px] font-bold rounded-full px-1
+                        transition-colors duration-300
+                        text-white bg-red-700
+                      "
+                    >
+                      {gapAnimating && (
+                        <span className="absolute inset-0 rounded-full bg-white animate-ping opacity-60" />
+                      )}
+                      <span className="relative z-10">
+                        {gapCount > 99 ? '99+' : gapCount}
+                      </span>
+                    </span>
+                  )}
+                  {/* Other tabs: standard inline badge */}
+                  {!hasVimBadge && tab.badge !== undefined && (
                     <span className={`px-2 py-0.5 rounded-full text-xs ${
                       isActive
                         ? `bg-${tab.color}-500/20 text-${tab.color}-300`

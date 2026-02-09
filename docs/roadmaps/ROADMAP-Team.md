@@ -25,6 +25,11 @@
 - [x] Attendance tracking
 - [x] Vacation/sick day tracking
 - [x] Time-off requests
+- [x] **Data Flow Audit (Session 81)** — end-to-end pipeline verified
+  - CSV Import → Delta Engine → Staging → Approval → Store → UI → NEXUS
+  - 8 database tables, 3-table deduplication, 30-day reduction cap
+  - Security exemptions, auto-coaching triggers, cycle auto-creation
+  - Zero issues found — architecture sound
 
 ### Communications/Nexus ✅
 - [x] Email template library
@@ -141,5 +146,6 @@ Team Performance features are designed with Ontario Employment Standards Act in 
 
 ---
 
-*Created: January 8, 2026*
+*Created: January 8, 2026*  
+*Updated: February 8, 2026 (Session 81 — Data Flow Audit)*  
 *Section: Team*

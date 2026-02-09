@@ -1,5 +1,6 @@
 import React from "react";
 import { usePerformanceStore } from "@/stores/performanceStore";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import { 
   Users, 
   AlertTriangle, 
@@ -11,6 +12,7 @@ import {
 } from "lucide-react";
 
 export const OverviewTab: React.FC = () => {
+  const { showDiagnostics } = useDiagnostics();
   const { teamPerformance, config } = usePerformanceStore();
   const performanceArray = Array.from(teamPerformance.values());
 
@@ -37,6 +39,7 @@ export const OverviewTab: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {showDiagnostics && <div className="text-xs text-gray-500 font-mono">src/features/team/components/TeamPerformance/components/OverviewTab.tsx</div>}
       {/* Tier Distribution - L5: Colored icon badge only */}
       <div className="bg-gray-800/30 rounded-lg border border-gray-700/30 p-5">
         {/* Section Header - L5 style */}

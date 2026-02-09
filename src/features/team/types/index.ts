@@ -128,6 +128,7 @@ export interface TimeOffUsage {
   sick_days_used: number;
   sick_days_available: number;
   sick_period_start: string;  // ISO date
+  sick_day_dates?: string[];  // Individual sick day dates (YYYY-MM-DD) for ledger display
   vacation_hours_used?: number;
   vacation_hours_available?: number;
 }

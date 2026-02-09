@@ -2,15 +2,21 @@
  * TeamTab - Chef's Operational Command Center
  * 
  * Shows team members with pending staged events for review.
- * Approve/Reject/Excuse events from Import workflow.
+ * Uses batch-save pattern: decisions queue locally → action bar → Save All.
+ * Auto-filters to affected members when staged events exist.
  * 
- * L5 Design: Clean search/sort/filter controls
+ * Flow: Review events → Queue decisions (with undo) → Save All / Save Progress
+ * Save All: enabled when all events reviewed (primary green button)
+ * Save Progress: TwoStageButton escape hatch — "Leave N unresolved?"
+ * 
+ * L5 Design: Floating action bar, clean search/sort/filter controls
  */
 
 import React, { useState, useMemo, useEffect } from "react";
 import { usePerformanceStore } from "@/stores/performanceStore";
 import { useTeamStore } from "@/stores/teamStore";
 import { useAuth } from "@/hooks/useAuth";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
 import { supabase } from "@/lib/supabase";
 import { nexus } from "@/lib/nexus";
 import toast from "react-hot-toast";
@@ -36,12 +42,15 @@ import {
   Palmtree,
   Plus,
   Minus,
+  Save,
+  Undo2,
 } from "lucide-react";
 import { AddPointEventModal } from "./AddPointEventModal";
 import { AddPointReductionModal } from "./AddPointReductionModal";
 import { AddSickDayModal } from "./AddSickDayModal";
 import { AddVacationModal } from "./AddVacationModal";
 import { ActionLegend } from "./ActionLegend";
+import { TwoStageButton } from "@/components/ui/TwoStageButton";
 
 // =============================================================================
 // TYPES
@@ -76,6 +85,15 @@ interface CycleInfo {
   id: string;
   start_date: string;
   end_date: string;
+}
+
+interface PendingAction {
+  eventId: string;
+  type: 'approve' | 'approve_modified' | 'reject' | 'excuse';
+  event: StagedEvent;
+  modification?: { event_type: string; points: number };
+  excuseReason?: string;
+  label: string; // Human-readable summary for action bar
 }
 
 // =============================================================================
@@ -181,15 +199,15 @@ const ensureCycleExists = async (
 // =============================================================================
 
 export const TeamTab: React.FC = () => {
+  const { showDiagnostics } = useDiagnostics();
   const { organizationId, user } = useAuth();
-  const { teamPerformance } = usePerformanceStore();
+  const { teamPerformance, fetchTeamPerformance } = usePerformanceStore();
   const { members } = useTeamStore();
   const performanceArray = Array.from(teamPerformance.values());
 
   // Staged events state
   const [stagedEvents, setStagedEvents] = useState<StagedEvent[]>([]);
   const [isLoadingStaged, setIsLoadingStaged] = useState(false);
-  const [processingEventId, setProcessingEventId] = useState<string | null>(null);
 
   // Search, Sort, Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -207,6 +225,11 @@ export const TeamTab: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
   const ITEMS_PER_PAGE = 12;
+
+  // Batch action state (dirty state pattern)
+  const [pendingActions, setPendingActions] = useState<PendingAction[]>([]);
+  const [showFullTeam, setShowFullTeam] = useState(false);
+  const [isBatchSaving, setIsBatchSaving] = useState(false);
 
   // =============================================================================
   // FETCH STAGED EVENTS
@@ -272,17 +295,117 @@ export const TeamTab: React.FC = () => {
   }, [performanceArray, members]);
 
   // =============================================================================
-  // EVENT ACTIONS
+  // QUEUE ACTIONS (local state — no DB writes until Save)
   // =============================================================================
 
-  const approveEvent = async (event: StagedEvent, modification?: { event_type: string; points: number }) => {
-    if (!organizationId || !user) return;
-    
-    const eventType = modification?.event_type || event.event_type;
+  const getMemberName = (event: StagedEvent) => {
+    const member = combinedMembers.find(m => m.team_member_id === event.team_member_id);
+    return member?.team_member
+      ? `${member.team_member.first_name} ${member.team_member.last_name}`
+      : 'Team member';
+  };
+
+  const queueApproval = (event: StagedEvent, modification?: { event_type: string; points: number }) => {
     const points = modification?.points ?? event.suggested_points;
+    const eventType = modification?.event_type || event.event_type;
+    const isModified = modification !== undefined;
+    const name = getMemberName(event);
     
-    setProcessingEventId(event.id);
+    setPendingActions(prev => [
+      ...prev.filter(a => a.eventId !== event.id),
+      {
+        eventId: event.id,
+        type: isModified ? 'approve_modified' : 'approve',
+        event,
+        modification,
+        label: `${name}: ${eventType.replace(/_/g, ' ')} (${points > 0 ? '+' : ''}${points} pts)${isModified ? ' ✎' : ''}`,
+      },
+    ]);
+  };
+
+  const queueRejection = (event: StagedEvent) => {
+    const name = getMemberName(event);
+    setPendingActions(prev => [
+      ...prev.filter(a => a.eventId !== event.id),
+      {
+        eventId: event.id,
+        type: 'reject',
+        event,
+        label: `${name}: rejected (${event.event_type.replace(/_/g, ' ')})`,
+      },
+    ]);
+  };
+
+  const queueExcuse = (event: StagedEvent, reason: string) => {
+    const name = getMemberName(event);
+    setPendingActions(prev => [
+      ...prev.filter(a => a.eventId !== event.id),
+      {
+        eventId: event.id,
+        type: 'excuse',
+        event,
+        excuseReason: reason,
+        label: `${name}: excused (${reason})`,
+      },
+    ]);
+  };
+
+  const undoAction = (eventId: string) => {
+    setPendingActions(prev => prev.filter(a => a.eventId !== eventId));
+  };
+
+  const discardAllActions = () => {
+    setPendingActions([]);
+  };
+
+  // Pending action lookup
+  const pendingActionMap = useMemo(() => {
+    const map = new Map<string, PendingAction>();
+    pendingActions.forEach(a => map.set(a.eventId, a));
+    return map;
+  }, [pendingActions]);
+
+  // Progress tracking
+  const totalStagedEvents = stagedEvents.length;
+  const reviewedCount = pendingActions.length;
+  const allReviewed = totalStagedEvents > 0 && reviewedCount === totalStagedEvents;
+  const hasAnyReviewed = reviewedCount > 0;
+  const unreviewedCount = totalStagedEvents - reviewedCount;
+
+  // =============================================================================
+  // BATCH SAVE — Commits all queued actions to database
+  // =============================================================================
+
+  const reductionTypeMap: Record<string, string> = {
+    'stayed_late': 'stay_late',
+    'arrived_early': 'arrive_early',
+  };
+
+  const commitSingleAction = async (action: PendingAction): Promise<{ success: boolean; error?: string }> => {
+    if (!organizationId || !user) return { success: false, error: 'No auth context' };
+
+    const { event } = action;
+
     try {
+      // ----- REJECT: just delete staged event -----
+      if (action.type === 'reject') {
+        const { error } = await supabase.from('staged_events').delete().eq('id', event.id);
+        if (error) throw error;
+        return { success: true };
+      }
+
+      // ----- EXCUSE: delete staged event + NEXUS log -----
+      if (action.type === 'excuse') {
+        const { error } = await supabase.from('staged_events').delete().eq('id', event.id);
+        if (error) throw error;
+        return { success: true };
+      }
+
+      // ----- APPROVE / APPROVE_MODIFIED: find cycle → insert → delete staged -----
+      const eventType = action.modification?.event_type || event.event_type;
+      const points = action.modification?.points ?? event.suggested_points;
+
+      // Find or create the appropriate cycle
       let { data: existingCycle, error: cycleError } = await supabase
         .from('performance_cycles')
         .select('id, start_date, end_date')
@@ -292,218 +415,161 @@ export const TeamTab: React.FC = () => {
         .single();
 
       let cycle: CycleInfo;
-      let cycleName: string | undefined;
 
       if (cycleError || !existingCycle) {
         const result = await ensureCycleExists(organizationId, event.event_date);
-        
-        if (!result) {
-          toast.error(`Could not create cycle for ${event.event_date}. Check module configuration.`);
-          setProcessingEventId(null);
-          return;
-        }
-        
+        if (!result) return { success: false, error: `No cycle for ${event.event_date}` };
         cycle = result.cycle;
-        cycleName = result.name;
-        toast.success(`Created cycle: ${cycleName}`);
       } else {
         cycle = existingCycle as CycleInfo;
       }
 
       const isReduction = points < 0;
       const isInformational = eventType === 'unscheduled_worked';
-      
-      const reductionTypeMap: Record<string, string> = {
-        'stayed_late': 'stay_late',
-        'arrived_early': 'arrive_early',
-      };
-      
-      if (isInformational) {
-        const { error: deleteError } = await supabase
-          .from('staged_events')
-          .delete()
-          .eq('id', event.id);
 
-        if (deleteError) throw new Error(deleteError.message || 'Delete failed');
-        
-        await fetchStagedEvents();
-        toast.success('Unscheduled shift noted (no points)');
-        setProcessingEventId(null);
-        return;
-      }
-      
-      if (isReduction) {
-        const reductionType = reductionTypeMap[eventType] || eventType;
-        
-        const { error: insertError } = await supabase
-          .from('performance_point_reductions')
-          .insert({
-            organization_id: organizationId,
-            team_member_id: event.team_member_id,
-            cycle_id: cycle.id,
-            reduction_type: reductionType,
-            points: points,
-            event_date: event.event_date,
-            notes: event.description,
-            created_by: user.id,
-          })
-          .select()
-          .single();
-
-        if (insertError) {
-          console.error('Insert reduction error:', insertError);
-          throw new Error(insertError.message || insertError.code || 'Insert failed');
+      if (!isInformational) {
+        if (isReduction) {
+          const { error: insertError } = await supabase
+            .from('performance_point_reductions')
+            .insert({
+              organization_id: organizationId,
+              team_member_id: event.team_member_id,
+              cycle_id: cycle.id,
+              reduction_type: reductionTypeMap[eventType] || eventType,
+              points,
+              event_date: event.event_date,
+              notes: event.description,
+              created_by: user.id,
+            });
+          if (insertError) throw insertError;
+        } else {
+          const { error: insertError } = await supabase
+            .from('performance_point_events')
+            .insert({
+              organization_id: organizationId,
+              team_member_id: event.team_member_id,
+              cycle_id: cycle.id,
+              event_type: eventType,
+              points,
+              event_date: event.event_date,
+              notes: event.description,
+              created_by: user.id,
+            });
+          if (insertError) throw insertError;
         }
+      }
+
+      // Delete from staged_events
+      const { error: deleteError } = await supabase.from('staged_events').delete().eq('id', event.id);
+      if (deleteError) console.warn('Staged event cleanup failed:', deleteError);
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Unknown error' };
+    }
+  };
+
+  const saveActions = async (actionsToSave: PendingAction[]) => {
+    if (!organizationId || !user || actionsToSave.length === 0) return;
+
+    setIsBatchSaving(true);
+    let successCount = 0;
+    let failCount = 0;
+    const failures: string[] = [];
+
+    try {
+      for (const action of actionsToSave) {
+        const result = await commitSingleAction(action);
+        if (result.success) {
+          successCount++;
+        } else {
+          failCount++;
+          failures.push(`${getMemberName(action.event)}: ${result.error}`);
+        }
+      }
+
+      // Summarize for NEXUS batch log
+      const approved = actionsToSave.filter(a => a.type === 'approve' || a.type === 'approve_modified');
+      const rejected = actionsToSave.filter(a => a.type === 'reject');
+      const excused = actionsToSave.filter(a => a.type === 'excuse');
+
+      await nexus({
+        organization_id: organizationId,
+        user_id: user.id,
+        activity_type: 'performance_batch_review',
+        details: {
+          total: actionsToSave.length,
+          approved: approved.length,
+          rejected: rejected.length,
+          excused: excused.length,
+          success: successCount,
+          failed: failCount,
+          excuseReasons: excused.map(a => a.excuseReason),
+        },
+      });
+
+      // NEXUS individual excuse logs (for sick day tracking)
+      for (const action of excused) {
+        await nexus({
+          organization_id: organizationId,
+          user_id: user.id,
+          activity_type: 'performance_event_excused',
+          details: {
+            team_member_id: action.event.team_member_id,
+            name: getMemberName(action.event),
+            event_type: action.event.event_type,
+            reason: action.excuseReason,
+            event_date: action.event.event_date,
+          },
+        });
+      }
+
+      // Refresh data once
+      await fetchStagedEvents();
+      await fetchTeamPerformance();
+
+      // Remove saved actions from pending (keep any that weren't in this batch)
+      const savedIds = new Set(actionsToSave.map(a => a.eventId));
+      setPendingActions(prev => prev.filter(a => !savedIds.has(a.eventId)));
+
+      // Reset auto-filter if everything is cleared
+      if (unreviewedCount === 0 && failCount === 0) {
+        setShowFullTeam(false);
+      }
+
+      // Toast
+      if (failCount > 0) {
+        toast.error(`${successCount} saved, ${failCount} failed`);
+        console.error('Batch save failures:', failures);
       } else {
-        const { error: insertError } = await supabase
-          .from('performance_point_events')
-          .insert({
-            organization_id: organizationId,
-            team_member_id: event.team_member_id,
-            cycle_id: cycle.id,
-            event_type: eventType,
-            points: points,
-            event_date: event.event_date,
-            notes: event.description,
-            created_by: user.id,
-          })
-          .select()
-          .single();
-
-        if (insertError) {
-          console.error('Insert event error:', insertError);
-          throw new Error(insertError.message || insertError.code || 'Insert failed');
-        }
+        toast.success(`${successCount} event${successCount !== 1 ? 's' : ''} saved`);
       }
-
-      const { error: deleteError } = await supabase
-        .from('staged_events')
-        .delete()
-        .eq('id', event.id);
-
-      if (deleteError) {
-        console.error('Delete error:', deleteError);
-        toast.error('Event saved but cleanup failed');
-      }
-
-      const member = combinedMembers.find(m => m.team_member_id === event.team_member_id);
-      const memberName = member?.team_member 
-        ? `${member.team_member.first_name} ${member.team_member.last_name}`
-        : 'Team member';
-
-      await nexus({
-        organization_id: organizationId,
-        user_id: user.id,
-        activity_type: 'performance_event_approved',
-        details: {
-          name: memberName,
-          event_type: eventType,
-          original_event_type: event.event_type,
-          points: points,
-          original_points: event.suggested_points,
-          was_modified: modification !== undefined,
-          event_date: event.event_date,
-        },
-      });
-
-      await fetchStagedEvents();
-      const modifiedLabel = modification ? ' (reclassified)' : '';
-      toast.success(`Event approved${modifiedLabel}: ${points > 0 ? '+' : ''}${points} pts`);
     } catch (err: any) {
-      console.error('Error approving event:', err);
-      const message = err?.message || err?.code || (typeof err === 'string' ? err : 'Unknown error');
-      toast.error(`Failed to approve: ${message}`);
+      console.error('Batch save error:', err);
+      toast.error('Batch save failed — no changes were lost, try again');
     } finally {
-      setProcessingEventId(null);
+      setIsBatchSaving(false);
     }
   };
 
-  const rejectEvent = async (event: StagedEvent) => {
-    if (!organizationId || !user) return;
-    
-    setProcessingEventId(event.id);
-    try {
-      const { error } = await supabase
-        .from('staged_events')
-        .delete()
-        .eq('id', event.id);
+  const saveAllActions = () => saveActions(pendingActions);
 
-      if (error) throw error;
-
-      const member = combinedMembers.find(m => m.team_member_id === event.team_member_id);
-      const memberName = member?.team_member 
-        ? `${member.team_member.first_name} ${member.team_member.last_name}`
-        : 'Team member';
-
-      await nexus({
-        organization_id: organizationId,
-        user_id: user.id,
-        activity_type: 'performance_event_rejected',
-        details: {
-          name: memberName,
-          event_type: event.event_type,
-          event_date: event.event_date,
-        },
-      });
-
-      await fetchStagedEvents();
-      toast('Event rejected', { icon: '🗑️' });
-    } catch (err: any) {
-      console.error('Error rejecting event:', err);
-      const message = err?.message || err?.code || (typeof err === 'string' ? err : 'Unknown error');
-      toast.error(`Failed to reject: ${message}`);
-    } finally {
-      setProcessingEventId(null);
-    }
-  };
-
-  const excuseEvent = async (event: StagedEvent, reason: string) => {
-    if (!organizationId || !user) return;
-    
-    setProcessingEventId(event.id);
-    try {
-      const { error } = await supabase
-        .from('staged_events')
-        .delete()
-        .eq('id', event.id);
-
-      if (error) throw error;
-
-      const member = combinedMembers.find(m => m.team_member_id === event.team_member_id);
-      const memberName = member?.team_member 
-        ? `${member.team_member.first_name} ${member.team_member.last_name}`
-        : 'Team member';
-
-      await nexus({
-        organization_id: organizationId,
-        user_id: user.id,
-        activity_type: 'performance_event_excused',
-        details: {
-          team_member_id: event.team_member_id,
-          name: memberName,
-          event_type: event.event_type,
-          reason: reason,
-          event_date: event.event_date,
-        },
-      });
-
-      await fetchStagedEvents();
-      toast.success(`Event excused: ${reason}`);
-    } catch (err: any) {
-      console.error('Error excusing event:', err);
-      const message = err?.message || err?.code || (typeof err === 'string' ? err : 'Unknown error');
-      toast.error(`Failed to excuse: ${message}`);
-    } finally {
-      setProcessingEventId(null);
-    }
-  };
+  const savePartialActions = () => saveActions(pendingActions);
 
   // =============================================================================
   // FILTERING & SORTING
   // =============================================================================
 
+  // Auto-filter: when staged events exist, show only affected members unless user chose "Show All"
+  const isAutoFiltered = stagedEvents.length > 0 && !showFullTeam && filterOption === 'all';
+
   const filteredAndSortedMembers = useMemo(() => {
     let list = [...combinedMembers];
+
+    // Auto-filter to affected members when staged events exist
+    if (isAutoFiltered) {
+      list = list.filter(m => stagedByMember.has(m.team_member_id));
+    }
 
     // Apply search filter
     if (searchQuery.trim()) {
@@ -515,23 +581,25 @@ export const TeamTab: React.FC = () => {
       );
     }
 
-    // Apply status filter
-    switch (filterOption) {
-      case 'pending':
-        list = list.filter(m => stagedByMember.has(m.team_member_id));
-        break;
-      case 'tier1':
-        list = list.filter(m => m.tier === 1);
-        break;
-      case 'tier2':
-        list = list.filter(m => m.tier === 2);
-        break;
-      case 'tier3':
-        list = list.filter(m => m.tier === 3);
-        break;
-      case 'coaching':
-        list = list.filter(m => m.coaching_stage && m.coaching_stage >= 1);
-        break;
+    // Apply status filter (only when not auto-filtered)
+    if (!isAutoFiltered) {
+      switch (filterOption) {
+        case 'pending':
+          list = list.filter(m => stagedByMember.has(m.team_member_id));
+          break;
+        case 'tier1':
+          list = list.filter(m => m.tier === 1);
+          break;
+        case 'tier2':
+          list = list.filter(m => m.tier === 2);
+          break;
+        case 'tier3':
+          list = list.filter(m => m.tier === 3);
+          break;
+        case 'coaching':
+          list = list.filter(m => m.coaching_stage && m.coaching_stage >= 1);
+          break;
+      }
     }
 
     // Apply sort
@@ -563,7 +631,7 @@ export const TeamTab: React.FC = () => {
     });
 
     return list;
-  }, [combinedMembers, searchQuery, filterOption, sortOption, stagedByMember]);
+  }, [combinedMembers, searchQuery, filterOption, sortOption, stagedByMember, isAutoFiltered]);
 
   // Reset to page 1 when filters change
   React.useEffect(() => {
@@ -619,6 +687,7 @@ export const TeamTab: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      {showDiagnostics && <div className="text-xs text-gray-500 font-mono">src/features/team/components/TeamPerformance/components/TeamTab.tsx</div>}
       {/* Help Legend */}
       <ActionLegend context="team" />
 
@@ -713,6 +782,39 @@ export const TeamTab: React.FC = () => {
         </button>
       </div>
 
+      {/* Auto-Filter Banner */}
+      {isAutoFiltered && (
+        <div className="flex items-center justify-between p-3 bg-amber-500/10 rounded-lg border border-amber-500/30">
+          <div className="flex items-center gap-2">
+            <Clock className="w-4 h-4 text-amber-400" />
+            <span className="text-sm text-amber-200">
+              Showing <strong>{stagedByMember.size}</strong> member{stagedByMember.size !== 1 ? 's' : ''} with pending events
+            </span>
+          </div>
+          <button
+            onClick={() => setShowFullTeam(true)}
+            className="text-xs text-amber-400 hover:text-amber-300 font-medium transition-colors"
+          >
+            Show All Team
+          </button>
+        </div>
+      )}
+
+      {/* Show All Team active indicator */}
+      {showFullTeam && stagedEvents.length > 0 && (
+        <div className="flex items-center justify-between p-3 bg-gray-800/40 rounded-lg border border-gray-700/30">
+          <span className="text-sm text-gray-400">
+            Showing full team ({stats.total} members)
+          </span>
+          <button
+            onClick={() => setShowFullTeam(false)}
+            className="text-xs text-primary-400 hover:text-primary-300 font-medium transition-colors"
+          >
+            Focus on pending
+          </button>
+        </div>
+      )}
+
       {/* Results Count */}
       {(searchQuery || filterOption !== 'all') && (
         <div className="flex items-center justify-between text-sm">
@@ -755,6 +857,8 @@ export const TeamTab: React.FC = () => {
             const pendingEvents = stagedByMember.get(member.team_member_id) || [];
             const isExpanded = expandedMember === member.team_member_id;
             const hasPending = pendingEvents.length > 0;
+            const decidedForMember = pendingEvents.filter(e => pendingActionMap.has(e.id)).length;
+            const allDecidedForMember = hasPending && decidedForMember === pendingEvents.length;
 
             return (
               <div 
@@ -794,8 +898,19 @@ export const TeamTab: React.FC = () => {
                            `${member.team_member?.first_name} ${member.team_member?.last_name}`}
                         </span>
                         {hasPending && (
-                          <span className="px-1.5 py-0.5 text-xs font-medium bg-amber-500/20 text-amber-400 rounded">
-                            {pendingEvents.length} pending
+                          <span className={`px-1.5 py-0.5 text-xs font-medium rounded ${
+                            allDecidedForMember 
+                              ? 'bg-emerald-500/20 text-emerald-400'
+                              : decidedForMember > 0
+                                ? 'bg-amber-500/20 text-amber-400'
+                                : 'bg-amber-500/20 text-amber-400'
+                          }`}>
+                            {allDecidedForMember
+                              ? `${pendingEvents.length} ✓ ready`
+                              : decidedForMember > 0
+                                ? `${decidedForMember}/${pendingEvents.length} reviewed`
+                                : `${pendingEvents.length} pending`
+                            }
                           </span>
                         )}
                       </div>
@@ -908,16 +1023,21 @@ export const TeamTab: React.FC = () => {
                 {/* Expanded Pending Events */}
                 {isExpanded && hasPending && (
                   <div className="border-t border-gray-700/30 p-3 pl-12 space-y-2 bg-gray-800/20">
-                    {pendingEvents.map(event => (
-                      <StagedEventRow
-                        key={event.id}
-                        event={event}
-                        isProcessing={processingEventId === event.id}
-                        onApprove={(modification) => approveEvent(event, modification)}
-                        onReject={() => rejectEvent(event)}
-                        onExcuse={(reason) => excuseEvent(event, reason)}
-                      />
-                    ))}
+                    {pendingEvents.map(event => {
+                      const decidedAction = pendingActionMap.get(event.id);
+                      return (
+                        <StagedEventRow
+                          key={event.id}
+                          event={event}
+                          isProcessing={false}
+                          decidedAction={decidedAction}
+                          onApprove={(modification) => queueApproval(event, modification)}
+                          onReject={() => queueRejection(event)}
+                          onExcuse={(reason) => queueExcuse(event, reason)}
+                          onUndo={() => undoAction(event.id)}
+                        />
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -970,6 +1090,100 @@ export const TeamTab: React.FC = () => {
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* =================================================================== */}
+      {/* FLOATING ACTION BAR — Batch save controls                          */}
+      {/* =================================================================== */}
+      {hasAnyReviewed && (
+        <div className={`floating-action-bar ${allReviewed ? 'success' : 'warning'}`}>
+          <div className="floating-action-bar-inner">
+            <div className="floating-action-bar-content">
+              {/* Left: Progress */}
+              <div className="flex items-center gap-3">
+                <div className="flex flex-col">
+                  <span className="text-xs text-gray-400 whitespace-nowrap">
+                    {reviewedCount} of {totalStagedEvents} reviewed
+                  </span>
+                  <div className="w-24 h-1.5 bg-gray-700 rounded-full overflow-hidden mt-1">
+                    <div 
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        allReviewed ? 'bg-emerald-400' : 'bg-amber-400'
+                      }`}
+                      style={{ width: `${(reviewedCount / totalStagedEvents) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="w-px h-6 bg-gray-700" />
+
+              {/* Center: Summary */}
+              <div className="text-xs text-gray-400 whitespace-nowrap">
+                {(() => {
+                  const approved = pendingActions.filter(a => a.type === 'approve' || a.type === 'approve_modified').length;
+                  const excused = pendingActions.filter(a => a.type === 'excuse').length;
+                  const rejected = pendingActions.filter(a => a.type === 'reject').length;
+                  const parts: string[] = [];
+                  if (approved) parts.push(`${approved} assigned`);
+                  if (excused) parts.push(`${excused} excused`);
+                  if (rejected) parts.push(`${rejected} rejected`);
+                  return parts.join(', ') || 'No decisions yet';
+                })()}
+              </div>
+
+              <div className="w-px h-6 bg-gray-700" />
+
+              {/* Right: Actions */}
+              <div className="flex items-center gap-2">
+                {/* Discard */}
+                <TwoStageButton
+                  onConfirm={discardAllActions}
+                  icon={X}
+                  confirmText="Discard all?"
+                  variant="danger"
+                  size="sm"
+                  disabled={isBatchSaving}
+                />
+
+                {/* Save Progress (TwoStageButton — only when NOT all reviewed) */}
+                {!allReviewed && (
+                  <TwoStageButton
+                    onConfirm={savePartialActions}
+                    icon={Save}
+                    confirmText={`Leave ${unreviewedCount} unresolved?`}
+                    variant="warning"
+                    size="sm"
+                    timeout={3000}
+                    disabled={isBatchSaving}
+                  />
+                )}
+
+                {/* Save All (primary — enabled only when all reviewed) */}
+                <button
+                  onClick={saveAllActions}
+                  disabled={!allReviewed || isBatchSaving}
+                  className={`
+                    flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
+                    transition-all duration-200
+                    ${allReviewed
+                      ? 'bg-emerald-500 text-white hover:bg-emerald-400 shadow-lg shadow-emerald-500/25'
+                      : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                    }
+                    ${isBatchSaving ? 'opacity-50 cursor-wait' : ''}
+                  `}
+                >
+                  {isBatchSaving ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Save className="w-3.5 h-3.5" />
+                  )}
+                  Save All
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1053,10 +1267,12 @@ const AvatarWithFallback: React.FC<{
 const StagedEventRow: React.FC<{
   event: StagedEvent;
   isProcessing: boolean;
+  decidedAction?: PendingAction;
   onApprove: (modifiedEvent?: { event_type: string; points: number }) => void;
   onReject: () => void;
   onExcuse: (reason: string) => void;
-}> = ({ event, isProcessing, onApprove, onReject, onExcuse }) => {
+  onUndo?: () => void;
+}> = ({ event, isProcessing, decidedAction, onApprove, onReject, onExcuse, onUndo }) => {
   const [mode, setMode] = useState<'default' | 'modify' | 'excuse'>('default');
   const [selectedEventType, setSelectedEventType] = useState(event.event_type);
   const [selectedPoints, setSelectedPoints] = useState(event.suggested_points);
@@ -1104,7 +1320,52 @@ const StagedEventRow: React.FC<{
 
   const isModifyReady = selectedEventType !== event.event_type;
   const isExcuseReady = excuseReason !== '';
-  
+
+  // ---- DECIDED STATE: show decision summary + undo ----
+  if (decidedAction) {
+    const decisionColors: Record<string, string> = {
+      approve: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+      approve_modified: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+      reject: 'text-rose-400 bg-rose-500/10 border-rose-500/20',
+      excuse: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
+    };
+    const decisionIcons: Record<string, React.ReactNode> = {
+      approve: <Check className="w-4 h-4 text-emerald-400" />,
+      approve_modified: <Pencil className="w-4 h-4 text-emerald-400" />,
+      reject: <X className="w-4 h-4 text-rose-400" />,
+      excuse: <Shield className="w-4 h-4 text-amber-400" />,
+    };
+    const colorClass = decisionColors[decidedAction.type] || 'text-gray-400 bg-gray-700/20 border-gray-700/30';
+
+    return (
+      <div className={`flex items-center justify-between p-2 rounded-lg border ${colorClass} opacity-75`}>
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          {decisionIcons[decidedAction.type]}
+          <div className="min-w-0">
+            <p className="text-sm truncate">{event.description}</p>
+            <p className="text-xs opacity-60 mt-0.5">
+              {decidedAction.type === 'approve' && `Approved: +${event.suggested_points} pts`}
+              {decidedAction.type === 'approve_modified' && `Reclassified: ${decidedAction.modification?.event_type.replace(/_/g, ' ')} (${(decidedAction.modification?.points ?? 0) > 0 ? '+' : ''}${decidedAction.modification?.points} pts)`}
+              {decidedAction.type === 'reject' && 'Rejected — will be discarded'}
+              {decidedAction.type === 'excuse' && `Excused: ${decidedAction.excuseReason}`}
+            </p>
+          </div>
+        </div>
+        {onUndo && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onUndo(); }}
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-400 hover:text-white hover:bg-gray-700/50 transition-colors"
+            title="Undo this decision"
+          >
+            <Undo2 className="w-3 h-3" />
+            Undo
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // ---- DEFAULT STATE: full action buttons ----
   return (
     <div className="flex items-center justify-between p-2 rounded-lg bg-gray-700/20">
       {/* Event Info */}

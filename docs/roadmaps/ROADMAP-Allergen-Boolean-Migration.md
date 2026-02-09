@@ -5,7 +5,7 @@
 
 **Created:** February 7, 2026
 **Authors:** Steve Popp (Creator/Architect) & Claude (Architecture Partner)
-**Status:** Planning — not yet scheduled
+**Status:** Phase 3 complete — all reads from booleans, dual-write active
 **Decision:** Confirmed by Steve — required for platform scale
 
 ---
@@ -523,12 +523,12 @@ WHERE id = $1 AND organization_id = $2;
 
 ## Session Estimates
 
-| Phase | Sessions | Notes |
-|---|---|---|
-| Phase 1: Add columns + backfill | 1 | SQL migration + `allergen_declared_at` timestamp + verification |
-| Phase 2: Shared utility + dual-write | 1-2 | allergenUtils.ts + useAllergenAutoSync + Recipe type + store |
-| Phase 3: Read from booleans | 2-3 | All consumers, helpers, card, declaration, detection |
-| Phase 4: Drop JSONB | 1 | Cleanup after validation period |
+| Phase | Sessions | Notes | Status |
+|---|---|---|---|
+| Phase 1: Add columns + backfill | 1 | SQL migration + `allergen_declared_at` timestamp + verification | ✅ Session 80 |
+| Phase 2: Shared utility + dual-write | 1 | allergenUtils.ts + useAllergenAutoSync + Recipe type + 3 dedup | ✅ Session 80 |
+| Phase 3: Read from booleans | 0.5 | All consumers already migrated; 2 final JSONB reads switched | ✅ Session 80 |
+| Phase 4: Drop JSONB | 1 | Cleanup after validation period | |
 | **Total** | **5-7 sessions** | Can be interleaved with other work |
 
 > **Architecture simplification (Feb 7):** Background cascade triggers and stale
@@ -550,6 +550,9 @@ WHERE id = $1 AND organization_id = $2;
 | 2026-02-07 | JSONB blobs must be eliminated before multi-tenant scale | Steve |
 | 2026-02-07 | `allergen_declared_at` timestamp replaces background cascade + stale flags | Steve |
 | 2026-02-07 | Cascade chain (MIL → Prepared → Final Plate) mechanics unchanged — storage format only | Steve |
+| 2026-02-08 | Phase 1 complete — 76 columns added, backfill verified, 24 indexes, 0 mismatches | Steve + Claude |
+| 2026-02-08 | Phase 2 complete — shared allergenUtils.ts, dual-write active, 3 duplicate functions consolidated | Steve + Claude |
+| 2026-02-08 | Phase 3 complete — all reads switched to booleans; only crossContactRisk remains on JSONB (no boolean equiv) | Steve + Claude |
 
 ---
 

@@ -61,6 +61,90 @@ export interface Recipe {
   approved_at?: string;
   last_reviewed_at?: string;
   last_reviewed_by?: string;
+  // =========================================
+  // Allergen boolean columns (Phase 2 dual-write)
+  // Mirrors MIL pattern: allergen_{type}_{tier}
+  // See: ROADMAP-Allergen-Boolean-Migration.md
+  // =========================================
+  allergen_peanut_contains?: boolean;
+  allergen_peanut_may_contain?: boolean;
+  allergen_peanut_environment?: boolean;
+  allergen_crustacean_contains?: boolean;
+  allergen_crustacean_may_contain?: boolean;
+  allergen_crustacean_environment?: boolean;
+  allergen_treenut_contains?: boolean;
+  allergen_treenut_may_contain?: boolean;
+  allergen_treenut_environment?: boolean;
+  allergen_shellfish_contains?: boolean;
+  allergen_shellfish_may_contain?: boolean;
+  allergen_shellfish_environment?: boolean;
+  allergen_sesame_contains?: boolean;
+  allergen_sesame_may_contain?: boolean;
+  allergen_sesame_environment?: boolean;
+  allergen_soy_contains?: boolean;
+  allergen_soy_may_contain?: boolean;
+  allergen_soy_environment?: boolean;
+  allergen_fish_contains?: boolean;
+  allergen_fish_may_contain?: boolean;
+  allergen_fish_environment?: boolean;
+  allergen_wheat_contains?: boolean;
+  allergen_wheat_may_contain?: boolean;
+  allergen_wheat_environment?: boolean;
+  allergen_milk_contains?: boolean;
+  allergen_milk_may_contain?: boolean;
+  allergen_milk_environment?: boolean;
+  allergen_sulphite_contains?: boolean;
+  allergen_sulphite_may_contain?: boolean;
+  allergen_sulphite_environment?: boolean;
+  allergen_egg_contains?: boolean;
+  allergen_egg_may_contain?: boolean;
+  allergen_egg_environment?: boolean;
+  allergen_gluten_contains?: boolean;
+  allergen_gluten_may_contain?: boolean;
+  allergen_gluten_environment?: boolean;
+  allergen_mustard_contains?: boolean;
+  allergen_mustard_may_contain?: boolean;
+  allergen_mustard_environment?: boolean;
+  allergen_celery_contains?: boolean;
+  allergen_celery_may_contain?: boolean;
+  allergen_celery_environment?: boolean;
+  allergen_garlic_contains?: boolean;
+  allergen_garlic_may_contain?: boolean;
+  allergen_garlic_environment?: boolean;
+  allergen_onion_contains?: boolean;
+  allergen_onion_may_contain?: boolean;
+  allergen_onion_environment?: boolean;
+  allergen_nitrite_contains?: boolean;
+  allergen_nitrite_may_contain?: boolean;
+  allergen_nitrite_environment?: boolean;
+  allergen_mushroom_contains?: boolean;
+  allergen_mushroom_may_contain?: boolean;
+  allergen_mushroom_environment?: boolean;
+  allergen_hot_pepper_contains?: boolean;
+  allergen_hot_pepper_may_contain?: boolean;
+  allergen_hot_pepper_environment?: boolean;
+  allergen_citrus_contains?: boolean;
+  allergen_citrus_may_contain?: boolean;
+  allergen_citrus_environment?: boolean;
+  allergen_pork_contains?: boolean;
+  allergen_pork_may_contain?: boolean;
+  allergen_pork_environment?: boolean;
+  // Custom allergens (3 slots)
+  allergen_custom1_name?: string;
+  allergen_custom1_contains?: boolean;
+  allergen_custom1_may_contain?: boolean;
+  allergen_custom1_environment?: boolean;
+  allergen_custom2_name?: string;
+  allergen_custom2_contains?: boolean;
+  allergen_custom2_may_contain?: boolean;
+  allergen_custom2_environment?: boolean;
+  allergen_custom3_name?: string;
+  allergen_custom3_contains?: boolean;
+  allergen_custom3_may_contain?: boolean;
+  allergen_custom3_environment?: boolean;
+  // Freshness timestamp
+  allergen_declared_at?: string;
+
   // View-only fields
   station_name?: string;
   major_group_name?: string;

@@ -123,6 +123,100 @@ const week = getNextNDays(7);
 
 ---
 
+## VIM Badge Pattern (Notification Dot)
+
+**Added:** February 9, 2026 (standardized after 3rd iteration)
+
+**Purpose:** Red notification dot with white text and ping animation, positioned top-right on tab buttons. Used for "triage-worthy" counts that demand attention.
+
+### Visual
+
+```
+┌────────────────┐
+│  📋 Team    ⬤3 │  ← red dot, white "3", optional ping pulse
+└────────────────┘
+```
+
+### Standard Markup
+
+```tsx
+{count > 0 && (
+  <span
+    className="
+      absolute -top-1.5 -right-1.5 min-w-[20px] h-[20px]
+      flex items-center justify-center
+      text-[10px] font-bold rounded-full px-1
+      transition-colors duration-300
+      text-white bg-red-700
+    "
+  >
+    {animating && (
+      <span className="absolute inset-0 rounded-full bg-white animate-ping opacity-60" />
+    )}
+    <span className="relative z-10">
+      {count > 99 ? '99+' : count}
+    </span>
+  </span>
+)}
+```
+
+### Ping Animation Trigger
+
+The ping fires once (1.5s) when count **increases** (not on initial load):
+
+```tsx
+const [count, setCount] = useState(0);
+const [animating, setAnimating] = useState(false);
+
+// Inside your fetch function:
+if (newCount > count && count > 0) {
+  setAnimating(true);
+  setTimeout(() => setAnimating(false), 1500);
+}
+setCount(newCount);
+```
+
+### Visibility Rules
+
+| Rule | Implementation |
+|------|----------------|
+| **Hide at zero** | `count > 0 &&` guard — never render an empty dot |
+| **99+ cap** | `count > 99 ? '99+' : count` |
+| **Security gating** | Optional — e.g., `securityLevel <= SECURITY_LEVELS.ALPHA && count > 0` |
+| **No double-render** | Use `hasVimBadge` guard to prevent inline badge fallback |
+
+### Current Consumers
+
+| Tab | Count Source | Security Gate | File |
+|-----|-------------|---------------|------|
+| **Team** | `staged_events` count | None (all roles) | `TeamPerformance/index.tsx` |
+| **Points** | `shift_attendance_gaps` count | Alpha + Omega only | `TeamPerformance/index.tsx` |
+
+### When to Use
+
+✅ Unresolved items requiring human decision (triage, audit, approval queues)  
+✅ Counts that change based on user action (resolve gap → count drops)  
+❌ Static counts (team size, total points) — use inline badge instead  
+❌ Informational counts (coaching count, PIP count) — use colored inline pill  
+
+### Inline Badge (Non-VIM)
+
+For informational counts that don't demand triage action:
+
+```tsx
+{tab.badge !== undefined && (
+  <span className={`px-2 py-0.5 rounded-full text-xs ${
+    isActive
+      ? `bg-${tab.color}-500/20 text-${tab.color}-300`
+      : 'bg-gray-700 text-gray-400'
+  }`}>
+    {tab.badge}
+  </span>
+)}
+```
+
+---
+
 ## Other Utility Modules
 
 ### `calendarUtils.ts`

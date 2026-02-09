@@ -23,6 +23,7 @@ import { useFoodRelationshipsStore } from "@/stores/foodRelationshipsStore";
 import { getLucideIcon } from "@/utils/iconMapping";
 import { getRecipeConfig } from "@/features/recipes/hooks/useRecipeConfig";
 import type { Recipe } from "../../types/recipe";
+import { getRecipeAllergenBooleans } from '@/features/allergens/utils';
 
 /**
  * RecipeCard - L5 Design System Compliant
@@ -428,9 +429,9 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
                 DECLARED ALLERGENS
               </span>
             </div>
-            {recipe.allergenInfo?.contains?.length > 0 ? (
+            {getRecipeAllergenBooleans(recipe).contains.length > 0 ? (
               <div className="flex flex-wrap gap-1">
-                {recipe.allergenInfo.contains.map((allergen) => {
+                {getRecipeAllergenBooleans(recipe).contains.map((allergen) => {
                   const allergenKey = allergen.startsWith("allergen_")
                     ? allergen.substring(9)
                     : allergen;
