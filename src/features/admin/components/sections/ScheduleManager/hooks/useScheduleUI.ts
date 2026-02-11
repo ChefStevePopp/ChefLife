@@ -1,3 +1,9 @@
+/**
+ * useScheduleUI
+ * UI state for Schedule Manager: tabs, modals, time format preference.
+ *
+ * @diagnostics src/features/admin/components/sections/ScheduleManager/hooks/useScheduleUI.ts
+ */
 import { useState, useCallback } from "react";
 
 type TabType = "current" | "upcoming" | "previous" | "integration" | "config";

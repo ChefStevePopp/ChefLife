@@ -34,7 +34,7 @@ import { CoachingTab } from "./components/CoachingTab";
 import { PIPsTab } from "./components/PIPsTab";
 import { ImportTab } from "../ImportTab";
 import { ReportsTab } from "./components/ReportsTab";
-// GapScannerTab lives inside PointsTab as the "Gap Audit" view mode
+// GapScannerTab lives inside PointsTab as the "Absences" view mode (Absence Ledger)
 
 type TabType = "overview" | "team" | "points" | "coaching" | "pips" | "reports" | "import";
 
@@ -102,18 +102,50 @@ export const TeamPerformance: React.FC = () => {
   const fetchGapCount = async () => {
     if (!organizationId) return;
     try {
-      const { count, error } = await supabase
+      // 1. Get all gaps (lightweight: only the fields needed for cross-reference)
+      const { data: allGaps, error: gapError } = await supabase
         .from('shift_attendance_gaps')
-        .select('*', { count: 'exact', head: true })
+        .select('team_member_id, shift_date')
         .eq('organization_id', organizationId);
-      if (!error && count !== null) {
-        // Trigger ping animation when count increases
-        if (count > gapCount && gapCount > 0) {
-          setGapAnimating(true);
-          setTimeout(() => setGapAnimating(false), 1500);
-        }
-        setGapCount(count);
+
+      if (gapError || !allGaps || allGaps.length === 0) {
+        setGapCount(0);
+        return;
       }
+
+      // 2. Cross-reference NEXUS for resolved gaps (same logic as useShiftGaps)
+      const { data: resolutions } = await supabase
+        .from('activity_logs')
+        .select('details')
+        .eq('organization_id', organizationId)
+        .in('activity_type', [
+          'performance_event_excused',
+          'performance_event_approved',
+          'performance_event_rejected',
+        ]);
+
+      // 3. Build resolution lookup
+      const resolvedSet = new Set<string>();
+      if (resolutions) {
+        for (const r of resolutions) {
+          const d = r.details as Record<string, any>;
+          if (d?.team_member_id && d?.event_date) {
+            resolvedSet.add(`${d.team_member_id}|${d.event_date}`);
+          }
+        }
+      }
+
+      // 4. Count only unresolved gaps
+      const unresolvedCount = allGaps.filter(
+        g => !resolvedSet.has(`${g.team_member_id}|${g.shift_date}`)
+      ).length;
+
+      // Trigger ping animation when count increases
+      if (unresolvedCount > gapCount && gapCount > 0) {
+        setGapAnimating(true);
+        setTimeout(() => setGapAnimating(false), 1500);
+      }
+      setGapCount(unresolvedCount);
     } catch (err) {
       console.warn('Could not fetch gap count:', err);
     }

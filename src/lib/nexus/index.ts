@@ -73,6 +73,9 @@ export type ActivityType =
   | "vendor_added"
   | "vendor_config_updated"
   | "vendor_template_saved"
+  // Integration activities
+  | "integration_connected"
+  | "integration_disconnected"
   // Settings activities
   | "settings_changed"
   | "permissions_changed"
@@ -192,6 +195,9 @@ const ACTIVITY_TYPE_TO_CATEGORY: Record<ActivityType, ActivityCategory> = {
   vendor_config_updated: 'financial',
   vendor_template_saved: 'financial',
   
+  // Integrations
+  integration_connected: 'system',
+  integration_disconnected: 'system',
   // System
   settings_changed: 'system',
   permissions_changed: 'system',
@@ -392,6 +398,14 @@ const ACTIVITY_TOAST_CONFIG: Partial<Record<ActivityType, ToastConfig | null>> =
     message: (d) => `${d.template_type?.toUpperCase() || 'Template'} template saved for ${d.vendor || 'vendor'}`,
   },
   
+  // Integrations
+  integration_connected: {
+    message: (d) => `${d.integration_name || 'Integration'} connected${d.vault_encrypted ? ' (encrypted)' : ''}`,
+  },
+  integration_disconnected: {
+    message: (d) => `${d.integration_name || 'Integration'} disconnected${d.secrets_purged ? ` (${d.secrets_purged} secrets purged)` : ''}`,
+    severity: 'warning',
+  },
   // System - mostly silent
   settings_changed: { 
     message: 'Settings updated' 

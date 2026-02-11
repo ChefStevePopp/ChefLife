@@ -6,18 +6,29 @@ import {
   ExternalLink,
   Unplug,
   AlertCircle,
+  AlertTriangle,
   Loader2,
   Link2,
   Calendar,
   ThermometerSnowflake,
   CreditCard,
   Calculator,
+  Pause,
+  KeyRound,
 } from "lucide-react";
 import type { IntegrationStatus, IntegrationId } from "@/types/integrations";
 
 // Map integration IDs to icons - match sidebar where applicable
 const INTEGRATION_ICONS: Record<string, React.ElementType> = {
   '7shifts': Calendar,
+  'hotschedules': Calendar,
+  'whenIWork': Calendar,
+  'deputy': Calendar,
+  'homebase': Calendar,
+  'sling': Calendar,
+  'push': Calendar,
+  'restaurant365': Calendar,
+  'other_scheduler': Calendar,
   'sensorpush': ThermometerSnowflake,
   'square': CreditCard,
   'toast': CreditCard,
@@ -59,6 +70,20 @@ const STATUS_CONFIG: Record<IntegrationStatus, {
     bg: 'bg-primary-500/20',
     border: 'border-primary-500/30'
   },
+  expired: {
+    icon: KeyRound,
+    text: 'Credentials Expired',
+    color: 'text-red-400',
+    bg: 'bg-red-500/20',
+    border: 'border-red-500/30'
+  },
+  paused: {
+    icon: Pause,
+    text: 'Paused',
+    color: 'text-gray-400',
+    bg: 'bg-gray-500/20',
+    border: 'border-gray-500/30'
+  },
 };
 
 export interface IntegrationCardProps {
@@ -77,6 +102,9 @@ export interface IntegrationCardProps {
   comingSoon?: boolean;
   isConnecting?: boolean;
   
+  /** Connection mode badge — shown when connected */
+  connectionMode?: 'csv' | 'api';
+  
   // Optional custom icon
   icon?: React.ElementType;
 }
@@ -92,6 +120,7 @@ export const IntegrationCard: React.FC<IntegrationCardProps> = ({
   onConfigure,
   comingSoon = false,
   isConnecting = false,
+  connectionMode,
   icon,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -100,6 +129,8 @@ export const IntegrationCard: React.FC<IntegrationCardProps> = ({
   const statusConfig = STATUS_CONFIG[status];
   const StatusIcon = statusConfig.icon;
   const isConnected = status === 'connected';
+  const isExpired = status === 'expired';
+  const needsAttention = status === 'expired' || status === 'error';
 
   const handleMenuToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -133,8 +164,10 @@ export const IntegrationCard: React.FC<IntegrationCardProps> = ({
       onMouseLeave={() => setMenuOpen(false)}
       className={`bg-gray-800/50 backdrop-blur-sm rounded-lg p-4 border transition-all duration-200 group flex flex-col relative ${
         isConnected
-          ? 'border-primary-500 bg-primary-500/10 ring-1 ring-primary-500/30 scale-[1.02]' 
-          : 'border-gray-700/50 hover:bg-gray-800/70 hover:border-gray-600/50 hover:scale-[1.01]'
+          ? 'border-primary-500 bg-primary-500/10 ring-1 ring-primary-500/30 scale-[1.02]'
+          : needsAttention
+            ? 'border-red-500/50 bg-red-500/5 ring-1 ring-red-500/20 scale-[1.02]'
+            : 'border-gray-700/50 hover:bg-gray-800/70 hover:border-gray-600/50 hover:scale-[1.01]'
       } ${isConnecting ? 'opacity-70 pointer-events-none' : ''}`}
     >
       {/* Main Content - Vertical Stack */}
@@ -143,16 +176,21 @@ export const IntegrationCard: React.FC<IntegrationCardProps> = ({
         <div className="relative">
           <div className={`w-16 h-16 rounded-xl flex items-center justify-center ring-2 transition-all ${
             isConnected
-              ? 'bg-primary-500/20 ring-primary-500/50' 
-              : 'bg-gray-700/50 ring-gray-700/50 group-hover:ring-primary-500/30'
+              ? 'bg-primary-500/20 ring-primary-500/50'
+              : needsAttention
+                ? 'bg-red-500/15 ring-red-500/40'
+                : 'bg-gray-700/50 ring-gray-700/50 group-hover:ring-primary-500/30'
           }`}>
             <Icon className={`w-8 h-8 transition-colors ${
-              isConnected ? 'text-primary-400' : 'text-gray-400'
+              isConnected ? 'text-primary-400' : needsAttention ? 'text-red-400' : 'text-gray-400'
             }`} />
           </div>
-          {/* Active indicator dot */}
+          {/* Status indicator dot */}
           {isConnected && (
             <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-500 rounded-full border-2 border-gray-800" />
+          )}
+          {needsAttention && (
+            <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-red-500 rounded-full border-2 border-gray-800 animate-pulse" />
           )}
         </div>
 
@@ -171,6 +209,15 @@ export const IntegrationCard: React.FC<IntegrationCardProps> = ({
             <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium uppercase tracking-wide ${statusConfig.bg} ${statusConfig.color} border ${statusConfig.border}`}>
               <StatusIcon className={`w-3 h-3 ${status === 'syncing' ? 'animate-spin' : ''}`} />
               {statusConfig.text}
+            </span>
+          )}
+          {isConnected && connectionMode && (
+            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${
+              connectionMode === 'api'
+                ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                : 'bg-primary-500/15 text-primary-400 border border-primary-500/30'
+            }`}>
+              {connectionMode}
             </span>
           )}
         </div>
@@ -217,6 +264,27 @@ export const IntegrationCard: React.FC<IntegrationCardProps> = ({
                     >
                       <Settings className="w-3.5 h-3.5" />
                       Configure
+                    </button>
+                  )}
+                  {onDisconnect && (
+                    <button
+                      onClick={handleDisconnect}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-rose-400 bg-gray-800 hover:bg-rose-500/20 rounded-lg border border-gray-700/50 shadow-lg whitespace-nowrap transition-colors"
+                    >
+                      <Unplug className="w-3.5 h-3.5" />
+                      Disconnect
+                    </button>
+                  )}
+                </>
+              ) : needsAttention ? (
+                <>
+                  {onConfigure && (
+                    <button
+                      onClick={handleConfigure}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-red-300 bg-gray-800 hover:bg-red-500/20 rounded-lg border border-red-500/30 shadow-lg whitespace-nowrap transition-colors"
+                    >
+                      <KeyRound className="w-3.5 h-3.5" />
+                      {isExpired ? 'Reconnect' : 'Fix'}
                     </button>
                   )}
                   {onDisconnect && (

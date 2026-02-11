@@ -37,7 +37,7 @@ export interface ShiftGap {
   import_batch_id: string;
 }
 
-export type GapResolution = 'unresolved' | 'excused' | 'demerit' | 'sick_day';
+export type GapResolution = 'unresolved' | 'excused' | 'demerit' | 'sick_day' | 'dismissed';
 
 export interface ResolvedGap extends ShiftGap {
   resolution: GapResolution;
@@ -140,6 +140,7 @@ export const useShiftGaps = (options: UseShiftGapsOptions = {}) => {
         .in('activity_type', [
           'performance_event_excused',
           'performance_event_approved',
+          'performance_event_rejected',
         ]);
 
       if (nexusError) {
@@ -187,6 +188,8 @@ export const useShiftGaps = (options: UseShiftGapsOptions = {}) => {
             resolutionType = resolution.reason?.includes('SICK') ? 'sick_day' : 'excused';
           } else if (resolution.activity_type === 'performance_event_approved') {
             resolutionType = 'demerit';
+          } else if (resolution.activity_type === 'performance_event_rejected') {
+            resolutionType = 'dismissed';
           }
         }
 
@@ -219,6 +222,7 @@ export const useShiftGaps = (options: UseShiftGapsOptions = {}) => {
     const unresolved = gaps.filter(g => g.resolution === 'unresolved').length;
     const excused = gaps.filter(g => g.resolution === 'excused' || g.resolution === 'sick_day').length;
     const demerits = gaps.filter(g => g.resolution === 'demerit').length;
+    const dismissed = gaps.filter(g => g.resolution === 'dismissed').length;
     const unresolvedHours = gaps
       .filter(g => g.resolution === 'unresolved')
       .reduce((sum, g) => sum + g.scheduled_hours, 0);
@@ -226,7 +230,7 @@ export const useShiftGaps = (options: UseShiftGapsOptions = {}) => {
       .filter(g => g.resolution === 'unresolved')
       .reduce((sum, g) => sum + (g.scheduled_pay || 0), 0);
 
-    return { total, unresolved, excused, demerits, unresolvedHours, unresolvedPay };
+    return { total, unresolved, excused, demerits, dismissed, unresolvedHours, unresolvedPay };
   }, [gaps]);
 
   return {

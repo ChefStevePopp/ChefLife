@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useScheduleStore } from "@/stores/scheduleStore";
+import { getLocalDateString } from "@/utils/dateUtils";
 
 interface Use7ShiftsSyncReturn {
   // Connection state (from org settings)
@@ -45,12 +46,12 @@ export const use7ShiftsSync = (): Use7ShiftsSyncReturn => {
   
   // Sync date range - default to today + 13 days (2 weeks)
   const [syncStartDate, setSyncStartDate] = useState<string>(
-    new Date().toISOString().split("T")[0]
+    getLocalDateString()
   );
   const [syncEndDate, setSyncEndDate] = useState<string>(() => {
     const date = new Date();
     date.setDate(date.getDate() + 13);
-    return date.toISOString().split("T")[0];
+    return getLocalDateString(date);
   });
   
   // Get store functions

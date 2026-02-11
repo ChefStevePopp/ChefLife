@@ -156,6 +156,34 @@ select::-ms-expand {
     @apply text-emerald-400/80;
   }
   
+  .icon-badge-green {
+    @apply icon-badge bg-green-500/20;
+  }
+  .icon-badge-green svg {
+    @apply text-green-400/80;
+  }
+  
+  .icon-badge-cyan {
+    @apply icon-badge bg-cyan-500/20;
+  }
+  .icon-badge-cyan svg {
+    @apply text-cyan-400/80;
+  }
+  
+  .icon-badge-blue {
+    @apply icon-badge bg-blue-500/20;
+  }
+  .icon-badge-blue svg {
+    @apply text-blue-400/80;
+  }
+  
+  .icon-badge-yellow {
+    @apply icon-badge bg-yellow-500/20;
+  }
+  .icon-badge-yellow svg {
+    @apply text-yellow-400/80;
+  }
+  
   .icon-badge-gray {
     @apply icon-badge bg-gray-700/50;
   }

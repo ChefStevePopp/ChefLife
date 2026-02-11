@@ -1,3 +1,6 @@
+/**
+ * @diagnostics src/features/admin/routes/ScheduleRoutes.tsx
+ */
 import React from "react";
 import { Route, Routes } from "react-router-dom";
 import { ScheduleManager } from "../components/sections/ScheduleManager";

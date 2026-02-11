@@ -1,6 +1,14 @@
+/**
+ * Schedule Week View
+ * 7-day grid/scroll view of shifts with role colors and responsive layout.
+ *
+ * @diagnostics src/features/admin/components/sections/ScheduleManager/components/ScheduleWeekView.tsx
+ * @pattern L5 responsive-grid
+ */
 import React, { useMemo } from 'react';
 import { Clock, ChevronDown } from 'lucide-react';
 import { ScheduleShift } from '@/types/schedule';
+import { parseLocalDate, getLocalDateString, formatDateShort } from '@/utils/dateUtils';
 
 interface ScheduleWeekViewProps {
   scheduleShifts: ScheduleShift[];
@@ -74,34 +82,20 @@ export const ScheduleWeekView: React.FC<ScheduleWeekViewProps> = ({
       return acc;
     }, {} as Record<string, ScheduleShift[]>);
 
-    // Create array of all days - starting from MONDAY (not Sunday)
-    const start = new Date(startDate + 'T00:00:00'); // Force local time to avoid timezone shift
+    // Create array of all days using dateUtils to avoid UTC midnight shift
+    const start = parseLocalDate(startDate);
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     
     const allDays = Array(7).fill(null).map((_, i) => {
       const date = new Date(start);
       date.setDate(date.getDate() + i);
-      
-      // Format date in local time (not UTC)
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      const dateStr = `${year}-${month}-${day}`;
-      
-      // Get day name from the local date components
-      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      const dayOfWeek = dayNames[date.getDay()];
-      
-      // Format the display date from components
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const displayDate = `${monthNames[date.getMonth()]} ${date.getDate()}`;
-      
-      const dayShifts = shiftsByDate[dateStr] || [];
+      const dateStr = getLocalDateString(date);
       
       return {
         date: dateStr,
-        dayOfWeek: dayOfWeek,
-        displayDate: displayDate,
-        shifts: dayShifts,
+        dayOfWeek: dayNames[date.getDay()],
+        displayDate: formatDateShort(dateStr),
+        shifts: shiftsByDate[dateStr] || [],
       };
     });
 

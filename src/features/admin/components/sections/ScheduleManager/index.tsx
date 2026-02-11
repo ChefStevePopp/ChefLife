@@ -1,18 +1,22 @@
-// MODULARIZATION IN PROGRESS - BACKUP EXISTS AS index.backup.tsx IF NEEDED
-import React, { useState, useEffect, useMemo } from "react";
+/**
+ * Schedule Manager
+ * Main orchestrator for schedule viewing, uploading, and 7shifts integration.
+ *
+ * @diagnostics src/features/admin/components/sections/ScheduleManager/index.tsx
+ * @pattern L5 tab-panel
+ */
+import React, { useState, useEffect } from "react";
 import {
   Calendar,
   Upload,
   History,
   Link,
   Clock,
-  Users,
   FileSpreadsheet,
   RefreshCw,
   Download,
   X,
   Settings,
-  Eye,
   Trash,
   AlertTriangle,
   ChevronLeft,
@@ -24,7 +28,6 @@ import {
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import { useScheduleStore } from "@/stores/scheduleStore";
-import { ScheduleShift } from "@/types/schedule";
 import {
   CSVConfiguration,
   ColumnMapping,
@@ -42,6 +45,8 @@ import { useScheduleData } from "./hooks/useScheduleData";
 import { useScheduleUpload } from "./hooks/useScheduleUpload";
 import { useScheduleUI } from "./hooks/useScheduleUI";
 import { use7ShiftsSync } from "./hooks/use7ShiftsSync";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
+import { formatDateForDisplay } from "@/utils/dateUtils";
 
 // Helper function to format time based on user preference
 const formatTime = (timeStr: string, format: "12h" | "24h"): string => {
@@ -97,6 +102,7 @@ const convertTo24Hour = (time12: string): string => {
 
 export const ScheduleManager: React.FC = () => {
   const navigate = useNavigate();
+  const { showDiagnostics } = useDiagnostics();
   
   // UI state hook for tabs, modals, and preferences
   const {
@@ -245,85 +251,8 @@ export const ScheduleManager: React.FC = () => {
     // Note: "current" tab doesn't need to refetch on switch - data is already loaded
   }, [activeTab, initialFetchDone, fetchUpcomingSchedulesData, fetchPreviousSchedulesData, fetchMappings]);
 
-  // Process shifts to organize them by day - use manual selection
-  const days = useMemo(() => {
-    // Find the manually selected schedule or fall back to current
-    const displaySchedule = manualScheduleId 
-      ? allSchedules.find(s => s.id === manualScheduleId) || currentSchedule
-      : currentSchedule;
-      
-    if (!displaySchedule) {
-      // Return empty days for the week
-      return Array(7)
-        .fill(null)
-        .map((_, i) => ({
-          date: "",
-          dayOfWeek: [
-            "Monday",
-            "Tuesday",
-            "Wednesday",
-            "Thursday",
-            "Friday",
-            "Saturday",
-            "Sunday",
-          ][i],
-          shifts: [],
-        }));
-    }
-
-    // Group shifts by date
-    const shiftsByDate = scheduleShifts.reduce(
-      (acc, shift) => {
-        if (!acc[shift.shift_date]) {
-          acc[shift.shift_date] = [];
-        }
-        acc[shift.shift_date].push(shift);
-        return acc;
-      },
-      {} as Record<string, ScheduleShift[]>,
-    );
-
-    // DEBUG: Log what dates we have shifts for
-    console.log('Schedule shifts by date:', Object.keys(shiftsByDate));
-    console.log('Total shifts:', scheduleShifts.length);
-    console.log('Display schedule:', displaySchedule.start_date, 'to', displaySchedule.end_date);
-
-    // Create array of days
-    const startDate = new Date(displaySchedule.start_date + 'T00:00:00'); // Force local time
-    return Array(7)
-      .fill(null)
-      .map((_, i) => {
-        const date = new Date(startDate);
-        date.setDate(date.getDate() + i);
-        const dateStr = date.toISOString().split("T")[0];
-        const shiftsForDay = shiftsByDate[dateStr] || [];
-        
-        // DEBUG: Log each day
-        console.log(`Day ${i}: ${dateStr} (${[
-          "Monday",
-          "Tuesday",
-          "Wednesday",
-          "Thursday",
-          "Friday",
-          "Saturday",
-          "Sunday",
-        ][i]}) - ${shiftsForDay.length} shifts`);
-        
-        return {
-          date: dateStr,
-          dayOfWeek: [
-            "Monday",
-            "Tuesday",
-            "Wednesday",
-            "Thursday",
-            "Friday",
-            "Saturday",
-            "Sunday",
-          ][i],
-          shifts: shiftsForDay,
-        };
-      });
-  }, [currentSchedule, scheduleShifts, manualScheduleId, allSchedules]);
+  // Day processing happens inside ScheduleWeekView using dateUtils
+  // (parseLocalDate, getLocalDateString, formatDateShort)
 
   return (
     <div className="space-y-6">
@@ -361,6 +290,12 @@ export const ScheduleManager: React.FC = () => {
           )}
         </div>
       </div>
+
+      {showDiagnostics && (
+        <div className="text-xs text-gray-500 font-mono">
+          src/features/admin/components/sections/ScheduleManager/index.tsx
+        </div>
+      )}
 
       {/* Tabs - Responsive with horizontal scroll on mobile */}
       <div className="flex gap-1 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-800/50 -mx-1 px-1">
@@ -430,7 +365,7 @@ export const ScheduleManager: React.FC = () => {
                   </h3>
                   <p className="text-xs sm:text-sm text-gray-400 truncate">
                     {currentSchedule
-                      ? `Week of ${currentSchedule.start_date} - ${currentSchedule.end_date}`
+                      ? `Week of ${formatDateForDisplay(currentSchedule.start_date)} - ${formatDateForDisplay(currentSchedule.end_date)}`
                       : "No active schedule"}
                   </p>
                 </div>
@@ -455,7 +390,7 @@ export const ScheduleManager: React.FC = () => {
                     >
                       {allSchedules.map((schedule) => (
                         <option key={schedule.id} value={schedule.id}>
-                          {schedule.start_date} to {schedule.end_date}
+                          {formatDateForDisplay(schedule.start_date)} to {formatDateForDisplay(schedule.end_date)}
                           {schedule.status === "current" ? " (Current)" : ""}
                           {schedule.status === "upcoming" ? " (Upcoming)" : ""}
                           {schedule.status === "previous" ? " (Previous)" : ""}
@@ -544,6 +479,11 @@ export const ScheduleManager: React.FC = () => {
                 />
               )}
             </div>
+            {showDiagnostics && (
+              <div className="text-xs text-gray-500 font-mono mt-2">
+                src/features/admin/components/sections/ScheduleManager/components/ScheduleWeekView.tsx
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -598,6 +538,11 @@ export const ScheduleManager: React.FC = () => {
             onUploadNew={() => setIsUploadModalOpen(true)}
             isLoading={isLoading}
           />
+          {showDiagnostics && (
+            <div className="text-xs text-gray-500 font-mono mt-2">
+              src/features/admin/components/sections/ScheduleManager/components/UpcomingSchedulesView.tsx
+            </div>
+          )}
         </div>
       )}
 
@@ -639,6 +584,11 @@ export const ScheduleManager: React.FC = () => {
             }}
             isLoading={isLoading}
           />
+          {showDiagnostics && (
+            <div className="text-xs text-gray-500 font-mono mt-2">
+              src/features/admin/components/sections/ScheduleManager/components/PreviousSchedulesView.tsx
+            </div>
+          )}
         </div>
       )}
 
@@ -803,6 +753,11 @@ export const ScheduleManager: React.FC = () => {
               </p>
             </div>
           )}
+          {showDiagnostics && (
+            <div className="text-xs text-gray-500 font-mono mt-2">
+              src/features/admin/components/sections/ScheduleManager/index.tsx → 7shifts API
+            </div>
+          )}
         </div>
       )}
 
@@ -877,6 +832,11 @@ export const ScheduleManager: React.FC = () => {
               setShowCSVConfig(true);
             }}
           />
+          {showDiagnostics && (
+            <div className="text-xs text-gray-500 font-mono mt-2">
+              src/features/admin/components/sections/ScheduleManager/index.tsx → Import Settings
+            </div>
+          )}
         </div>
       )}
 
@@ -1066,8 +1026,11 @@ export const ScheduleManager: React.FC = () => {
                         <span className="text-gray-400">Date Range:</span>
                         <span className="text-white ml-2">
                           {scheduleShifts.length > 0
-                            ? `${new Date(Math.min(...scheduleShifts.map((s) => new Date(s.shift_date).getTime()))).toLocaleDateString()} - 
-                             ${new Date(Math.max(...scheduleShifts.map((s) => new Date(s.shift_date).getTime()))).toLocaleDateString()}`
+                            ? `${formatDateForDisplay(
+                                [...scheduleShifts].sort((a, b) => a.shift_date.localeCompare(b.shift_date))[0].shift_date
+                              )} - ${formatDateForDisplay(
+                                [...scheduleShifts].sort((a, b) => b.shift_date.localeCompare(a.shift_date))[0].shift_date
+                              )}`
                             : "N/A"}
                         </span>
                       </div>
@@ -1170,9 +1133,7 @@ export const ScheduleManager: React.FC = () => {
                                   )}
                                 </td>
                                 <td className="px-4 py-2 text-sm text-gray-300">
-                                  {new Date(
-                                    shift.shift_date,
-                                  ).toLocaleDateString()}
+                                  {formatDateForDisplay(shift.shift_date)}
                                 </td>
                                 <td className="px-4 py-2 text-sm text-gray-300">
                                   {formatTime(shift.start_time, timeFormat)}

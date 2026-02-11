@@ -32,7 +32,7 @@ import {
 // TYPES
 // =============================================================================
 
-export type LegendContext = 'points' | 'team' | 'import';
+export type LegendContext = 'points' | 'team' | 'import' | 'gap_audit';
 
 interface LegendItem {
   icon: React.ReactNode;
@@ -130,6 +130,29 @@ const IMPORT_ICONS: LegendItem[] = [
 // HELPER: BUILD SECTIONS BY CONTEXT
 // =============================================================================
 
+const GAP_AUDIT_ACTIONS: LegendItem[] = [
+  {
+    icon: <Check className="w-4 h-4 text-emerald-400" />,
+    label: 'Approve',
+    description: 'Accept as unexcused absence and apply default points',
+  },
+  {
+    icon: <Pencil className="w-4 h-4 text-primary-400" />,
+    label: 'Reclassify',
+    description: 'Change the event type (e.g., no-call/no-show, dropped shift)',
+  },
+  {
+    icon: <Shield className="w-4 h-4 text-amber-400" />,
+    label: 'Excuse',
+    description: 'Dismiss with a logged reason — no points applied',
+  },
+  {
+    icon: <X className="w-4 h-4 text-rose-400" />,
+    label: 'Dismiss',
+    description: 'Data error — discard with no action taken',
+  },
+];
+
 function getSectionsForContext(context: LegendContext): LegendSection[] {
   switch (context) {
     case 'points':
@@ -150,6 +173,11 @@ function getSectionsForContext(context: LegendContext): LegendSection[] {
         { title: 'Workflow Actions', items: [...STAGED_ACTIONS.slice(0, 2), IMPORT_ICONS[2]] },
       ];
     
+    case 'gap_audit':
+      return [
+        { title: 'Decision Actions', items: GAP_AUDIT_ACTIONS },
+      ];
+    
     default:
       return [];
   }
@@ -160,6 +188,7 @@ function getContextTitle(context: LegendContext): string {
     case 'points': return 'Point Ledger Guide';
     case 'team': return 'Staged Events Guide';
     case 'import': return 'Import Review Guide';
+    case 'gap_audit': return 'Absence Ledger Guide';
     default: return 'Quick Reference';
   }
 }
@@ -172,6 +201,8 @@ function getContextDescription(context: LegendContext): string {
       return 'Review staged events before they affect team member points. Approve to apply, excuse with a reason, or reject to dismiss.';
     case 'import': 
       return 'Review detected events from CSV import. Stage events for approval, then send to Team tab for final review.';
+    case 'gap_audit':
+      return 'The complete record of every missed shift. Same tools as the Team tab — approve, reclassify, excuse, or dismiss. Queue decisions, then save all at once. All actions logged to NEXUS.';
     default: 
       return '';
   }
@@ -246,7 +277,7 @@ export const ActionLegend: React.FC<ActionLegendProps> = ({
           </div>
 
           {/* Audit Note - for points and team contexts */}
-          {(context === 'points' || context === 'team') && (
+          {(context === 'points' || context === 'team' || context === 'gap_audit') && (
             <div className="mt-4 pt-4 border-t border-primary-800/30">
               <p className="text-xs text-gray-500">
                 <span className="text-primary-400 font-medium">Audit Trail:</span> All actions are logged to NEXUS for compliance and can be reviewed in Reports.

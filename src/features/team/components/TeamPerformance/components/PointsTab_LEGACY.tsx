@@ -1,10 +1,10 @@
 /**
- * PointsTab - Points Management, Team Ledger & Gap Audit
+ * PointsTab - Points Management, Team Ledger & Absences
  * 
  * L5 Design: Three view modes:
  * - By Member: Card grid, click to expand individual ledger
  * - Team Ledger: Chronological feed of ALL events across team
- * - Gap Audit: Scheduled-vs-worked shift gap resolution (Alpha/Omega only)
+ * - Absences: Absence Ledger — every missed shift and its resolution (Alpha/Omega only)
  */
 
 import React, { useState, useMemo } from "react";
@@ -113,7 +113,7 @@ const EXCUSE_OPTIONS = [
 const MANAGER_SECURITY_LEVELS = [0, 1, 2, 3];
 
 // View mode type
-type ViewMode = 'by_member' | 'team_ledger' | 'gap_audit';
+type ViewMode = 'by_member' | 'team_ledger' | 'absences';
 
 // =============================================================================
 // MAIN COMPONENT
@@ -657,20 +657,20 @@ export const PointsTab: React.FC = () => {
             <List className="w-4 h-4" />
             Team Ledger
           </button>
-          {/* Gap Audit — Alpha/Omega only */}
+          {/* Absences — Alpha/Omega only */}
           {(securityLevel === SECURITY_LEVELS.OMEGA || securityLevel === SECURITY_LEVELS.ALPHA) && (
             <button
-              onClick={() => setViewMode('gap_audit')}
+              onClick={() => setViewMode('absences')}
               className={`
                 flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all
-                ${viewMode === 'gap_audit'
+                ${viewMode === 'absences'
                   ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
                   : 'text-gray-400 hover:text-gray-300 border border-transparent'
                 }
               `}
             >
-              <Search className="w-4 h-4" />
-              Gap Audit
+              <CalendarCheck className="w-4 h-4" />
+              Absences
             </button>
           )}
         </div>
@@ -1300,9 +1300,9 @@ export const PointsTab: React.FC = () => {
       )}
 
       {/* =========================================================================
-          GAP AUDIT VIEW
+          ABSENCES VIEW (Absence Ledger)
           ========================================================================= */}
-      {viewMode === 'gap_audit' && <GapScannerTab />}
+      {viewMode === 'absences' && <GapScannerTab />}
 
       {/* Modals */}
       {selectedMemberId && (

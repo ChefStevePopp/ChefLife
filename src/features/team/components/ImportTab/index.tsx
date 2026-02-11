@@ -1,10 +1,16 @@
 /**
- * ImportTab - Attendance Audit & Staging
+ * ImportTab - Attendance Import (Vitals Accordion Pattern)
  * 
- * AUDIT ROLE: Import CSVs → Run Delta Engine → Show what happened → Stage new events.
+ * Two accordion sections:
+ *   1. Delta Engine — Compare scheduled vs worked shifts, detect & stage events
+ *   2. Time Off — Import approved leave, sick days, vacation from 7shifts
+ * 
+ * AUDIT ROLE: Import CSVs → Run engines → Show what happened → Stage new events.
  * LEDGER ROLE lives in Team tab: Approve, excuse, reject, allocate points.
  * 
  * This is the journal entry. Team tab is the general ledger.
+ * 
+ * @diagnostics src/features/team/components/ImportTab/index.tsx
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
@@ -33,6 +39,7 @@ import {
   FileDown,
   ScanSearch,
   Ban,
+  Palmtree,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
@@ -52,7 +59,8 @@ import {
   type EmployeeSecurityMap,
   DEFAULT_TRACKING_RULES,
 } from '../../services/deltaEngine';
-import { ActionLegend } from '../TeamPerformance/components/ActionLegend';
+import { useSchedulingIntegration } from '../../hooks/useSchedulingIntegration';
+// ActionLegend removed — "How Import Works" expandable covers this tab's guidance
 
 // =============================================================================
 // TYPES
@@ -118,10 +126,33 @@ export const ImportTab: React.FC = () => {
   const { organizationId, user } = useAuth();
   const { members } = useTeamStore();
   const { config, fetchConfig } = usePerformanceStore();
+  const scheduling = useSchedulingIntegration();
   
   // UI state
   const [isInfoExpanded, setIsInfoExpanded] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+
+  // Accordion state — Vitals pattern with localStorage persistence
+  const STORAGE_KEY = 'cheflife-import-expanded';
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) return new Set(JSON.parse(stored) as string[]);
+    } catch (e) { console.error('Error loading expanded state:', e); }
+    return new Set(['delta_engine']); // Default: Delta Engine open
+  });
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(expandedSections)));
+  }, [expandedSections]);
+
+  const toggleSection = (id: string) => {
+    setExpandedSections(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
   
   useEffect(() => { fetchConfig(); }, [fetchConfig]);
   
@@ -455,10 +486,44 @@ export const ImportTab: React.FC = () => {
     const dateFilter = (trimToOverlap && dateRangeMismatch) ? dateRangeMismatch.overlap : undefined;
 
     try {
-      // 1. Run Delta Engine
+      // 0. Normalize CSV headers through Column Mapper
+      //    Translates any platform's column names → Delta Engine format
+      let normalizedScheduled = scheduledFile.content;
+      let normalizedWorked = workedFile.content;
+
+      const schedMapping = scheduling.mapCSV(scheduledFile.content);
+      const workMapping = scheduling.mapCSV(workedFile.content);
+
+      if (schedMapping.success) {
+        normalizedScheduled = scheduling.normalizeForDeltaEngine(scheduledFile.content, schedMapping.mapping);
+      } else if (schedMapping.unmappedFields.length > 0) {
+        const missing = schedMapping.unmappedFields.filter(f =>
+          ['employee_id', 'date', 'first_name', 'last_name', 'in_time', 'out_time'].includes(f)
+        );
+        if (missing.length > 0) {
+          toast.error(`Scheduled CSV: can't find columns for ${missing.join(', ')}. Check your export format.`);
+          setIsProcessing(false);
+          return;
+        }
+      }
+
+      if (workMapping.success) {
+        normalizedWorked = scheduling.normalizeForDeltaEngine(workedFile.content, workMapping.mapping);
+      } else if (workMapping.unmappedFields.length > 0) {
+        const missing = workMapping.unmappedFields.filter(f =>
+          ['employee_id', 'date', 'first_name', 'last_name', 'in_time', 'out_time'].includes(f)
+        );
+        if (missing.length > 0) {
+          toast.error(`Worked CSV: can't find columns for ${missing.join(', ')}. Check your export format.`);
+          setIsProcessing(false);
+          return;
+        }
+      }
+
+      // 1. Run Delta Engine (with normalized CSVs)
       const result = calculateDeltas(
-        scheduledFile.content,
-        workedFile.content,
+        normalizedScheduled,
+        normalizedWorked,
         thresholds,
         trackingRules,
         employeeSecurityMap,
@@ -501,7 +566,7 @@ export const ImportTab: React.FC = () => {
     } finally {
       setIsProcessing(false);
     }
-  }, [scheduledFile, workedFile, config.detection_thresholds, config.tracking_rules, members, organizationId, user, trimToOverlap, dateRangeMismatch, runDedupCheck]);
+  }, [scheduledFile, workedFile, config.detection_thresholds, config.tracking_rules, members, organizationId, user, trimToOverlap, dateRangeMismatch, runDedupCheck, scheduling]);
 
   const resetImport = () => {
     setScheduledFile(null);
@@ -681,8 +746,10 @@ export const ImportTab: React.FC = () => {
               <Upload className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="subheader-title">Attendance Audit</h3>
-              <p className="subheader-subtitle">Import shift data from 7shifts, detect events, and stage for Team review</p>
+              <h3 className="subheader-title">Attendance Import</h3>
+              <p className="subheader-subtitle">
+                Import shift and time-off data{scheduling.platformLabel ? ` from ${scheduling.platformLabel}` : ' from your scheduling platform'}
+              </p>
             </div>
           </div>
           <div className="subheader-right">
@@ -722,7 +789,7 @@ export const ImportTab: React.FC = () => {
             <div className="p-4 pt-2 space-y-4">
               <p className="text-sm text-gray-400">
                 Import <span className="font-semibold">Scheduled Hours</span> and <span className="font-semibold">Worked Hours</span> CSV
-                exports from 7shifts. The Delta Engine compares them and detects attendance events.
+                exports from your scheduling platform. The Delta Engine compares them and detects attendance events.
                 New events are staged for the <span className="font-semibold text-primary-400">Team tab</span> where
                 all point decisions (approve, excuse, reject) are made.
               </p>
@@ -730,8 +797,12 @@ export const ImportTab: React.FC = () => {
                 <div className="subheader-feature-card">
                   <FileDown className="w-4 h-4 text-primary-400/80" />
                   <div>
-                    <span className="subheader-feature-title text-gray-300">Export from 7shifts</span>
-                    <p className="subheader-feature-desc">Time Clocking → Reports → Export as CSV</p>
+                    <span className="subheader-feature-title text-gray-300">
+                      Export from {scheduling.platformLabel || 'Scheduler'}
+                    </span>
+                    <p className="subheader-feature-desc">
+                      {scheduling.exportInstructions || 'Export scheduled & worked hours as CSV'}
+                    </p>
                   </div>
                 </div>
                 <div className="subheader-feature-card">
@@ -757,8 +828,50 @@ export const ImportTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Help Legend */}
-      <ActionLegend context="import" />
+      {/* ================================================================= */}
+      {/* ACCORDION SECTIONS — Vitals Pattern                               */}
+      {/* ================================================================= */}
+      <div className="space-y-3">
+
+        {/* ─── ACCORDION 1: DELTA ENGINE ─── */}
+        <div className={`card overflow-hidden transition-all duration-300 ${
+          expandedSections.has('delta_engine') ? 'bg-gray-800/50' : 'bg-gray-800/30'
+        }`}>
+          <button
+            onClick={() => toggleSection('delta_engine')}
+            className="w-full p-4 flex items-center justify-between hover:bg-gray-700/20 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-primary-500/20 flex items-center justify-center">
+                <Zap className="w-4 h-4 text-primary-400" />
+              </div>
+              <div className="text-left">
+                <h3 className="text-base font-medium text-white">Delta Engine</h3>
+                <p className="text-xs text-gray-500">Compare scheduled vs worked shifts, detect attendance events</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              {dedupSummary && dedupSummary.newCount > 0 && (
+                <div className="flex items-baseline gap-1.5 px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+                  <span className="text-base font-semibold text-emerald-400 tabular-nums">{dedupSummary.newCount}</span>
+                  <span className="text-xs text-emerald-500">new</span>
+                </div>
+              )}
+              {stagedCount > 0 && (
+                <div className="flex items-baseline gap-1.5 px-3 py-1 bg-gray-700/50 border border-gray-600/50 rounded-lg">
+                  <span className="text-base font-semibold text-gray-300 tabular-nums">{stagedCount}</span>
+                  <span className="text-xs text-gray-500">staged</span>
+                </div>
+              )}
+              {expandedSections.has('delta_engine')
+                ? <ChevronUp className="w-5 h-5 text-gray-400" />
+                : <ChevronDown className="w-5 h-5 text-gray-400" />
+              }
+            </div>
+          </button>
+
+          {expandedSections.has('delta_engine') && (
+            <div className="px-4 pb-4 border-t border-gray-700/50 space-y-6 pt-4">
 
       {/* Clear Confirmation Modal */}
       {showClearConfirm && (
@@ -1044,6 +1157,52 @@ export const ImportTab: React.FC = () => {
           )}
         </>
       )}
+
+            </div>
+          )}
+        </div>
+
+        {/* ─── ACCORDION 2: TIME OFF ─── */}
+        <div className={`card overflow-hidden transition-all duration-300 ${
+          expandedSections.has('time_off') ? 'bg-gray-800/50' : 'bg-gray-800/30'
+        }`}>
+          <button
+            onClick={() => toggleSection('time_off')}
+            className="w-full p-4 flex items-center justify-between hover:bg-gray-700/20 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                <Palmtree className="w-4 h-4 text-cyan-400" />
+              </div>
+              <div className="text-left">
+                <h3 className="text-base font-medium text-white">Time Off</h3>
+                <p className="text-xs text-gray-500">Sick days, vacation, and approved leave</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              {expandedSections.has('time_off')
+                ? <ChevronUp className="w-5 h-5 text-gray-400" />
+                : <ChevronDown className="w-5 h-5 text-gray-400" />
+              }
+            </div>
+          </button>
+
+          {expandedSections.has('time_off') && (
+            <div className="px-4 pb-4 border-t border-gray-700/50 space-y-4 pt-4">
+              <div className="card p-8 text-center">
+                <Palmtree className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-white mb-2">Time Off Import</h3>
+                <p className="text-sm text-gray-400 max-w-md mx-auto">
+                  Import <span className="font-semibold text-gray-300">Time Off</span> reports to sync
+                  sick days, vacation hours, and approved leave into team member records.
+                </p>
+                <p className="text-xs text-gray-500 mt-3">Coming soon — currently tracked manually through Team Performance.</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+      </div>{/* end accordion wrapper */}
     </div>
   );
 };

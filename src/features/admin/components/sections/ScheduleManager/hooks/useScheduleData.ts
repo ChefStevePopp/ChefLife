@@ -1,8 +1,16 @@
+/**
+ * useScheduleData
+ * Data layer for Schedule Manager: current/upcoming/previous schedules,
+ * shift fetching, week navigation, and manual schedule selection.
+ *
+ * @diagnostics src/features/admin/components/sections/ScheduleManager/hooks/useScheduleData.ts
+ */
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { useScheduleStore } from "@/stores/scheduleStore";
 import { Schedule, ScheduleShift } from "@/types/schedule";
 import toast from "react-hot-toast";
+import { formatDateForDisplay } from "@/utils/dateUtils";
 
 interface UseScheduleDataReturn {
   // Data
@@ -173,7 +181,7 @@ export const useScheduleData = (): UseScheduleDataReturn => {
       const prevSchedule = allSchedules[nextIndex];
       setManualScheduleId(prevSchedule.id);
       await fetchShifts(prevSchedule.id);
-      toast.success(`Viewing week of ${prevSchedule.start_date}`);
+      toast.success(`Viewing week of ${formatDateForDisplay(prevSchedule.start_date)}`);
     } else {
       toast.info("No earlier schedules available");
     }
@@ -195,7 +203,7 @@ export const useScheduleData = (): UseScheduleDataReturn => {
       const nextSchedule = allSchedules[nextIndex];
       setManualScheduleId(nextSchedule.id);
       await fetchShifts(nextSchedule.id);
-      toast.success(`Viewing week of ${nextSchedule.start_date}`);
+      toast.success(`Viewing week of ${formatDateForDisplay(nextSchedule.start_date)}`);
     } else {
       toast.info("No later schedules available");
     }
@@ -212,7 +220,7 @@ export const useScheduleData = (): UseScheduleDataReturn => {
     
     const selectedSchedule = allSchedules.find(s => s.id === scheduleId);
     if (selectedSchedule) {
-      toast.success(`Viewing week of ${selectedSchedule.start_date}`);
+      toast.success(`Viewing week of ${formatDateForDisplay(selectedSchedule.start_date)}`);
     }
   }, [allSchedules, fetchShifts]);
   

@@ -18,6 +18,8 @@ import {
   Truck,
   ExternalLink,
   Activity,
+  Link as LinkIcon,
+  Unlink,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
@@ -98,6 +100,9 @@ const SEVERITY_CONFIG = {
 // Category icon mapping
 const getCategoryIcon = (category: string, activityType: string) => {
   const type = activityType.toLowerCase();
+  if (type.includes('integration_connected')) return LinkIcon;
+  if (type.includes('integration_disconnected')) return Unlink;
+  if (type.includes('schedule_synced')) return RefreshCw;
   if (type.includes('vendor') || type.includes('creep') || type.includes('price')) return Truck;
   if (type.includes('recipe')) return FileText;
   if (type.includes('team') || type.includes('performance')) return Users;

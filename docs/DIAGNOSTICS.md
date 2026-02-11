@@ -2,7 +2,7 @@
 
 > **Hook:** `src/hooks/useDiagnostics.ts`  
 > **Toggle:** localStorage `showDiagnostics`  
-> **Updated:** 2026-01-21
+> **Updated:** 2026-02-10
 
 ---
 
@@ -167,6 +167,14 @@ The hook also adds `show-diagnostics` class to `document.body` when enabled. Thi
 | MediaManager | `src/features/recipes/components/RecipeEditor/MediaManager.tsx` |
 | TrainingModule | `src/features/recipes/components/RecipeEditor/TrainingModule.tsx` |
 | VersionHistory | `src/features/recipes/components/RecipeEditor/VersionHistory.tsx` |
+
+| **Schedule Module** | |
+| ScheduleManager | `src/features/admin/components/sections/ScheduleManager/index.tsx` |
+| ScheduleWeekView | `src/features/admin/components/sections/ScheduleManager/components/ScheduleWeekView.tsx` |
+| UpcomingSchedulesView | `src/features/admin/components/sections/ScheduleManager/components/UpcomingSchedulesView.tsx` |
+| PreviousSchedulesView | `src/features/admin/components/sections/ScheduleManager/components/PreviousSchedulesView.tsx` |
+| 7shifts API (tab) | `src/features/admin/components/sections/ScheduleManager/index.tsx → 7shifts API` |
+| Import Settings (tab) | `src/features/admin/components/sections/ScheduleManager/index.tsx → Import Settings` |
 
 ---
 

@@ -22,7 +22,7 @@ import {
 import { SECURITY_LEVELS } from "@/config/security";
 import { LoadingLogo } from "@/features/shared/components";
 import { IntegrationCard } from "@/shared/components";
-import { SevenShiftsConfigPanel } from "@/features/integrations";
+import { SevenShiftsConfigPanel, SchedulingConfigPanel } from "@/features/integrations";
 
 // Category icons - match sidebar where applicable
 const CATEGORY_ICONS: Record<IntegrationCategory, React.ElementType> = {
@@ -69,6 +69,8 @@ export const IntegrationsManager: React.FC = () => {
 
   // Config panel states
   const [sevenShiftsConfigOpen, setSevenShiftsConfigOpen] = useState(false);
+  const [schedulingConfigOpen, setSchedulingConfigOpen] = useState(false);
+  const [schedulingConfigTarget, setSchedulingConfigTarget] = useState<IntegrationId | null>(null);
 
   // Fetch organization data
   const fetchOrganization = useCallback(async () => {
@@ -145,24 +147,34 @@ export const IntegrationsManager: React.FC = () => {
 
   // Handle connect - open appropriate config panel
   const handleConnect = (integrationId: IntegrationId) => {
+    const def = INTEGRATION_REGISTRY.find(i => i.id === integrationId);
+    if (!def) return;
+
+    // Scheduling platforms → SchedulingConfigPanel (handles CSV + mode selection)
+    if (def.category === 'scheduling') {
+      setSchedulingConfigTarget(integrationId);
+      setSchedulingConfigOpen(true);
+      return;
+    }
+
+    // Non-scheduling platforms
     switch (integrationId) {
-      case '7shifts':
-        setSevenShiftsConfigOpen(true);
-        break;
       case 'sensorpush':
         toast('SensorPush configuration coming soon', { icon: '🌡️' });
         break;
       default:
-        const integration = INTEGRATION_REGISTRY.find(i => i.id === integrationId);
-        toast(`${integration?.label} integration coming soon`, { icon: '🔌' });
+        toast(`${def.label} integration coming soon`, { icon: '🔌' });
     }
   };
 
   // Handle disconnect
   const handleDisconnect = async (integrationId: IntegrationId) => {
-    // For 7shifts, open the config panel (it has disconnect)
-    if (integrationId === '7shifts') {
-      setSevenShiftsConfigOpen(true);
+    const def = INTEGRATION_REGISTRY.find(i => i.id === integrationId);
+
+    // Scheduling platforms → open their config panel (it has disconnect)
+    if (def?.category === 'scheduling') {
+      setSchedulingConfigTarget(integrationId);
+      setSchedulingConfigOpen(true);
       return;
     }
 
@@ -213,16 +225,22 @@ export const IntegrationsManager: React.FC = () => {
 
   // Handle configure - open config panel
   const handleConfigure = (integrationId: IntegrationId) => {
+    const def = INTEGRATION_REGISTRY.find(i => i.id === integrationId);
+    if (!def) return;
+
+    // Scheduling platforms → SchedulingConfigPanel (handles CSV, API, expired, reconnect)
+    if (def.category === 'scheduling') {
+      setSchedulingConfigTarget(integrationId);
+      setSchedulingConfigOpen(true);
+      return;
+    }
+
     switch (integrationId) {
-      case '7shifts':
-        setSevenShiftsConfigOpen(true);
-        break;
       case 'sensorpush':
         toast('SensorPush configuration coming soon', { icon: '🌡️' });
         break;
       default:
-        const integration = INTEGRATION_REGISTRY.find(i => i.id === integrationId);
-        toast(`${integration?.label} configuration coming soon`, { icon: '⚙️' });
+        toast(`${def.label} configuration coming soon`, { icon: '⚙️' });
     }
   };
 
@@ -346,9 +364,10 @@ export const IntegrationsManager: React.FC = () => {
                         website={integration.website}
                         status={status}
                         comingSoon={integration.comingSoon}
+                        connectionMode={integrationConfig?.connection_mode}
                         onConnect={() => handleConnect(integration.id)}
                         onDisconnect={() => handleDisconnect(integration.id)}
-                        onConfigure={status === 'connected' ? () => handleConfigure(integration.id) : undefined}
+                        onConfigure={['connected', 'expired', 'error'].includes(status) ? () => handleConfigure(integration.id) : undefined}
                       />
                     );
                   })}
@@ -367,10 +386,21 @@ export const IntegrationsManager: React.FC = () => {
         </p>
       </div>
 
-      {/* 7shifts Config Panel */}
+      {/* 7shifts API Config Panel */}
       <SevenShiftsConfigPanel
         isOpen={sevenShiftsConfigOpen}
         onClose={() => setSevenShiftsConfigOpen(false)}
+        onConnectionChange={handleConnectionChange}
+      />
+
+      {/* Universal Scheduling Config Panel (CSV mode + mode selector) */}
+      <SchedulingConfigPanel
+        isOpen={schedulingConfigOpen}
+        onClose={() => {
+          setSchedulingConfigOpen(false);
+          setSchedulingConfigTarget(null);
+        }}
+        integrationId={schedulingConfigTarget}
         onConnectionChange={handleConnectionChange}
       />
     </div>

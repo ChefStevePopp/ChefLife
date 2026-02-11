@@ -54,7 +54,9 @@ export const ActivityFeed = ({ daysFilter = 7 }) => {
   const formatActivityDetails = (details) => {
     if (!details) return "";
 
-    if (details.recipe_name) {
+    if (details.integration_name) {
+      return details.integration_name;
+    } else if (details.recipe_name) {
       return `${details.recipe_name}`;
     } else if (details.user_name) {
       return `by ${details.user_name}`;

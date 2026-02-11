@@ -4,14 +4,17 @@ import {
   getShifts,
   testConnection,
   fetchSchedule,
+  previewShifts,
   type Shift,
 } from "../lib/7shifts";
 import { supabase } from "@/lib/supabase";
 import { parseScheduleCsv } from "@/lib/schedule-parser";
 import { parseScheduleCsvWithMapping } from "@/lib/schedule-parser-enhanced";
 import { matchEmployeeWithTeamMember } from "@/utils/employeeMatching";
+import toast from "react-hot-toast";
 import { Schedule, ScheduleShift } from "@/types/schedule";
 import { logActivity } from "@/lib/activity-logger";
+import { getLocalDateString } from "@/utils/dateUtils";
 
 interface ScheduleState {
   shifts: Shift[];
@@ -97,14 +100,14 @@ export const useScheduleStore = create<ScheduleState>()(
           // If no dates provided, use current week
           const today = new Date();
           const defaultStartDate =
-            startDate || today.toISOString().split("T")[0];
+            startDate || getLocalDateString(today);
 
           // Default to 7 days if no end date
           let defaultEndDate;
           if (!endDate) {
             const nextWeek = new Date(today);
             nextWeek.setDate(today.getDate() + 6);
-            defaultEndDate = nextWeek.toISOString().split("T")[0];
+            defaultEndDate = getLocalDateString(nextWeek);
           } else {
             defaultEndDate = endDate;
           }
@@ -635,7 +638,7 @@ export const useScheduleStore = create<ScheduleState>()(
             shift_date:
               shift.shift_date ||
               shift.date ||
-              new Date().toISOString().split("T")[0], // Ensure shift_date is never null
+              getLocalDateString(), // Ensure shift_date is never null
             start_time: shift.start_time,
             end_time: shift.end_time,
             break_duration: shift.break_duration || null,
@@ -931,19 +934,14 @@ export const useScheduleStore = create<ScheduleState>()(
         try {
           set({ isLoading: true, error: null });
 
+          const companyId = get().companyId || "7140";
+
           // Set the credentials
           set({
             accessToken: apiKey,
             locationId: locationId,
-            companyId: "7140", // Default company ID for 7shifts
+            companyId,
           });
-
-          // Fetch shifts from 7shifts
-          const shifts = await get().syncSchedule(startDate, endDate);
-
-          if (shifts.length === 0) {
-            throw new Error("No shifts found for the selected date range");
-          }
 
           const {
             data: { user },
@@ -954,17 +952,76 @@ export const useScheduleStore = create<ScheduleState>()(
             throw new Error("No organization ID found");
           }
 
-          // Create a new schedule record
+          // ── DUPLICATE DETECTION ──────────────────────────────────
+          // Check if a 7shifts schedule already exists for this date range
+          const { data: existingSchedules } = await supabase
+            .from("schedules")
+            .select("id, start_date, end_date, status")
+            .eq("organization_id", organizationId)
+            .eq("source", "7shifts")
+            .eq("start_date", startDate)
+            .eq("end_date", endDate)
+            .in("status", ["current", "upcoming"]);
+
+          if (existingSchedules && existingSchedules.length > 0) {
+            const existing = existingSchedules[0];
+            // Delete old shifts and the schedule so we can replace it
+            await supabase
+              .from("schedule_shifts")
+              .delete()
+              .eq("schedule_id", existing.id);
+            await supabase
+              .from("schedules")
+              .delete()
+              .eq("id", existing.id);
+
+            console.log(
+              `[sync7shifts] Replaced existing schedule ${existing.id} for ${startDate} – ${endDate}`,
+            );
+          }
+
+          // ── FETCH ENRICHED SHIFTS (names resolved server-side) ──
+          const result = await previewShifts({
+            accessToken: apiKey,
+            companyId,
+            locationId,
+            startDate,
+            endDate,
+          });
+
+          const enrichedShifts = result.data || [];
+
+          if (enrichedShifts.length === 0) {
+            throw new Error("No published shifts found for the selected date range");
+          }
+
+          // ── EMPLOYEE MATCHING ────────────────────────────────────
+          // Match 7shifts employee names to ChefLife team members
+          const matchedShifts = await Promise.all(
+            enrichedShifts.map(async (shift) => {
+              const matched = await matchEmployeeWithTeamMember(
+                shift.employee_name,
+                shift.user_id?.toString(),
+              );
+              return {
+                ...shift,
+                matched_employee_id: matched.employee_id || null,
+                matched_first_name: matched.first_name || null,
+                matched_last_name: matched.last_name || null,
+              };
+            }),
+          );
+
+          // ── CREATE SCHEDULE RECORD ──────────────────────────────
           const scheduleData = {
             organization_id: organizationId,
             start_date: startDate,
             end_date: endDate,
-            status: "upcoming",
+            status: "upcoming" as const,
             created_by: user.id,
             source: "7shifts",
           };
 
-          // Insert the new schedule
           const { data: newSchedule, error: insertError } = await supabase
             .from("schedules")
             .insert([scheduleData])
@@ -975,20 +1032,37 @@ export const useScheduleStore = create<ScheduleState>()(
             throw insertError;
           }
 
-          // Transform 7shifts shifts to our format
-          const shiftsToInsert = shifts.map((shift) => ({
-            schedule_id: newSchedule.id,
-            employee_name: shift.employee.name,
-            employee_id: shift.employee.id.toString(),
-            role: shift.role.name,
-            shift_date: shift.date,
-            start_time: shift.start_time,
-            end_time: shift.end_time,
-            break_duration: shift.break_length || 0,
-            notes: shift.notes || "",
-          }));
+          // ── TRANSFORM & INSERT SHIFTS ───────────────────────────
+          const shiftsToInsert = matchedShifts.map((shift) => {
+            // Parse start/end times from ISO strings
+            const startDt = shift.start ? new Date(shift.start) : null;
+            const endDt = shift.end ? new Date(shift.end) : null;
+            const shiftDate = startDt
+              ? getLocalDateString(startDt)
+              : startDate;
+            const startTime = startDt
+              ? startDt.toTimeString().slice(0, 5)
+              : "";
+            const endTime = endDt
+              ? endDt.toTimeString().slice(0, 5)
+              : "";
 
-          // Insert shifts in batches to avoid payload size limits
+            return {
+              schedule_id: newSchedule.id,
+              employee_name: shift.employee_name,
+              employee_id: shift.matched_employee_id || shift.user_id?.toString() || null,
+              first_name: shift.matched_first_name || null,
+              last_name: shift.matched_last_name || null,
+              role: shift.role_name || null,
+              shift_date: shiftDate,
+              start_time: startTime,
+              end_time: endTime,
+              break_duration: 0,
+              notes: shift.notes || "",
+            };
+          });
+
+          // Insert in batches
           const batchSize = 100;
           for (let i = 0; i < shiftsToInsert.length; i += batchSize) {
             const batch = shiftsToInsert.slice(i, i + batchSize);
@@ -1001,10 +1075,13 @@ export const useScheduleStore = create<ScheduleState>()(
             }
           }
 
-          // Update the store state
-          set({ upcomingSchedule: newSchedule });
+          // ── UPDATE STORE STATE ──────────────────────────────────
+          set({
+            upcomingSchedule: newSchedule,
+            lastSync: new Date().toISOString(),
+          });
 
-          // Log the activity
+          // ── ACTIVITY LOG ────────────────────────────────────────
           await logActivity({
             organization_id: organizationId,
             user_id: user.id,
@@ -1013,8 +1090,11 @@ export const useScheduleStore = create<ScheduleState>()(
               schedule_id: newSchedule.id,
               start_date: startDate,
               end_date: endDate,
-              shift_count: shifts.length,
+              shift_count: enrichedShifts.length,
+              employee_count: result.meta?.user_count || 0,
+              role_count: result.meta?.role_count || 0,
               source: "7shifts",
+              replaced_existing: (existingSchedules && existingSchedules.length > 0) || false,
             },
             metadata: {
               category: "team",
@@ -1022,15 +1102,19 @@ export const useScheduleStore = create<ScheduleState>()(
             },
           });
 
+          toast.success(
+            `Synced ${enrichedShifts.length} shifts from 7shifts (${startDate} – ${endDate})`,
+          );
+
           return newSchedule;
         } catch (error) {
           console.error("Error syncing 7shifts schedule:", error);
-          set({
-            error:
-              error instanceof Error
-                ? error.message
-                : "Failed to sync 7shifts schedule",
-          });
+          const msg =
+            error instanceof Error
+              ? error.message
+              : "Failed to sync 7shifts schedule";
+          set({ error: msg });
+          toast.error(msg);
           throw error;
         } finally {
           set({ isLoading: false });

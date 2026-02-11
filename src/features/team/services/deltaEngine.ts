@@ -1,7 +1,7 @@
 /**
- * Delta Engine - 7shifts CSV Import & Variance Calculator
+ * Delta Engine - Scheduling CSV Import & Variance Calculator
  * 
- * Compares Scheduled Hours vs Worked Hours CSVs from 7shifts
+ * Compares Scheduled Hours vs Worked Hours CSVs from any scheduling platform
  * to detect attendance events (tardiness, early departure, no-shows)
  * and suggest point events for review.
  * 

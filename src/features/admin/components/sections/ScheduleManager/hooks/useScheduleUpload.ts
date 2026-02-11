@@ -1,9 +1,16 @@
+/**
+ * useScheduleUpload
+ * CSV upload workflow: file selection, parsing, employee matching, and insert.
+ *
+ * @diagnostics src/features/admin/components/sections/ScheduleManager/hooks/useScheduleUpload.ts
+ */
 import { useState, useCallback } from "react";
 import Papa from "papaparse";
 import toast from "react-hot-toast";
 import { useScheduleStore } from "@/stores/scheduleStore";
 import { parseScheduleCsvWithMapping } from "@/lib/schedule-parser-enhanced";
 import { ColumnMapping } from "../components";
+import { getLocalDateString } from "@/utils/dateUtils";
 
 interface UseScheduleUploadReturn {
   // State
@@ -65,12 +72,12 @@ export const useScheduleUpload = (): UseScheduleUploadReturn => {
   const [selectedMapping, setSelectedMapping] = useState<ColumnMapping | null>(null);
   const [activateImmediately, setActivateImmediately] = useState(false);
   const [startDate, setStartDate] = useState<string>(
-    new Date().toISOString().split("T")[0]
+    getLocalDateString()
   );
   const [endDate, setEndDate] = useState<string>(() => {
     const date = new Date();
     date.setDate(date.getDate() + 6); // 7 days total (today + 6)
-    return date.toISOString().split("T")[0];
+    return getLocalDateString(date);
   });
   
   // Get store functions

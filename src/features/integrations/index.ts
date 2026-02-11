@@ -1,5 +1,5 @@
 // Components
-export { SevenShiftsConfigPanel } from './components';
+export { SevenShiftsConfigPanel, SchedulingConfigPanel } from './components';
 
 // Hooks
 export { use7ShiftsIntegration } from './hooks';

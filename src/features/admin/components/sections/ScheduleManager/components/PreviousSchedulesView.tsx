@@ -1,6 +1,14 @@
+/**
+ * Previous Schedules View
+ * Grouped-by-month archive of past schedules with search, source filter, and export.
+ *
+ * @diagnostics src/features/admin/components/sections/ScheduleManager/components/PreviousSchedulesView.tsx
+ * @pattern L5 grouped-list
+ */
 import React, { useState, useMemo } from 'react';
 import { Calendar, Download, Eye, Trash2, Search, Filter, ChevronDown, ChevronRight } from 'lucide-react';
 import { Schedule } from '@/types/schedule';
+import { parseLocalDate, formatDateForDisplay, formatDateShort } from '@/utils/dateUtils';
 
 interface PreviousSchedulesViewProps {
   schedules: Schedule[];
@@ -42,9 +50,9 @@ export const PreviousSchedulesView: React.FC<PreviousSchedulesViewProps> = ({
         )
       : filtered;
 
-    // Group by year and month
+    // Group by year and month (using parseLocalDate to avoid UTC shift)
     const groups = searched.reduce((acc, schedule) => {
-      const date = new Date(schedule.start_date);
+      const date = parseLocalDate(schedule.start_date);
       const year = date.getFullYear();
       const month = date.getMonth(); // 0-11
       const key = `${year}-${month}`;
@@ -190,14 +198,7 @@ export const PreviousSchedulesView: React.FC<PreviousSchedulesViewProps> = ({
                               </div>
                               <div>
                                 <h4 className="text-white font-medium">
-                                  {new Date(schedule.start_date).toLocaleDateString('en-US', { 
-                                    month: 'short', 
-                                    day: 'numeric' 
-                                  })} – {new Date(schedule.end_date).toLocaleDateString('en-US', { 
-                                    month: 'short', 
-                                    day: 'numeric',
-                                    year: 'numeric'
-                                  })}
+                                  {formatDateShort(schedule.start_date)} – {formatDateForDisplay(schedule.end_date)}
                                 </h4>
                                 <div className="flex items-center gap-2 mt-1">
                                   <span className={`text-xs px-2 py-0.5 rounded-full ${
@@ -235,7 +236,7 @@ export const PreviousSchedulesView: React.FC<PreviousSchedulesViewProps> = ({
                               {onDelete && (
                                 <button
                                   onClick={() => {
-                                    if (confirm(`Delete schedule for ${new Date(schedule.start_date).toLocaleDateString()} - ${new Date(schedule.end_date).toLocaleDateString()}?`)) {
+                                    if (confirm(`Delete schedule for ${formatDateForDisplay(schedule.start_date)} - ${formatDateForDisplay(schedule.end_date)}?`)) {
                                       onDelete(schedule.id);
                                     }
                                   }}

@@ -1,7 +1,26 @@
-import axios from "axios";
+/**
+ * 7shifts API Client — v5 (Vault-backed)
+ *
+ * TWO CREDENTIAL MODES:
+ * 1. Direct mode: API key passed explicitly (test_connection before storing)
+ * 2. Vault mode: organizationId → Edge Function reads from encrypted Vault
+ *
+ * After initial connection, ALL operations use Vault mode.
+ * API keys never leave the server after being stored.
+ *
+ * Edge Function: /functions/v1/7shifts-proxy
+ *
+ * @diagnostics src/lib/7shifts.ts
+ * @version 5
+ */
 
-const API_BASE = "https://api.7shifts.com/v2";
-const CORS_PROXY = "https://api.allorigins.win/raw?url=";
+import { supabase } from "@/lib/supabase";
+
+const PROXY_URL = `${import.meta.env.VITE_SUPABASE_URL || "https://vcfigkwtsqvrvahfprya.supabase.co"}/functions/v1/7shifts-proxy`;
+
+// ─── TYPES ───────────────────────────────────────────────────────────────────
+
+export type ConnectionStatus = "disconnected" | "active" | "error" | "expired" | "paused";
 
 export interface Shift {
   id: number;
@@ -12,6 +31,14 @@ export interface Shift {
   start: Date;
   end: Date;
   notes: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  break_length: number;
+  employee: {
+    id: number;
+    name: string;
+  };
   user: {
     name: string;
   };
@@ -28,11 +55,283 @@ interface ConnectionParams {
   endDate?: string;
 }
 
-// Helper to build proxied URL
-const getProxiedUrl = (path: string) => {
-  const url = `${API_BASE}${path}`;
-  return import.meta.env.PROD ? url : `${CORS_PROXY}${encodeURIComponent(url)}`;
-};
+interface VaultParams {
+  organizationId: string;
+  integrationKey?: string;  // defaults to '7shifts'
+  locationId?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface HealthCheckResult {
+  status: ConnectionStatus;
+  error_code?: string;
+  http_status?: number;
+  checked_at: string;
+}
+
+export interface EnrichedShift {
+  id: number;
+  user_id: number;
+  role_id: number;
+  start: string;
+  end: string;
+  employee_name: string;
+  role_name: string;
+  notes: string;
+}
+
+export interface PreviewResult {
+  data: EnrichedShift[];
+  meta: { shift_count: number; user_count: number; role_count: number };
+}
+
+/** Structured error from the Edge Function with error code */
+export class ProxyError extends Error {
+  code: string;
+  httpStatus: number;
+
+  constructor(message: string, code: string, httpStatus: number) {
+    super(message);
+    this.name = "ProxyError";
+    this.code = code;
+    this.httpStatus = httpStatus;
+  }
+
+  get isAuthExpired(): boolean {
+    return this.code === "AUTH_EXPIRED";
+  }
+
+  get isNoCredentials(): boolean {
+    return this.code === "NO_CREDENTIALS";
+  }
+
+  get isRateLimited(): boolean {
+    return this.code === "RATE_LIMITED";
+  }
+}
+
+// ─── AUTH ─────────────────────────────────────────────────────────────────────
+
+async function getAuthToken(): Promise<string> {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token ?? "";
+}
+
+// ─── PROXY CALLERS ───────────────────────────────────────────────────────────
+
+/** Call proxy with DIRECT credentials (test_connection before storing) */
+async function callProxyDirect(body: Record<string, any>): Promise<any> {
+  const token = await getAuthToken();
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  const response = await fetch(PROXY_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`,
+      "apikey": anonKey,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: response.statusText }));
+    throw new ProxyError(
+      errorData?.error || errorData?.message || `7shifts API error (${response.status})`,
+      errorData?.code || "UNKNOWN",
+      response.status
+    );
+  }
+
+  return response.json();
+}
+
+/** Call proxy with VAULT credentials (post-connection operations) */
+async function callProxyVault(
+  action: string,
+  organizationId: string,
+  integrationKey: string = "7shifts",
+  extra: Record<string, any> = {}
+): Promise<any> {
+  const token = await getAuthToken();
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  const response = await fetch(PROXY_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`,
+      "apikey": anonKey,
+    },
+    body: JSON.stringify({
+      action,
+      organizationId,
+      integrationKey,
+      ...extra,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: response.statusText }));
+    throw new ProxyError(
+      errorData?.error || errorData?.message || `7shifts API error (${response.status})`,
+      errorData?.code || "UNKNOWN",
+      response.status
+    );
+  }
+
+  return response.json();
+}
+
+// ─── VAULT CREDENTIAL MANAGEMENT ─────────────────────────────────────────────
+
+/**
+ * Store 7shifts credentials in Vault (encrypted at rest)
+ * Call this AFTER successful test_connection
+ */
+export async function storeCredentials(
+  organizationId: string,
+  credentials: { apiKey: string; companyId: string; locationId?: string },
+  createdBy?: string
+): Promise<void> {
+  // Store each credential as a separate Vault secret
+  const entries = [
+    { name: "api_key", value: credentials.apiKey },
+    { name: "company_id", value: credentials.companyId },
+  ];
+  if (credentials.locationId) {
+    entries.push({ name: "location_id", value: credentials.locationId });
+  }
+
+  for (const entry of entries) {
+    const { error } = await supabase.rpc("store_integration_secret", {
+      p_organization_id: organizationId,
+      p_integration_key: "7shifts",
+      p_secret_name: entry.name,
+      p_secret_value: entry.value,
+      p_created_by: createdBy || null,
+    });
+    if (error) {
+      console.error(`Failed to store ${entry.name}:`, error);
+      throw new Error(`Failed to securely store credentials: ${error.message}`);
+    }
+  }
+}
+
+/**
+ * Purge all 7shifts credentials from Vault (used on disconnect)
+ * Returns the number of secrets purged
+ */
+export async function purgeCredentials(organizationId: string): Promise<number> {
+  const { data, error } = await supabase.rpc("purge_integration_secrets", {
+    p_organization_id: organizationId,
+    p_integration_key: "7shifts",
+  });
+  if (error) {
+    console.error("Failed to purge credentials:", error);
+    throw new Error(`Failed to purge credentials: ${error.message}`);
+  }
+  return data || 0;
+}
+
+// ─── DIRECT MODE FUNCTIONS (pre-connection) ──────────────────────────────────
+
+/**
+ * Test connection to 7shifts API (direct mode — before storing credentials)
+ */
+export async function testConnection({
+  accessToken,
+  companyId,
+}: ConnectionParams): Promise<boolean> {
+  try {
+    await callProxyDirect({
+      action: "test_connection",
+      apiKey: accessToken,
+      companyId,
+    });
+    return true;
+  } catch (error) {
+    console.error("Connection test failed:", error);
+    return false;
+  }
+}
+
+/**
+ * Fetch enriched shift preview — DIRECT mode (pre-connection live preview)
+ */
+export async function previewShifts({
+  accessToken,
+  companyId,
+  locationId,
+  startDate,
+  endDate,
+}: ConnectionParams): Promise<PreviewResult> {
+  return callProxyDirect({
+    action: "preview_shifts",
+    apiKey: accessToken,
+    companyId,
+    locationId,
+    params: { startDate, endDate },
+  });
+}
+
+// ─── VAULT MODE FUNCTIONS (post-connection) ──────────────────────────────────
+
+/**
+ * Health check: verify stored credentials are still valid
+ * Returns connection status for state machine
+ */
+export async function healthCheck(params: VaultParams): Promise<HealthCheckResult> {
+  try {
+    return await callProxyVault(
+      "health_check",
+      params.organizationId,
+      params.integrationKey
+    );
+  } catch (error) {
+    if (error instanceof ProxyError) {
+      if (error.isNoCredentials) {
+        return { status: "disconnected", error_code: "NO_CREDENTIALS", checked_at: new Date().toISOString() };
+      }
+      if (error.isAuthExpired) {
+        return { status: "expired", error_code: "AUTH_EXPIRED", checked_at: new Date().toISOString() };
+      }
+    }
+    return { status: "error", error_code: "UNKNOWN", checked_at: new Date().toISOString() };
+  }
+}
+
+/**
+ * Fetch enriched shift preview — VAULT mode (post-connection sync)
+ */
+export async function previewShiftsVault(params: VaultParams): Promise<PreviewResult> {
+  return callProxyVault(
+    "preview_shifts",
+    params.organizationId,
+    params.integrationKey,
+    { params: { startDate: params.startDate, endDate: params.endDate } }
+  );
+}
+
+/**
+ * Fetch shifts — VAULT mode
+ */
+export async function getShiftsVault(params: VaultParams & { limit?: number }): Promise<Shift[]> {
+  const data = await callProxyVault(
+    "get_shifts",
+    params.organizationId,
+    params.integrationKey,
+    { params: { startDate: params.startDate, endDate: params.endDate, limit: params.limit || 250 } }
+  );
+  return (data?.data || []).map((shift: any) => ({
+    ...shift,
+    start: new Date(shift.start),
+    end: new Date(shift.end),
+  }));
+}
+
+// ─── LEGACY DIRECT MODE FUNCTIONS (kept for backward compatibility) ──────────
 
 export async function getShifts({
   accessToken,
@@ -42,145 +341,61 @@ export async function getShifts({
   endDate,
 }: ConnectionParams): Promise<Shift[]> {
   try {
-    const url = getProxiedUrl(`/company/${companyId}/shifts`);
-
-    // Build query parameters
-    const params: Record<string, any> = {
-      limit: 250,
-      deleted: false,
-      draft: false,
-      published: true, // Only get published shifts
-    };
-
-    // Add date range if provided
-    if (startDate) {
-      params["start[gte]"] = `${startDate}T00:00:00Z`;
-    }
-
-    if (endDate) {
-      params["start[lte]"] = `${endDate}T23:59:59Z`;
-    }
-
-    // Add location filter if provided
-    if (locationId) {
-      params.location_id = locationId;
-    }
-
-    const response = await axios.get(url, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/json",
-      },
-      params,
+    const data = await callProxyDirect({
+      action: "get_shifts",
+      apiKey: accessToken,
+      companyId,
+      locationId,
+      params: { startDate, endDate, limit: 250 },
     });
-
-    // Transform dates from strings to Date objects
-    return (response.data?.data || []).map((shift: any) => ({
+    return (data?.data || []).map((shift: any) => ({
       ...shift,
       start: new Date(shift.start),
       end: new Date(shift.end),
     }));
   } catch (error) {
-    if (axios.isAxiosError(error)) {
-      console.error(
-        "Failed to fetch shifts:",
-        error.response?.data || error.message,
-      );
-      throw new Error(
-        error.response?.data?.message || "Failed to fetch shifts",
-      );
-    }
+    console.error("Failed to fetch shifts:", error);
     throw error;
   }
 }
 
-export async function testConnection({
-  accessToken,
-  companyId,
-}: ConnectionParams): Promise<boolean> {
-  try {
-    const url = getProxiedUrl(`/company/${companyId}`);
-    const response = await axios.get(url, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/json",
-      },
-    });
-    return response.status === 200;
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      console.error(
-        "Connection test failed:",
-        error.response?.data || error.message,
-      );
-    } else {
-      console.error("Connection test failed:", error);
-    }
-    return false;
-  }
-}
-
-/**
- * Fetch schedule data from 7shifts API
- * @param config API configuration
- * @param startDate Start date in YYYY-MM-DD format
- * @param endDate End date in YYYY-MM-DD format
- * @returns Promise resolving to schedule data
- */
 export const fetchSchedule = async (
-  config: { apiKey: string; locationId?: string },
+  config: { apiKey: string; locationId?: string; companyId?: string },
   startDate: string,
   endDate: string,
 ) => {
   if (!config.apiKey) {
     throw new Error("7shifts API key is required");
   }
-
-  // Use v2 API for better compatibility
-  const baseUrl = "https://api.7shifts.com/v2";
-  let url = `${baseUrl}/shifts?limit=250`;
-
-  // Add date filters
-  if (startDate) {
-    url += `&start[gte]=${startDate}T00:00:00Z`;
-  }
-
-  if (endDate) {
-    url += `&start[lte]=${endDate}T23:59:59Z`;
-  }
-
-  // Add location filter if provided
-  if (config.locationId) {
-    url += `&location_id=${config.locationId}`;
-  }
-
-  // Add published filter to only get published shifts
-  url += "&published=true";
-
   try {
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.apiKey}`,
-      },
+    const data = await callProxyDirect({
+      action: "get_shifts",
+      apiKey: config.apiKey,
+      companyId: config.companyId || "7140",
+      locationId: config.locationId,
+      params: { startDate, endDate, limit: 250 },
     });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(
-        `7shifts API error: ${errorData.message || response.statusText}`,
-      );
-    }
-
-    const responseData = await response.json();
     return {
-      shifts: responseData.data || [],
-      meta: responseData.meta || {},
+      shifts: data?.data || [],
+      meta: data?.meta || {},
     };
   } catch (error) {
     console.error("Error fetching 7shifts schedule:", error);
     throw error;
   }
 };
+
+export async function getLocations({ accessToken, companyId }: ConnectionParams): Promise<any[]> {
+  const data = await callProxyDirect({ action: "get_locations", apiKey: accessToken, companyId });
+  return data?.data || [];
+}
+
+export async function getDepartments({ accessToken, companyId, locationId }: ConnectionParams): Promise<any[]> {
+  const data = await callProxyDirect({ action: "get_departments", apiKey: accessToken, companyId, locationId });
+  return data?.data || [];
+}
+
+export async function getRoles({ accessToken, companyId, locationId }: ConnectionParams): Promise<any[]> {
+  const data = await callProxyDirect({ action: "get_roles", apiKey: accessToken, companyId, locationId });
+  return data?.data || [];
+}

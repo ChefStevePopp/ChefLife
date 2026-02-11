@@ -1,3 +1,9 @@
+/**
+ * useSchedule
+ * Shared schedule hook — bridges the global scheduleStore for component consumption.
+ *
+ * @diagnostics src/features/schedule/hooks/useSchedule.ts
+ */
 import { useEffect } from 'react';
 import { useScheduleStore } from '@/stores/scheduleStore';
 

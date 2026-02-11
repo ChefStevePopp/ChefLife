@@ -24,6 +24,7 @@ import {
   Smartphone,
   Save,
   RotateCcw,
+  Plug,
 } from "lucide-react";
 import { LoadingLogo } from "@/components/LoadingLogo";
 import { useAuth } from "@/hooks/useAuth";
@@ -257,6 +258,40 @@ const EVENT_CATEGORIES: EventCategory[] = [
         defaultEnabled: true,
         defaultChannels: ['in_app'],
         defaultMinSecurityLevel: SECURITY_LEVELS.ALPHA, // Owners only
+      },
+    ],
+  },
+  // CYAN - Integration Events
+  {
+    id: 'system' as ActivityCategory,
+    label: 'Integration Events',
+    icon: Plug,
+    iconColor: 'text-cyan-400',
+    bgColor: 'bg-cyan-500/20',
+    events: [
+      {
+        type: 'integration_connected' as ActivityType,
+        label: 'Integration Connected',
+        description: 'When a third-party integration is connected',
+        defaultEnabled: true,
+        defaultChannels: ['in_app'] as BroadcastChannel[],
+        defaultMinSecurityLevel: SECURITY_LEVELS.ALPHA, // Owners only
+      },
+      {
+        type: 'integration_disconnected' as ActivityType,
+        label: 'Integration Disconnected',
+        description: 'When a third-party integration is disconnected',
+        defaultEnabled: true,
+        defaultChannels: ['in_app', 'email'] as BroadcastChannel[],
+        defaultMinSecurityLevel: SECURITY_LEVELS.ALPHA, // Owners only
+      },
+      {
+        type: 'schedule_synced_7shifts' as ActivityType,
+        label: 'Schedule Synced (7shifts)',
+        description: 'When schedules are pulled from 7shifts',
+        defaultEnabled: true,
+        defaultChannels: ['in_app'] as BroadcastChannel[],
+        defaultMinSecurityLevel: SECURITY_LEVELS.BRAVO, // Supervisors+
       },
     ],
   },

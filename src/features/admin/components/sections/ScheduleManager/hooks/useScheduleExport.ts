@@ -1,9 +1,10 @@
 /**
- * useScheduleExport Hook
- * 
+ * useScheduleExport
  * Handles exporting schedules to CSV format.
- * Priority: Downloads original uploaded CSV from Supabase Storage
- * Fallback: Generates CSV from shift data if original not available
+ * Priority: Downloads original uploaded CSV from Supabase Storage.
+ * Fallback: Generates CSV from shift data if original not available.
+ *
+ * @diagnostics src/features/admin/components/sections/ScheduleManager/hooks/useScheduleExport.ts
  */
 
 import { supabase } from "@/lib/supabase";

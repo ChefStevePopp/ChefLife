@@ -1,3 +1,10 @@
+/**
+ * Activity Log List
+ * Full activity history with category filtering, search, and severity triage.
+ * 
+ * @diagnostics src/features/admin/components/ActivityLogList/index.tsx
+ * @pattern L5 icon-badge
+ */
 import React from "react";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -16,6 +23,7 @@ import {
   DollarSign,
   Bell,
   Shield,
+  Plug,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { LoadingLogo } from "@/components/LoadingLogo";
@@ -27,6 +35,7 @@ interface ActivityLog {
   details: Record<string, any>;
   user_id: string;
   user_name?: string;
+  message?: string;
   category?: string;
   severity?: "info" | "warning" | "critical";
   acknowledged_by?: string[];
@@ -56,7 +65,10 @@ const ACTIVITY_TYPE_TO_CATEGORY: Record<string, string> = {
   schedule_uploaded: "team",
   schedule_activated: "team",
   schedule_deleted: "team",
-  schedule_synced_7shifts: "team",
+  // Integration activities
+  schedule_synced_7shifts: "integrations",
+  integration_connected: "integrations",
+  integration_disconnected: "integrations",
   // System/Settings activities
   settings_updated: "system",
   settings_changed: "system",
@@ -78,9 +90,38 @@ const ACTIVITY_TYPE_TO_CATEGORY: Record<string, string> = {
   vendor_template_saved: "financial",
   system_override_initiated: "financial",
   system_override_price: "financial",
+  // Performance activities
+  performance_point_added: "team",
+  performance_reduction_added: "team",
+  performance_coaching_triggered: "team",
+  performance_coaching_completed: "team",
+  performance_pip_created: "team",
+  performance_pip_updated: "team",
+  performance_pip_completed: "team",
+  performance_tier_changed: "team",
+  performance_import_processed: "team",
+  performance_events_staged: "team",
+  performance_staged_cleared: "team",
+  performance_event_approved: "team",
+  performance_event_excused: "team",
+  performance_event_rejected: "team",
+  performance_event_modified: "team",
+  performance_event_removed: "team",
   // Security activities
   login: "security",
   logout: "security",
+  security_protocol_changed: "security",
+  security_protocol_promoted: "security",
+  security_protocol_demoted: "security",
+  // Policy activities
+  policy_uploaded: "organization",
+  policy_updated: "organization",
+  policy_deleted: "organization",
+  // Analytics/Alerts
+  vendor_creep_detected: "alerts",
+  vendor_creep_critical: "alerts",
+  price_spike_alert: "alerts",
+  margin_erosion_warning: "alerts",
 };
 
 // Reusable components
@@ -97,45 +138,24 @@ const EmptyState = ({ message }: { message: string }) => (
   </div>
 );
 
-// Activity categories with their icons and colors
+// Activity categories — L5 icon-badge pattern
+// Badge classes defined in index.css: .icon-badge-{color}
 const ACTIVITY_CATEGORIES_CONFIG = {
-  recipes: {
-    icon: UtensilsCrossed,
-    color: "text-amber-400",
-    label: "Recipes",
-  },
-  inventory: {
-    icon: Package,
-    color: "text-blue-400",
-    label: "Inventory",
-  },
-  team: { icon: Users, color: "text-green-400", label: "Team" },
-  organization: {
-    icon: Building2,
-    color: "text-purple-400",
-    label: "Organization",
-  },
-  financial: {
-    icon: DollarSign,
-    color: "text-emerald-400",
-    label: "Financial",
-  },
-  security: {
-    icon: Shield,
-    color: "text-rose-400",
-    label: "Security",
-  },
-  system: {
-    icon: Settings,
-    color: "text-gray-400",
-    label: "System",
-  },
-  alerts: { icon: Bell, color: "text-yellow-400", label: "Alerts" },
+  recipes:       { icon: UtensilsCrossed, badge: "icon-badge-amber",   color: "text-amber-400",   label: "Recipes" },
+  inventory:     { icon: Package,         badge: "icon-badge-blue",    color: "text-blue-400",    label: "Inventory" },
+  team:          { icon: Users,           badge: "icon-badge-green",   color: "text-green-400",   label: "Team" },
+  organization:  { icon: Building2,       badge: "icon-badge-purple",  color: "text-purple-400",  label: "Organization" },
+  financial:     { icon: DollarSign,      badge: "icon-badge-emerald", color: "text-emerald-400", label: "Financial" },
+  security:      { icon: Shield,          badge: "icon-badge-rose",    color: "text-rose-400",    label: "Security" },
+  integrations:  { icon: Plug,            badge: "icon-badge-cyan",    color: "text-cyan-400",    label: "Integrations" },
+  system:        { icon: Settings,        badge: "icon-badge-gray",    color: "text-gray-400",    label: "System" },
+  alerts:        { icon: Bell,            badge: "icon-badge-yellow",  color: "text-yellow-400",  label: "Alerts" },
 };
 
 const CategoryCard = ({
   category,
   icon: Icon,
+  badge,
   color,
   label,
   count,
@@ -147,15 +167,12 @@ const CategoryCard = ({
     className={`group relative flex items-center gap-3 p-4 rounded-lg transition-all
       ${
         isSelected
-          ? `${color.replace("text-", "bg-")}/20 ring-2 ring-${color.replace("text-", "")}/50`
+          ? "bg-gray-800 ring-2 ring-primary-500/50"
           : "bg-gray-800/50 hover:bg-gray-800 hover:ring-2 hover:ring-gray-700"
       }`}
   >
-    <div
-      className={`p-2 rounded-lg ${color.replace("text-", "bg-")}/10 
-      group-hover:${color.replace("text-", "bg-")}/20 transition-colors`}
-    >
-      <Icon className={`w-5 h-5 ${color}`} />
+    <div className={badge}>
+      <Icon />
     </div>
     <div className="flex-1 text-left">
       <span
@@ -180,7 +197,9 @@ const LogEntry = ({ log }: { log: ActivityLog }) => {
       : log.category && ACTIVITY_CATEGORIES_CONFIG[log.category]
         ? log.category
         : "system";
-  const CategoryIcon = ACTIVITY_CATEGORIES_CONFIG[category]?.icon || Settings;
+  const catConfig = ACTIVITY_CATEGORIES_CONFIG[category] || ACTIVITY_CATEGORIES_CONFIG.system;
+  const CategoryIcon = catConfig.icon;
+  const badgeClass = catConfig.badge;
 
   return (
     <div
@@ -191,16 +210,12 @@ const LogEntry = ({ log }: { log: ActivityLog }) => {
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <div
-            className={`p-2 rounded-lg ${ACTIVITY_CATEGORIES_CONFIG[category]?.color.replace("text-", "bg-")}/10`}
-          >
-            <CategoryIcon
-              className={`w-4 h-4 ${ACTIVITY_CATEGORIES_CONFIG[category]?.color}`}
-            />
+          <div className={badgeClass}>
+            <CategoryIcon />
           </div>
           <div className="flex flex-col">
             <span className="font-medium text-white">
-              {log.activity_type
+              {log.message || log.activity_type
                 .split("_")
                 .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
                 .join(" ")}
@@ -454,11 +469,12 @@ function ActivityLogList({ onStatsCalculated } = {}) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {activityCategories.map(({ category, icon, color, label, count }) => (
+        {activityCategories.map(({ category, icon, badge, color, label, count }) => (
           <CategoryCard
             key={category}
             category={category}
             icon={icon}
+            badge={badge}
             color={color}
             label={label}
             count={count}
