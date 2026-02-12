@@ -26,6 +26,7 @@ import { Operations } from "../components/sections/Operations";
 import { RecipeSettings } from "../components/sections/RecipeSettings";
 import { AllergenManager } from "../components/sections/AllergenManager";
 import { HRSettings } from "../components/sections/HRSettings";
+import { TeamSettings } from "../components/sections/TeamSettings";
 import { PoliciesManager } from "../components/sections/PoliciesManager";
 // Data Management - proper routes instead of hash-based
 import { MasterIngredientList } from "../components/sections/recipe/MasterIngredientList";
@@ -63,6 +64,7 @@ export const AdminRoutes: React.FC = () => {
         <Route path="modules/communications/templates/:id" element={<TemplateEditor />} />
         <Route path="modules/communications/templates/:id/preview" element={<TemplatePreview />} />
         <Route path="modules/recipes" element={<RecipeSettings />} />
+        <Route path="modules/team" element={<TeamSettings />} />
         <Route path="modules/hr" element={<HRSettings />} />
         <Route path="policies" element={<PoliciesManager />} />
         <Route path="allergens" element={<AllergenManager />} />

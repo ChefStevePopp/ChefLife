@@ -5,9 +5,10 @@
  * @diagnostics src/features/admin/components/sections/ScheduleManager/index.tsx
  * @pattern L5 tab-panel
  */
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Calendar,
+  CalendarDays,
   Upload,
   History,
   Link,
@@ -17,17 +18,27 @@ import {
   Download,
   X,
   Settings,
-  Trash,
+  Trash2,
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Check,
   ExternalLink,
+  Info,
   Plug,
+  Users,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
+import { TwoStageButton } from "@/components/ui/TwoStageButton";
 import { useScheduleStore } from "@/stores/scheduleStore";
+import { usePerformanceStore } from "@/stores/performanceStore";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/lib/supabase";
+import type { PerformanceTier } from "@/features/team/types";
+import type { TeamModuleConfig } from "../TeamSettings/types";
+import { DEFAULT_TEAM_CONFIG } from "../TeamSettings/types";
 import {
   CSVConfiguration,
   ColumnMapping,
@@ -113,11 +124,25 @@ export const ScheduleManager: React.FC = () => {
     isViewModalOpen,
     openViewModal,
     closeViewModal,
-    isDeleteModalOpen,
-    openDeleteModal,
-    closeDeleteModal,
     selectedScheduleId,
   } = useScheduleUI();
+
+  // Week picker popover + expandable info
+  const [isWeekPickerOpen, setIsWeekPickerOpen] = useState(false);
+  const [isInfoExpanded, setIsInfoExpanded] = useState(false);
+  const weekPickerRef = useRef<HTMLDivElement>(null);
+
+  // Close week picker on outside click
+  useEffect(() => {
+    if (!isWeekPickerOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (weekPickerRef.current && !weekPickerRef.current.contains(e.target as Node)) {
+        setIsWeekPickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isWeekPickerOpen]);
 
   // 7shifts sync hook (simplified - uses centralized integration)
   const {
@@ -182,6 +207,7 @@ export const ScheduleManager: React.FC = () => {
     fetchUpcomingSchedulesData,
     fetchPreviousSchedulesData,
     fetchShiftsForSchedule,
+    loadAllSchedules,
     handlePreviousWeek,
     handleNextWeek,
     handleManualScheduleChange,
@@ -190,6 +216,61 @@ export const ScheduleManager: React.FC = () => {
 
   // Get operation functions from the store (schedule activation only)
   const { error: scheduleError } = useScheduleStore();
+
+  // Derive the displayed schedule from the selector (falls back to current)
+  const displayedSchedule = allSchedules.find(s => s.id === manualScheduleId) || currentSchedule;
+
+  // ── Module Config & Tier Data ──────────────────────────────────
+  const { organizationId } = useAuth();
+  const { teamPerformance, fetchTeamPerformance, fetchCurrentCycle } = usePerformanceStore();
+  const [perfModuleEnabled, setPerfModuleEnabled] = useState(false);
+  const [cardDisplayConfig, setCardDisplayConfig] = useState(DEFAULT_TEAM_CONFIG.card_display);
+
+  // Load module config + check enablement once
+  useEffect(() => {
+    if (!organizationId) return;
+    const check = async () => {
+      const { data } = await supabase
+        .from('organizations')
+        .select('modules')
+        .eq('id', organizationId)
+        .single();
+
+      // Card display config from scheduling module
+      const schedConfig = data?.modules?.scheduling?.config;
+      if (schedConfig?.card_display) {
+        setCardDisplayConfig({ ...DEFAULT_TEAM_CONFIG.card_display, ...schedConfig.card_display });
+      }
+
+      // Team Performance module
+      const enabled = data?.modules?.team_performance?.enabled ?? false;
+      setPerfModuleEnabled(enabled);
+      if (enabled) {
+        await fetchCurrentCycle();
+        await fetchTeamPerformance();
+      }
+    };
+    check();
+  }, [organizationId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Build name → tier map from performance data
+  const tierMap = useMemo(() => {
+    if (!perfModuleEnabled || teamPerformance.size === 0) return undefined;
+    const map: Record<string, PerformanceTier> = {};
+    teamPerformance.forEach((perf) => {
+      const tm = perf.team_member;
+      if (tm) {
+        // Match by "First Last" (how employee_name is stored on shifts)
+        const fullName = `${tm.first_name} ${tm.last_name}`.trim();
+        map[fullName] = perf.tier;
+        // Also match display_name if different
+        if (tm.display_name && tm.display_name !== fullName) {
+          map[tm.display_name] = perf.tier;
+        }
+      }
+    });
+    return map;
+  }, [perfModuleEnabled, teamPerformance]);
 
   // Get the mapping store functions
   const { mappings, fetchMappings } = useScheduleMappingStore();
@@ -272,22 +353,7 @@ export const ScheduleManager: React.FC = () => {
               </p>
             </div>
           </div>
-          
-          {/* Quick stats */}
-          {currentSchedule && (
-            <div className="hidden sm:flex items-center gap-4 text-right">
-              <div>
-                <div className="text-lg font-bold text-white">{scheduleShifts.length}</div>
-                <div className="text-xs text-gray-400">Shifts</div>
-              </div>
-              <div>
-                <div className="text-lg font-bold text-white">
-                  {new Set(scheduleShifts.map((s) => s.employee_name)).size}
-                </div>
-                <div className="text-xs text-gray-400">Team Members</div>
-              </div>
-            </div>
-          )}
+
         </div>
       </div>
 
@@ -353,104 +419,235 @@ export const ScheduleManager: React.FC = () => {
         <div className="space-y-6">
           {/* Current Schedule Card */}
           <div className="card p-6">
-            {/* Header Section - Responsive */}
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6 bg-[#262d3c] p-3 sm:p-4 rounded-lg shadow-lg">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-primary-500/20 flex items-center justify-center flex-shrink-0">
-                  <Calendar className="w-5 h-5 text-primary-400" />
+            {/* L5 Subheader — Pill Pattern (Gold Standard) */}
+            <div className="subheader mb-6">
+              <div className="subheader-row">
+                {/* Left: Colored icon + Title */}
+                <div className="subheader-left">
+                  <div className="subheader-icon-box primary">
+                    <Calendar className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="subheader-title">Current Schedule</h3>
+                    <p className="subheader-subtitle truncate">
+                      {displayedSchedule
+                        ? `Week of ${formatDateForDisplay(displayedSchedule.start_date)} – ${formatDateForDisplay(displayedSchedule.end_date)}`
+                        : "No active schedule"}
+                    </p>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <h3 className="text-base sm:text-lg font-medium text-white">
-                    Current Schedule
-                  </h3>
-                  <p className="text-xs sm:text-sm text-gray-400 truncate">
-                    {currentSchedule
-                      ? `Week of ${formatDateForDisplay(currentSchedule.start_date)} - ${formatDateForDisplay(currentSchedule.end_date)}`
-                      : "No active schedule"}
-                  </p>
+
+                {/* Right: Pills | Actions */}
+                <div className="subheader-right">
+                  {/* Stats Pills */}
+                  {displayedSchedule && (
+                    <>
+                      <span className="subheader-pill">
+                        <span className="subheader-pill-value">{scheduleShifts.length}</span>
+                        <span className="subheader-pill-label">Shifts</span>
+                      </span>
+                      <span className="subheader-pill">
+                        <span className="subheader-pill-value">
+                          {new Set(scheduleShifts.map((s) => s.employee_name)).size}
+                        </span>
+                        <span className="subheader-pill-label">Team</span>
+                      </span>
+                      <div className="subheader-divider" />
+                    </>
+                  )}
+
+                  {/* Week picker — round icon → popover */}
+                  <div className="relative" ref={weekPickerRef}>
+                    <button
+                      onClick={() => setIsWeekPickerOpen(!isWeekPickerOpen)}
+                      className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+                        isWeekPickerOpen
+                          ? 'bg-primary-500/30 text-primary-400 ring-2 ring-primary-500/50'
+                          : 'bg-gray-800/50 text-gray-400 hover:bg-gray-700 hover:text-gray-300'
+                      }`}
+                      title="Change week"
+                    >
+                      <CalendarDays className="w-4 h-4" />
+                    </button>
+
+                    {/* Week Picker Popover */}
+                    {isWeekPickerOpen && allSchedules.length > 0 && (
+                      <div className="absolute right-0 top-10 z-50 w-72 bg-gray-900 border border-gray-700/50 rounded-xl shadow-2xl overflow-hidden">
+                        {/* Popover header with prev/next */}
+                        <div className="flex items-center justify-between px-3 py-2.5 bg-gray-800/80 border-b border-gray-700/40">
+                          <button
+                            onClick={handlePreviousWeek}
+                            className="p-1.5 hover:bg-gray-700/50 rounded-lg transition-colors"
+                            title="Previous week"
+                          >
+                            <ChevronLeft className="w-4 h-4 text-gray-300" />
+                          </button>
+                          <span className="text-xs font-medium text-gray-400">
+                            {allSchedules.length} schedule{allSchedules.length !== 1 ? 's' : ''} available
+                          </span>
+                          <button
+                            onClick={handleNextWeek}
+                            className="p-1.5 hover:bg-gray-700/50 rounded-lg transition-colors"
+                            title="Next week"
+                          >
+                            <ChevronRight className="w-4 h-4 text-gray-300" />
+                          </button>
+                        </div>
+
+                        {/* Schedule list */}
+                        <div className="max-h-60 overflow-y-auto scrollbar-thin p-1.5 space-y-0.5">
+                          {allSchedules.map((schedule) => {
+                            const isSelected = schedule.id === manualScheduleId;
+                            const isCurrent = schedule.status === 'current';
+                            return (
+                              <button
+                                key={schedule.id}
+                                onClick={() => {
+                                  handleManualScheduleChange(schedule.id);
+                                  setIsWeekPickerOpen(false);
+                                }}
+                                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
+                                  isSelected
+                                    ? 'bg-primary-500/20 text-white border border-primary-500/30'
+                                    : 'text-gray-300 hover:bg-gray-800/80 border border-transparent'
+                                }`}
+                              >
+                                <span className="flex items-center gap-2">
+                                  <Calendar className={`w-3.5 h-3.5 flex-shrink-0 ${
+                                    isSelected ? 'text-primary-400' : 'text-gray-500'
+                                  }`} />
+                                  <span>
+                                    {formatDateForDisplay(schedule.start_date)} – {formatDateForDisplay(schedule.end_date)}
+                                  </span>
+                                </span>
+                                {isCurrent && (
+                                  <span className="px-1.5 py-0.5 text-[10px] font-medium bg-green-500/20 text-green-400 rounded">
+                                    Active
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <TimeFormatToggle
+                    timeFormat={timeFormat}
+                    onChange={setTimeFormat}
+                  />
+
+                  {/* Upload — round icon */}
+                  <button
+                    onClick={() => setIsUploadModalOpen(true)}
+                    className="w-8 h-8 rounded-full bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 flex items-center justify-center transition-colors"
+                    title="Upload schedule"
+                  >
+                    <Upload className="w-4 h-4" />
+                  </button>
+
+                  {/* Export — round icon */}
+                  <button 
+                    onClick={() => displayedSchedule && exportScheduleToCSV(displayedSchedule.id)}
+                    disabled={!displayedSchedule}
+                    className="w-8 h-8 rounded-full bg-gray-800/50 text-gray-400 hover:bg-gray-700 hover:text-gray-300 flex items-center justify-center transition-colors disabled:opacity-40"
+                    title="Export CSV"
+                  >
+                    <Download className="w-4 h-4" />
+                  </button>
+
+                  {/* Delete — TwoStageButton */}
+                  {currentSchedule && (
+                    <TwoStageButton
+                      onConfirm={async () => {
+                        try {
+                          const success = await useScheduleStore.getState().deleteSchedule(currentSchedule.id);
+                          if (success) {
+                            toast.success('Schedule deleted');
+                            await refreshCurrentSchedule();
+                            await loadAllSchedules();
+                          } else {
+                            toast.error('Failed to delete schedule');
+                          }
+                        } catch (error) {
+                          console.error('Error deleting schedule:', error);
+                          toast.error('An error occurred while deleting');
+                        }
+                      }}
+                      icon={Trash2}
+                      confirmText="Delete?"
+                      variant="danger"
+                      size="md"
+                    />
+                  )}
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2 items-center">
-                {/* Week Navigation - Safety Override - Responsive */}
-                {allSchedules.length > 0 && (
-                  <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 bg-gray-700/50 rounded-lg border border-gray-600/50 flex-shrink-0">
-                    <button
-                      onClick={handlePreviousWeek}
-                      className="p-1 hover:bg-gray-600/50 rounded transition-colors"
-                      title="Previous week"
-                    >
-                      <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4 text-gray-300" />
-                    </button>
-                    <select
-                      value={manualScheduleId || ""}
-                      onChange={(e) => handleManualScheduleChange(e.target.value)}
-                      className="bg-transparent border-none text-xs sm:text-sm text-gray-300 focus:outline-none cursor-pointer pr-4 sm:pr-6"
-                      style={{ minWidth: "140px" }}
-                      title={`${allSchedules.length} schedules available`}
-                    >
-                      {allSchedules.map((schedule) => (
-                        <option key={schedule.id} value={schedule.id}>
-                          {formatDateForDisplay(schedule.start_date)} to {formatDateForDisplay(schedule.end_date)}
-                          {schedule.status === "current" ? " (Current)" : ""}
-                          {schedule.status === "upcoming" ? " (Upcoming)" : ""}
-                          {schedule.status === "previous" ? " (Previous)" : ""}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={handleNextWeek}
-                      className="p-1 hover:bg-gray-600/50 rounded transition-colors"
-                      title="Next week"
-                    >
-                      <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4 text-gray-300" />
-                    </button>
-                  </div>
-                )}
-                <TimeFormatToggle
-                  timeFormat={timeFormat}
-                  onChange={setTimeFormat}
-                />
-                <button 
-                  onClick={() => currentSchedule && exportScheduleToCSV(currentSchedule.id)}
-                  disabled={!currentSchedule}
-                  className="btn-ghost text-sm hidden md:flex"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Export
-                </button>
-                <button 
-                  onClick={() => currentSchedule && exportScheduleToCSV(currentSchedule.id)}
-                  disabled={!currentSchedule}
-                  className="btn-ghost text-sm md:hidden p-2"
-                >
-                  <Download className="w-4 h-4" />
-                </button>
-                {currentSchedule && (
-                  <>
-                    <button
-                      onClick={openDeleteModal}
-                      className="btn-ghost-red text-sm hidden md:flex"
-                    >
-                      <Trash className="w-4 h-4 mr-2" />
-                      Delete
-                    </button>
-                    <button
-                      onClick={openDeleteModal}
-                      className="btn-ghost-red text-sm md:hidden p-2"
-                      title="Delete Schedule"
-                    >
-                      <Trash className="w-4 h-4" />
-                    </button>
-                  </>
-                )}
+
+              {/* Expandable Info — educate on this tab's actions */}
+              <div className={`subheader-info expandable-info-section ${isInfoExpanded ? 'expanded' : ''}`}>
                 <button
-                  onClick={() => setIsUploadModalOpen(true)}
-                  className="btn-primary text-sm"
+                  onClick={() => setIsInfoExpanded(!isInfoExpanded)}
+                  className="expandable-info-header w-full justify-between"
                 >
-                  <Upload className="w-4 h-4 mr-2" />
-                  <span className="hidden sm:inline">Upload Schedule</span>
-                  <span className="sm:hidden">Upload</span>
+                  <div className="flex items-center gap-2">
+                    <Info className="w-4 h-4 text-primary-400/80" />
+                    <span className="text-sm font-medium text-gray-300">About Current Schedule</span>
+                  </div>
+                  <ChevronUp className={`w-4 h-4 text-gray-400 transition-transform ${isInfoExpanded ? '' : 'rotate-180'}`} />
                 </button>
+                <div className="expandable-info-content">
+                  <div className="p-4 pt-2 space-y-4">
+                    <p className="text-sm text-gray-400">
+                      This view shows the active week’s schedule as an interactive day-by-day grid. 
+                      Use the toolbar actions above to navigate weeks, upload new schedules, or export data.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      <div className="subheader-feature-card">
+                        <CalendarDays className="w-4 h-4 text-primary-400/80" />
+                        <div>
+                          <span className="subheader-feature-title text-gray-300">Week Picker</span>
+                          <p className="subheader-feature-desc">Jump to any uploaded schedule week. Active week is marked green.</p>
+                        </div>
+                      </div>
+                      <div className="subheader-feature-card">
+                        <Clock className="w-4 h-4 text-primary-400/80" />
+                        <div>
+                          <span className="subheader-feature-title text-gray-300">12h / 24h Toggle</span>
+                          <p className="subheader-feature-desc">Switch between 12-hour and 24-hour time display.</p>
+                        </div>
+                      </div>
+                      <div className="subheader-feature-card">
+                        <Upload className="w-4 h-4 text-primary-400/80" />
+                        <div>
+                          <span className="subheader-feature-title text-gray-300">Upload Schedule</span>
+                          <p className="subheader-feature-desc">Import a CSV or Excel export. Activate now or save for later.</p>
+                        </div>
+                      </div>
+                      <div className="subheader-feature-card">
+                        <Download className="w-4 h-4 text-primary-400/80" />
+                        <div>
+                          <span className="subheader-feature-title text-gray-300">Export CSV</span>
+                          <p className="subheader-feature-desc">Download the displayed schedule as a CSV file.</p>
+                        </div>
+                      </div>
+                      <div className="subheader-feature-card">
+                        <Trash2 className="w-4 h-4 text-rose-400/80" />
+                        <div>
+                          <span className="subheader-feature-title text-gray-300">Delete Schedule</span>
+                          <p className="subheader-feature-desc">Two-click safety — tap once to arm, tap again to confirm.</p>
+                        </div>
+                      </div>
+                      <div className="subheader-feature-card">
+                        <Users className="w-4 h-4 text-primary-400/80" />
+                        <div>
+                          <span className="subheader-feature-title text-gray-300">Performance Tiers</span>
+                          <p className="subheader-feature-desc">When Team Performance is enabled, tier badges appear on shift cards.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -460,7 +657,7 @@ export const ScheduleManager: React.FC = () => {
                 <div className="flex items-center justify-center h-[400px]">
                   <div className="animate-spin h-8 w-8 border-4 border-primary-500 border-t-transparent rounded-full"></div>
                 </div>
-              ) : !currentSchedule ? (
+              ) : !displayedSchedule ? (
                 <div className="flex flex-col items-center justify-center h-[400px]">
                   <Calendar className="w-16 h-16 text-gray-600 mb-4" />
                   <p className="text-gray-400 mb-4">No active schedule found</p>
@@ -474,8 +671,10 @@ export const ScheduleManager: React.FC = () => {
               ) : (
                 <ScheduleWeekView
                   scheduleShifts={scheduleShifts}
-                  startDate={currentSchedule.start_date}
+                  startDate={displayedSchedule.start_date}
                   timeFormat={timeFormat}
+                  tierMap={tierMap}
+                  cardDisplay={cardDisplayConfig}
                 />
               )}
             </div>
@@ -491,29 +690,27 @@ export const ScheduleManager: React.FC = () => {
       {/* Upcoming Schedules Tab */}
       {activeTab === "upcoming" && (
         <div className="card p-6">
-          {/* Header Section - Matching Design */}
-          <div className="flex items-center justify-between mb-6 bg-[#262d3c] p-2 rounded-lg shadow-lg">
-            <div className="flex items-center gap-3 p-4 rounded-lg bg-[#262d3c]">
-              <div className="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
-                <Clock className="w-5 h-5 text-green-400" />
+          {/* L5 Subheader */}
+          <div className="subheader mb-6">
+            <div className="subheader-row">
+              <div className="subheader-left">
+                <div className="subheader-icon-box green">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="subheader-title">Upcoming Schedules</h3>
+                  <p className="subheader-subtitle">View and manage upcoming schedules</p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-lg font-medium text-white">
-                  Upcoming Schedules
-                </h3>
-                <p className="text-sm text-gray-400">
-                  View and manage upcoming schedules
-                </p>
+              <div className="subheader-right">
+                <button
+                  onClick={() => setIsUploadModalOpen(true)}
+                  className="w-8 h-8 rounded-full bg-green-500/20 text-green-400 hover:bg-green-500/30 flex items-center justify-center transition-colors"
+                  title="Upload schedule"
+                >
+                  <Upload className="w-4 h-4" />
+                </button>
               </div>
-            </div>
-            <div className="flex gap-2 mr-2">
-              <button
-                onClick={() => setIsUploadModalOpen(true)}
-                className="btn-primary"
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                Upload Schedule
-              </button>
             </div>
           </div>
 
@@ -531,6 +728,7 @@ export const ScheduleManager: React.FC = () => {
               if (success) {
                 toast.success("Upcoming schedule deleted successfully");
                 await fetchUpcomingSchedulesData();
+                await loadAllSchedules();
               } else {
                 toast.error("Failed to delete upcoming schedule");
               }
@@ -549,19 +747,17 @@ export const ScheduleManager: React.FC = () => {
       {/* Previous Schedules Tab */}
       {activeTab === "previous" && (
         <div className="card p-6">
-          {/* Header Section - Matching Design */}
-          <div className="flex items-center justify-between mb-6 bg-[#262d3c] p-2 rounded-lg shadow-lg">
-            <div className="flex items-center gap-3 p-4 rounded-lg bg-[#262d3c]">
-              <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
-                <History className="w-5 h-5 text-amber-400" />
-              </div>
-              <div>
-                <h3 className="text-lg font-medium text-white">
-                  Previous Schedules
-                </h3>
-                <p className="text-sm text-gray-400">
-                  View and download past schedules
-                </p>
+          {/* L5 Subheader */}
+          <div className="subheader mb-6">
+            <div className="subheader-row">
+              <div className="subheader-left">
+                <div className="subheader-icon-box amber">
+                  <History className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="subheader-title">Previous Schedules</h3>
+                  <p className="subheader-subtitle">View and download past schedules</p>
+                </div>
               </div>
             </div>
           </div>
@@ -578,6 +774,7 @@ export const ScheduleManager: React.FC = () => {
               if (success) {
                 toast.success("Schedule deleted successfully");
                 await fetchPreviousSchedulesData();
+                await loadAllSchedules();
               } else {
                 toast.error("Failed to delete schedule");
               }
@@ -595,22 +792,24 @@ export const ScheduleManager: React.FC = () => {
       {/* 7shifts API Tab */}
       {activeTab === "integration" && (
         <div className="card p-6">
-          {/* Header Section */}
-          <div className="flex items-center justify-between mb-6 bg-[#262d3c] p-2 rounded-lg shadow-lg">
-            <div className="flex items-center gap-3 p-4 rounded-lg bg-[#262d3c]">
-              <div className="w-10 h-10 rounded-lg bg-rose-500/20 flex items-center justify-center">
-                <Link className="w-5 h-5 text-rose-400" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-medium text-white">7shifts API</h3>
-                  <span className="px-2 py-0.5 text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full">
-                    Premium
-                  </span>
+          {/* L5 Subheader */}
+          <div className="subheader mb-6">
+            <div className="subheader-row">
+              <div className="subheader-left">
+                <div className="subheader-icon-box rose">
+                  <Link className="w-5 h-5" />
                 </div>
-                <p className="text-sm text-gray-400">
-                  Direct API sync (requires 7shifts Works plan or higher)
-                </p>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="subheader-title">7shifts API</h3>
+                    <span className="px-2 py-0.5 text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full">
+                      Premium
+                    </span>
+                  </div>
+                  <p className="subheader-subtitle">
+                    Direct API sync (requires 7shifts Works plan or higher)
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -694,7 +893,14 @@ export const ScheduleManager: React.FC = () => {
                 </div>
 
                 <button
-                  onClick={handleSync7shifts}
+                  onClick={async () => {
+                    const success = await handleSync7shifts();
+                    if (success) {
+                      // Refresh schedule data so selector dropdown updates
+                      await loadAllSchedules();
+                      await fetchUpcomingSchedulesData();
+                    }
+                  }}
                   disabled={!canSync}
                   className="btn-primary w-full"
                 >
@@ -764,19 +970,19 @@ export const ScheduleManager: React.FC = () => {
       {/* Import Settings Tab */}
       {activeTab === "config" && (
         <div className="card p-6">
-          {/* Header Section */}
-          <div className="flex items-center justify-between mb-6 bg-[#262d3c] p-2 rounded-lg shadow-lg">
-            <div className="flex items-center gap-3 p-4 rounded-lg bg-[#262d3c]">
-              <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                <FileSpreadsheet className="w-5 h-5 text-purple-400" />
-              </div>
-              <div>
-                <h3 className="text-lg font-medium text-white">
-                  Import Settings
-                </h3>
-                <p className="text-sm text-gray-400">
-                  Configure mappings for Excel and CSV schedule imports
-                </p>
+          {/* L5 Subheader */}
+          <div className="subheader mb-6">
+            <div className="subheader-row">
+              <div className="subheader-left">
+                <div className="subheader-icon-box purple">
+                  <FileSpreadsheet className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="subheader-title">Import Settings</h3>
+                  <p className="subheader-subtitle">
+                    Configure mappings for Excel and CSV schedule imports
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -961,6 +1167,8 @@ export const ScheduleManager: React.FC = () => {
             } else {
               await fetchUpcomingSchedulesData();
             }
+            // Always refresh the schedule selector dropdown
+            await loadAllSchedules();
           }
         }}
       />
@@ -1370,64 +1578,6 @@ export const ScheduleManager: React.FC = () => {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
-      {isDeleteModalOpen && currentSchedule && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-900 rounded-lg w-full max-w-md p-6">
-            <div className="text-center">
-              <div className="w-12 h-12 rounded-full bg-rose-500/20 flex items-center justify-center mx-auto mb-4">
-                <AlertTriangle className="w-6 h-6 text-rose-400" />
-              </div>
-              <h3 className="text-lg font-medium text-white mb-2">
-                Delete Current Schedule
-              </h3>
-              <p className="text-gray-400 mb-6">
-                Are you sure you want to delete the current schedule? This
-                action cannot be undone.
-              </p>
-              <div className="flex justify-center gap-3">
-                <button
-                  onClick={closeDeleteModal}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={async () => {
-                    try {
-                      const success = await useScheduleStore
-                        .getState()
-                        .deleteSchedule(currentSchedule.id);
-                      if (success) {
-                        toast.success("Schedule deleted successfully");
-                        closeDeleteModal();
-                        // Refresh the current schedule using hook
-                        await refreshCurrentSchedule();
-                      } else {
-                        toast.error("Failed to delete schedule");
-                      }
-                    } catch (error) {
-                      console.error("Error deleting schedule:", error);
-                      toast.error("An error occurred while deleting schedule");
-                    }
-                  }}
-                  className="btn-danger"
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <>
-                      <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
-                      Deleting...
-                    </>
-                  ) : (
-                    "Delete Schedule"
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

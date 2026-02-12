@@ -13,6 +13,7 @@ import {
   ChevronUp,
   ShieldAlert,
   Scale,
+  Users,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
@@ -47,10 +48,10 @@ const CORE_FEATURES = [
   },
   {
     id: 'scheduling',
-    label: 'The Schedule',
-    description: 'Team scheduling and shift management',
-    icon: Calendar, // Matches sidebar
-    configPath: '/admin/schedule/settings',
+    label: 'The Team',
+    description: 'Schedule display, roster preferences, and profile settings',
+    icon: Users, // Matches sidebar section icon
+    configPath: '/admin/modules/team',
   },
   {
     id: 'haccp',

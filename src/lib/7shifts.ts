@@ -385,6 +385,65 @@ export const fetchSchedule = async (
   }
 };
 
+// ─── VAULT MODE: USER & REFERENCE DATA ───────────────────────────────────────
+
+/**
+ * 7shifts user object shape (from get_users endpoint)
+ */
+export interface SevenShiftsUser {
+  id: number;
+  first_name: string;
+  last_name: string;
+  email?: string;
+  mobile_phone?: string;
+  photo_url?: string;
+  hire_date?: string;
+  type?: string;           // 'employee' | 'manager' | 'admin'
+  status?: string;         // active, inactive
+  wage_type?: string;
+  punch_id?: number;       // 7shifts' own punch_id field
+}
+
+/**
+ * Fetch users — VAULT mode (for roster enrichment & matching)
+ */
+export async function getUsersVault(params: VaultParams & { status?: string }): Promise<SevenShiftsUser[]> {
+  const data = await callProxyVault(
+    "get_users",
+    params.organizationId,
+    params.integrationKey,
+    { params: { status: params.status || "active" } }
+  );
+  return data?.data || [];
+}
+
+/**
+ * Fetch roles — VAULT mode
+ */
+export async function getRolesVault(params: VaultParams): Promise<any[]> {
+  const data = await callProxyVault(
+    "get_roles",
+    params.organizationId,
+    params.integrationKey
+  );
+  return data?.data || [];
+}
+
+/**
+ * Fetch departments — VAULT mode
+ */
+export async function getDepartmentsVault(params: VaultParams): Promise<any[]> {
+  const data = await callProxyVault(
+    "get_departments",
+    params.organizationId,
+    params.integrationKey,
+    { locationId: params.locationId }
+  );
+  return data?.data || [];
+}
+
+// ─── LEGACY DIRECT MODE FUNCTIONS (kept for backward compatibility) ──────────
+
 export async function getLocations({ accessToken, companyId }: ConnectionParams): Promise<any[]> {
   const data = await callProxyDirect({ action: "get_locations", apiKey: accessToken, companyId });
   return data?.data || [];

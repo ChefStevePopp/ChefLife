@@ -45,6 +45,7 @@ import {
 } from '@/types/integrations';
 import { use7ShiftsIntegration } from '../hooks';
 import { previewShifts, type ConnectionStatus } from '@/lib/7shifts';
+import { IntegrationFieldMapper, type FieldMap } from './IntegrationFieldMapper';
 import { getLocalDateString, formatDateForDisplay, parseLocalDate } from '@/utils/dateUtils';
 
 // =============================================================================
@@ -86,6 +87,9 @@ export const SchedulingConfigPanel: React.FC<SchedulingConfigPanelProps> = ({
   // Preview state — shown after successful test
   const [testSucceeded, setTestSucceeded] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
+
+  // Field mapping modal — shown after successful API connection
+  const [showFieldMapper, setShowFieldMapper] = useState(false);
   const [previewData, setPreviewData] = useState<{
     shiftCount: number;
     employees: string[];
@@ -317,9 +321,16 @@ export const SchedulingConfigPanel: React.FC<SchedulingConfigPanelProps> = ({
         });
       }
 
-      onConnectionChange?.();
-      onClose();
+      // Show field mapping step instead of immediately closing
+      setShowFieldMapper(true);
     }
+  };
+
+  /** Called when field mapper saves or is skipped */
+  const handleFieldMapperComplete = () => {
+    setShowFieldMapper(false);
+    onConnectionChange?.();
+    onClose();
   };
 
   // =========================================================================
@@ -409,6 +420,7 @@ export const SchedulingConfigPanel: React.FC<SchedulingConfigPanelProps> = ({
   const apiCanConnect = is7shifts && connectionMode === 'api' && sevenShifts.hasCredentials;
 
   return (
+    <>
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
       <div className="bg-gray-900 rounded-lg w-full max-w-xl my-8 max-h-[90vh] flex flex-col border border-gray-700/50">
 
@@ -1349,6 +1361,20 @@ export const SchedulingConfigPanel: React.FC<SchedulingConfigPanelProps> = ({
         </div>
       </div>
     </div>
+
+    {/* Field Mapping Modal — shown after successful API connection */}
+    {showFieldMapper && integrationId && organizationId && (
+      <IntegrationFieldMapper
+        isOpen={showFieldMapper}
+        onClose={handleFieldMapperComplete}
+        onSave={() => handleFieldMapperComplete()}
+        integrationKey={integrationId}
+        integrationName={definition?.label || integrationId}
+        organizationId={organizationId}
+        isConnectionFlow={true}
+      />
+    )}
+    </>
   );
 };
 

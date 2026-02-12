@@ -46,7 +46,7 @@ interface UseScheduleUploadReturn {
   handleDrop: (e: React.DragEvent<HTMLDivElement>) => void;
   handleDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
   handleUpload: () => Promise<void>;
-  handleConfirmMatches: (matches: { [key: string]: any }) => Promise<void>;
+  handleConfirmMatches: (matches: { [key: string]: any }) => Promise<boolean>;
   resetUploadState: () => void;
 }
 
@@ -176,7 +176,7 @@ export const useScheduleUpload = (): UseScheduleUploadReturn => {
           `Found ${shiftsWithoutDate.length} shifts without dates, adding today's date`
         );
         // Fix shifts without dates by adding today's date
-        const today = new Date().toISOString().split("T")[0];
+        const today = getLocalDateString();
         shifts = shifts.map((shift) => ({
           ...shift,
           date: shift.date || today,
@@ -274,10 +274,10 @@ export const useScheduleUpload = (): UseScheduleUploadReturn => {
     setShowCSVConfig(false);
     setSelectedMapping(null);
     setActivateImmediately(false);
-    setStartDate(new Date().toISOString().split("T")[0]);
+    setStartDate(getLocalDateString());
     const date = new Date();
     date.setDate(date.getDate() + 6);
-    setEndDate(date.toISOString().split("T")[0]);
+    setEndDate(getLocalDateString(date));
   }, []);
   
   return {

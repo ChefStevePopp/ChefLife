@@ -6,7 +6,8 @@
  * @pattern L5 grouped-list
  */
 import React, { useState, useMemo } from 'react';
-import { Calendar, Clock, RefreshCw, Download, X, AlertTriangle, Eye, Search, Filter, ChevronDown, ChevronRight } from 'lucide-react';
+import { Calendar, Clock, RefreshCw, Download, Upload, Link, X, AlertTriangle, Eye, Search, Filter, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
+import { TwoStageButton } from '@/components/ui/TwoStageButton';
 import { Schedule } from '@/types/schedule';
 import { parseLocalDate, formatDateForDisplay, formatDateShort } from '@/utils/dateUtils';
 
@@ -29,7 +30,6 @@ export const UpcomingSchedulesView: React.FC<UpcomingSchedulesViewProps> = ({
   onUploadNew,
   isLoading,
 }) => {
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sourceFilter, setSourceFilter] = useState<'all' | 'csv' | '7shifts'>('all');
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
@@ -155,18 +155,41 @@ export const UpcomingSchedulesView: React.FC<UpcomingSchedulesViewProps> = ({
             />
           </div>
 
-          {/* Source Filter */}
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-gray-400" />
-            <select
-              value={sourceFilter}
-              onChange={(e) => setSourceFilter(e.target.value as any)}
-              className="input w-auto"
+          {/* Source Filter — L5 round icon toggles */}
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setSourceFilter('all')}
+              className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+                sourceFilter === 'all'
+                  ? 'bg-primary-500/20 text-primary-400'
+                  : 'bg-gray-800/50 text-gray-500 hover:bg-gray-700 hover:text-gray-300'
+              }`}
+              title="All sources"
             >
-              <option value="all">All Sources</option>
-              <option value="csv">CSV Uploads</option>
-              <option value="7shifts">7shifts Sync</option>
-            </select>
+              <Filter className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setSourceFilter('csv')}
+              className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+                sourceFilter === 'csv'
+                  ? 'bg-purple-500/20 text-purple-400'
+                  : 'bg-gray-800/50 text-gray-500 hover:bg-gray-700 hover:text-gray-300'
+              }`}
+              title="CSV uploads"
+            >
+              <Upload className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setSourceFilter('7shifts')}
+              className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+                sourceFilter === '7shifts'
+                  ? 'bg-rose-500/20 text-rose-400'
+                  : 'bg-gray-800/50 text-gray-500 hover:bg-gray-700 hover:text-gray-300'
+              }`}
+              title="7shifts sync"
+            >
+              <Link className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
@@ -238,43 +261,36 @@ export const UpcomingSchedulesView: React.FC<UpcomingSchedulesViewProps> = ({
                                 </div>
                               </div>
 
-                              {/* Action Buttons */}
-                              <div className="flex gap-2">
+                              {/* Action Buttons — L5 round icon buttons */}
+                              <div className="flex items-center gap-1.5">
                                 <button
                                   onClick={() => onActivate(schedule.id)}
-                                  className="btn-ghost-blue text-sm"
+                                  className="w-8 h-8 rounded-full bg-gray-800/50 text-gray-400 hover:bg-green-500/15 hover:text-green-400 flex items-center justify-center transition-colors"
                                   title="Activate this schedule"
                                 >
-                                  <RefreshCw className="w-4 h-4 mr-1" />
-                                  Activate
+                                  <RefreshCw className="w-4 h-4" />
                                 </button>
                                 <button
                                   onClick={() => onView(schedule.id)}
-                                  className="btn-ghost text-sm"
+                                  className="w-8 h-8 rounded-full bg-gray-800/50 text-gray-400 hover:bg-primary-500/15 hover:text-primary-400 flex items-center justify-center transition-colors"
                                   title="View schedule details"
                                 >
-                                  <Eye className="w-4 h-4 mr-1" />
-                                  View
+                                  <Eye className="w-4 h-4" />
                                 </button>
                                 <button
                                   onClick={() => onExport(schedule.id)}
-                                  className="btn-ghost text-sm"
+                                  className="w-8 h-8 rounded-full bg-gray-800/50 text-gray-400 hover:bg-gray-700 hover:text-gray-300 flex items-center justify-center transition-colors"
                                   title="Export as CSV"
                                 >
-                                  <Download className="w-4 h-4 mr-1" />
-                                  Export
+                                  <Download className="w-4 h-4" />
                                 </button>
-                                <button
-                                  onClick={() => {
-                                    if (confirm(`Delete schedule for ${formatDateForDisplay(schedule.start_date)} - ${formatDateForDisplay(schedule.end_date)}?`)) {
-                                      onDelete(schedule.id);
-                                    }
-                                  }}
-                                  className="btn-ghost-red text-sm"
-                                  title="Delete schedule"
-                                >
-                                  <X className="w-4 h-4" />
-                                </button>
+                                <TwoStageButton
+                                  onConfirm={() => onDelete(schedule.id)}
+                                  icon={Trash2}
+                                  confirmText="Delete?"
+                                  variant="danger"
+                                  size="md"
+                                />
                               </div>
                             </div>
                           </div>
