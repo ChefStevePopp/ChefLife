@@ -1,12 +1,13 @@
 /**
  * Schedule Week View
  * 7-day grid/scroll view of shifts with role colors, data pills, and filters.
+ * L5 Filter Toolbar with Labour Intelligence.
  *
  * @diagnostics src/features/admin/components/sections/ScheduleManager/components/ScheduleWeekView.tsx
  * @pattern L5 responsive-grid
  */
-import React, { useMemo, useState } from 'react';
-import { Clock, ChevronDown, Filter } from 'lucide-react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
+import { Clock, ChevronDown, ChevronUp, Users, Flame, ConciergeBell, DollarSign, TrendingUp, TrendingDown, Percent, AlertTriangle, X } from 'lucide-react';
 import { ScheduleShift } from '@/types/schedule';
 import { parseLocalDate, getLocalDateString, formatDateShort } from '@/utils/dateUtils';
 import type { PerformanceTier } from '@/features/team/types';
@@ -21,6 +22,7 @@ interface ScheduleWeekViewProps {
   timeFormat?: '12h' | '24h';
   tierMap?: Record<string, PerformanceTier>;
   cardDisplay?: CardDisplayConfig;
+  previousWeekShifts?: ScheduleShift[];
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -85,6 +87,36 @@ const getRoleColor = (role: string): string => {
   return colors[roleHash % colors.length];
 };
 
+/** Calculate labour cost for a set of shifts */
+const calcLabourCost = (shifts: ScheduleShift[]): { total: number; missingWageCount: number } => {
+  let total = 0;
+  let missingWageCount = 0;
+  const seen = new Set<string>();
+  
+  for (const s of shifts) {
+    const hrs = calcShiftHours(s.start_time, s.end_time, s.break_duration);
+    if (s.wage_rate != null && s.wage_rate > 0) {
+      total += hrs * s.wage_rate;
+    } else {
+      // Track unique employees missing wages
+      if (!seen.has(s.employee_name)) {
+        missingWageCount++;
+        seen.add(s.employee_name);
+      }
+    }
+  }
+  
+  return { total, missingWageCount };
+};
+
+/** Format currency */
+const fmtCurrency = (n: number): string => {
+  return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', maximumFractionDigits: 0 }).format(n);
+};
+
+// ── Local Storage Key for Labour Target ──────────────────────────
+const LABOUR_TARGET_KEY = 'cheflife-schedule-labour-target-pct';
+
 // ── Main Component ───────────────────────────────────────────────
 
 export const ScheduleWeekView: React.FC<ScheduleWeekViewProps> = ({
@@ -93,10 +125,40 @@ export const ScheduleWeekView: React.FC<ScheduleWeekViewProps> = ({
   timeFormat = '12h',
   tierMap,
   cardDisplay = DEFAULT_TEAM_CONFIG.card_display,
+  previousWeekShifts,
 }) => {
   // Filter state
   const [deptFilter, setDeptFilter] = useState<'ALL' | 'FOH' | 'BOH'>('ALL');
   const [roleFilter, setRoleFilter] = useState<string>('ALL');
+  const [isRolePickerOpen, setIsRolePickerOpen] = useState(false);
+  const rolePickerRef = useRef<HTMLDivElement>(null);
+
+  // Labour target % — persisted to localStorage
+  const [labourTargetPct, setLabourTargetPct] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem(LABOUR_TARGET_KEY);
+      return saved ? parseFloat(saved) : 28;
+    } catch { return 28; }
+  });
+  const [isEditingTarget, setIsEditingTarget] = useState(false);
+  const [targetInputValue, setTargetInputValue] = useState(labourTargetPct.toString());
+
+  // Persist labour target
+  useEffect(() => {
+    try { localStorage.setItem(LABOUR_TARGET_KEY, labourTargetPct.toString()); } catch {}
+  }, [labourTargetPct]);
+
+  // Close role picker on outside click
+  useEffect(() => {
+    if (!isRolePickerOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (rolePickerRef.current && !rolePickerRef.current.contains(e.target as Node)) {
+        setIsRolePickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isRolePickerOpen]);
 
   // Pre-compute weekly hours per employee (from ALL shifts, pre-filter)
   const weeklyHours = useMemo(() => {
@@ -153,67 +215,249 @@ export const ScheduleWeekView: React.FC<ScheduleWeekViewProps> = ({
     return allDays.filter(day => day.shifts.length > 0);
   }, [filteredShifts, startDate]);
 
+  // ── Labour Intelligence ────────────────────────────────────────
+  const labourStats = useMemo(() => {
+    const current = calcLabourCost(filteredShifts);
+    const previous = previousWeekShifts ? calcLabourCost(previousWeekShifts) : null;
+    
+    const delta = previous ? current.total - previous.total : null;
+    const deltaPct = previous && previous.total > 0
+      ? ((current.total - previous.total) / previous.total) * 100
+      : null;
+    
+    // Required sales to meet labour target
+    const requiredSales = labourTargetPct > 0 ? (current.total / (labourTargetPct / 100)) : 0;
+
+    return {
+      currentCost: current.total,
+      missingWageCount: current.missingWageCount,
+      previousCost: previous?.total ?? null,
+      delta,
+      deltaPct,
+      requiredSales,
+      hasWageData: current.total > 0 || current.missingWageCount < new Set(filteredShifts.map(s => s.employee_name)).size,
+    };
+  }, [filteredShifts, previousWeekShifts, labourTargetPct]);
+
   // Summary stats
   const totalShifts = filteredShifts.length;
-  const totalHours = Object.values(weeklyHours).reduce((sum, h) => sum + h, 0);
+  const totalHours = filteredShifts.reduce((sum, s) => sum + calcShiftHours(s.start_time, s.end_time, s.break_duration), 0);
   const isFiltered = deptFilter !== 'ALL' || roleFilter !== 'ALL';
+
+  // Filtered roles based on department
+  const visibleRoles = useMemo(() => {
+    return uniqueRoles.filter(r => deptFilter === 'ALL' || getDepartment(r) === deptFilter);
+  }, [uniqueRoles, deptFilter]);
 
   return (
     <div className="space-y-4">
-      {/* ── Filter Bar ──────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-2 sm:gap-3 px-1">
-        <Filter className="w-4 h-4 text-gray-500 flex-shrink-0" />
+      {/* ── L5 Filter Toolbar ─────────────────────────────────── */}
+      <div className="card p-3 sm:p-4">
+        {/* Row 1: Filters */}
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          {/* Department Toggle — Icon Box Pattern */}
+          <div className="inline-flex items-center gap-1.5">
+            {([
+              { key: 'ALL' as const, icon: Users, label: 'All', activeRing: 'ring-gray-400', activeBg: 'bg-gray-700/60 text-white' },
+              { key: 'FOH' as const, icon: ConciergeBell, label: 'FOH', activeRing: 'ring-blue-500', activeBg: 'bg-blue-500/20 text-blue-400' },
+              { key: 'BOH' as const, icon: Flame, label: 'BOH', activeRing: 'ring-orange-500', activeBg: 'bg-orange-500/20 text-orange-400' },
+            ]).map(({ key, icon: Icon, label, activeRing, activeBg }) => (
+              <button
+                key={key}
+                onClick={() => { setDeptFilter(key); setRoleFilter('ALL'); }}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  deptFilter === key
+                    ? `${activeBg} ring-2 ${activeRing} ring-offset-1 ring-offset-gray-900`
+                    : 'text-gray-400 hover:text-gray-300 hover:bg-gray-800/50'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{label}</span>
+              </button>
+            ))}
+          </div>
 
-        {/* Department Toggle */}
-        <div className="inline-flex rounded-lg border border-gray-700/50 overflow-hidden text-xs">
-          {(['ALL', 'FOH', 'BOH'] as const).map(dept => (
+          {/* Role Pill Popover */}
+          <div className="relative" ref={rolePickerRef}>
             <button
-              key={dept}
-              onClick={() => { setDeptFilter(dept); setRoleFilter('ALL'); }}
-              className={`px-3 py-1.5 font-medium transition-colors ${
-                deptFilter === dept
-                  ? dept === 'FOH'
-                    ? 'bg-blue-500/20 text-blue-400'
-                    : dept === 'BOH'
-                      ? 'bg-orange-500/20 text-orange-400'
-                      : 'bg-gray-700/50 text-white'
-                  : 'text-gray-400 hover:text-gray-300 hover:bg-gray-800/50'
+              onClick={() => setIsRolePickerOpen(!isRolePickerOpen)}
+              className={`subheader-pill cursor-pointer transition-all hover:bg-gray-700/60 ${
+                roleFilter !== 'ALL' ? 'ring-2 ring-primary-500/50 bg-primary-500/10' : ''
               }`}
             >
-              {dept === 'ALL' ? 'All' : dept}
+              <span className="subheader-pill-label">
+                {roleFilter === 'ALL' ? 'All Roles' : roleFilter}
+              </span>
+              <ChevronDown className={`w-3 h-3 ml-1 transition-transform ${isRolePickerOpen ? 'rotate-180' : ''}`} />
             </button>
-          ))}
-        </div>
 
-        {/* Role Dropdown */}
-        <select
-          value={roleFilter}
-          onChange={(e) => setRoleFilter(e.target.value)}
-          className="bg-gray-800/50 border border-gray-700/50 rounded-lg px-3 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-primary-500/50 cursor-pointer"
-        >
-          <option value="ALL">All Roles</option>
-          {uniqueRoles
-            .filter(r => deptFilter === 'ALL' || getDepartment(r) === deptFilter)
-            .map(role => (
-              <option key={role} value={role}>{role}</option>
-            ))
-          }
-        </select>
+            {isRolePickerOpen && (
+              <div className="absolute left-0 top-9 z-50 w-56 bg-gray-900 border border-gray-700/50 rounded-xl shadow-2xl overflow-hidden">
+                <div className="max-h-52 overflow-y-auto scrollbar-thin p-1.5 space-y-0.5">
+                  <button
+                    onClick={() => { setRoleFilter('ALL'); setIsRolePickerOpen(false); }}
+                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                      roleFilter === 'ALL' ? 'bg-primary-500/20 text-white' : 'text-gray-300 hover:bg-gray-800/80'
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5 text-gray-500" />
+                    All Roles
+                  </button>
+                  {visibleRoles.map(role => {
+                    const roleColorClass = getRoleColor(role);
+                    // Extract just the text color for the swatch
+                    const textColor = roleColorClass.split(' ').find(c => c.startsWith('text-')) || 'text-gray-400';
+                    return (
+                      <button
+                        key={role}
+                        onClick={() => { setRoleFilter(role); setIsRolePickerOpen(false); }}
+                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                          roleFilter === role ? 'bg-primary-500/20 text-white' : 'text-gray-300 hover:bg-gray-800/80'
+                        }`}
+                      >
+                        <span className={`w-2.5 h-2.5 rounded-full ${textColor.replace('text-', 'bg-')}`} />
+                        {role}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
 
-        {/* Filter Summary */}
-        <div className="ml-auto flex items-center gap-2 sm:gap-3 text-xs text-gray-500">
-          <span className="whitespace-nowrap">{totalShifts} shifts</span>
-          <span className="text-gray-700 hidden sm:inline">|</span>
-          <span className="whitespace-nowrap hidden sm:inline">{totalHours.toFixed(1)}h total</span>
+          {/* Active Filter Indicator */}
           {isFiltered && (
             <button
               onClick={() => { setDeptFilter('ALL'); setRoleFilter('ALL'); }}
-              className="text-primary-400 hover:text-primary-300 font-medium whitespace-nowrap"
+              className="subheader-pill cursor-pointer bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 transition-colors"
             >
-              Clear
+              <span className="subheader-pill-label">Filtered</span>
+              <X className="w-3 h-3 ml-1" />
             </button>
           )}
+
+          {/* Spacer */}
+          <div className="flex-1" />
+
+          {/* Stats Pills — Right aligned */}
+          <div className="flex items-center gap-2">
+            <span className="subheader-pill">
+              <span className="subheader-pill-value">{totalShifts}</span>
+              <span className="subheader-pill-label">Shifts</span>
+            </span>
+            <span className="subheader-pill">
+              <span className="subheader-pill-value">{totalHours % 1 === 0 ? totalHours : totalHours.toFixed(1)}</span>
+              <span className="subheader-pill-label">Hours</span>
+            </span>
+          </div>
         </div>
+
+        {/* ── Row 2: Labour Intelligence ──────────────────────── */}
+        {labourStats.hasWageData && (
+          <>
+            <div className="border-t border-gray-700/30 mt-3 pt-3">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                {/* Labour Cost */}
+                <span className="subheader-pill bg-primary-500/10 ring-1 ring-primary-500/20">
+                  <DollarSign className="w-3 h-3 text-primary-400 mr-0.5" />
+                  <span className="subheader-pill-value text-primary-400">{fmtCurrency(labourStats.currentCost)}</span>
+                  <span className="subheader-pill-label">Labour</span>
+                </span>
+
+                {/* Missing wage warning */}
+                {labourStats.missingWageCount > 0 && (
+                  <span className="subheader-pill bg-amber-500/10 ring-1 ring-amber-500/20" title={`${labourStats.missingWageCount} team member${labourStats.missingWageCount !== 1 ? 's' : ''} missing wage data — cost is incomplete`}>
+                    <AlertTriangle className="w-3 h-3 text-amber-400 mr-0.5" />
+                    <span className="subheader-pill-label text-amber-400">{labourStats.missingWageCount} missing</span>
+                  </span>
+                )}
+
+                {/* Week-over-week delta */}
+                {labourStats.delta !== null && (
+                  <span className={`subheader-pill ring-1 ${
+                    labourStats.delta <= 0
+                      ? 'bg-emerald-500/10 ring-emerald-500/20'
+                      : 'bg-rose-500/10 ring-rose-500/20'
+                  }`}>
+                    {labourStats.delta <= 0 ? (
+                      <TrendingDown className="w-3 h-3 text-emerald-400 mr-0.5" />
+                    ) : (
+                      <TrendingUp className="w-3 h-3 text-rose-400 mr-0.5" />
+                    )}
+                    <span className={`subheader-pill-value ${labourStats.delta <= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {labourStats.delta <= 0 ? '' : '+'}{fmtCurrency(labourStats.delta)}
+                    </span>
+                    <span className="subheader-pill-label">
+                      vs Last Wk
+                      {labourStats.deltaPct !== null && (
+                        <span className="ml-0.5">({labourStats.deltaPct > 0 ? '+' : ''}{labourStats.deltaPct.toFixed(1)}%)</span>
+                      )}
+                    </span>
+                  </span>
+                )}
+
+                {/* Spacer */}
+                <div className="flex-1" />
+
+                {/* Labour Target % — Editable */}
+                <div className="flex items-center gap-2">
+                  {isEditingTarget ? (
+                    <div className="flex items-center gap-1">
+                      <Percent className="w-3 h-3 text-gray-400" />
+                      <input
+                        type="number"
+                        value={targetInputValue}
+                        onChange={(e) => setTargetInputValue(e.target.value)}
+                        onBlur={() => {
+                          const val = parseFloat(targetInputValue);
+                          if (!isNaN(val) && val > 0 && val <= 100) {
+                            setLabourTargetPct(val);
+                          } else {
+                            setTargetInputValue(labourTargetPct.toString());
+                          }
+                          setIsEditingTarget(false);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            (e.target as HTMLInputElement).blur();
+                          } else if (e.key === 'Escape') {
+                            setTargetInputValue(labourTargetPct.toString());
+                            setIsEditingTarget(false);
+                          }
+                        }}
+                        autoFocus
+                        className="w-12 bg-gray-800 border border-primary-500/50 rounded px-1.5 py-0.5 text-xs text-white text-center focus:outline-none focus:ring-1 focus:ring-primary-500"
+                        min="1"
+                        max="100"
+                        step="0.5"
+                      />
+                      <span className="text-xs text-gray-400">% target</span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => { setTargetInputValue(labourTargetPct.toString()); setIsEditingTarget(true); }}
+                      className="subheader-pill cursor-pointer hover:bg-gray-700/60 transition-colors"
+                      title="Click to change labour target %"
+                    >
+                      <Percent className="w-3 h-3 text-gray-400 mr-0.5" />
+                      <span className="subheader-pill-value">{labourTargetPct}</span>
+                      <span className="subheader-pill-label">Target</span>
+                    </button>
+                  )}
+
+                  {/* Required Sales */}
+                  {labourStats.currentCost > 0 && (
+                    <span className="subheader-pill bg-emerald-500/10 ring-1 ring-emerald-500/20" title={`Need ${fmtCurrency(labourStats.requiredSales)} in sales to achieve ${labourTargetPct}% labour cost`}>
+                      <TrendingUp className="w-3 h-3 text-emerald-400 mr-0.5" />
+                      <span className="subheader-pill-value text-emerald-400">{fmtCurrency(labourStats.requiredSales)}</span>
+                      <span className="subheader-pill-label">Sales Needed</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* ── Schedule Grid ───────────────────────────────────── */}

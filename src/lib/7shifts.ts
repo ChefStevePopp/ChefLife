@@ -1,5 +1,5 @@
 /**
- * 7shifts API Client — v5 (Vault-backed)
+ * 7shifts API Client — v6 (Vault-backed + Wage Data)
  *
  * TWO CREDENTIAL MODES:
  * 1. Direct mode: API key passed explicitly (test_connection before storing)
@@ -11,7 +11,7 @@
  * Edge Function: /functions/v1/7shifts-proxy
  *
  * @diagnostics src/lib/7shifts.ts
- * @version 5
+ * @version 6
  */
 
 import { supabase } from "@/lib/supabase";
@@ -457,4 +457,119 @@ export async function getDepartments({ accessToken, companyId, locationId }: Con
 export async function getRoles({ accessToken, companyId, locationId }: ConnectionParams): Promise<any[]> {
   const data = await callProxyDirect({ action: "get_roles", apiKey: accessToken, companyId, locationId });
   return data?.data || [];
+}
+
+// ─── VAULT MODE: WAGE & LABOR DATA ──────────────────────────────────────────
+
+/**
+ * 7shifts wage object — per-role wage with effective date
+ * From GET /v2/company/{id}/users/{userId}/wages
+ */
+export interface SevenShiftsWage {
+  effective_date: string;       // YYYY-MM-DD
+  role_id: number | null;       // null = salary/role-agnostic
+  wage_type: 'hourly' | 'weekly_salary';
+  wage_cents: number;           // Amount in cents (e.g. 1550 = $15.50)
+}
+
+export interface SevenShiftsWageResponse {
+  current_wages: SevenShiftsWage[];
+  upcoming_wages: SevenShiftsWage[];
+}
+
+/**
+ * 7shifts labor settings (company-level)
+ * wage_based_roles_enabled: whether wages are assigned per-role or flat
+ */
+export interface SevenShiftsLaborSettings {
+  wage_based_roles_enabled: boolean;
+  [key: string]: any;
+}
+
+/**
+ * Fetch wages for a single user — VAULT mode
+ * Returns current_wages and upcoming_wages arrays
+ */
+export async function getUserWagesVault(
+  params: VaultParams & { userId: number }
+): Promise<SevenShiftsWageResponse> {
+  const data = await callProxyVault(
+    "get_user_wages",
+    params.organizationId,
+    params.integrationKey,
+    { userId: params.userId }
+  );
+  return {
+    current_wages: data?.data?.current_wages || [],
+    upcoming_wages: data?.data?.upcoming_wages || [],
+  };
+}
+
+/**
+ * Fetch wages for multiple users in parallel — VAULT mode
+ * Returns a map of userId → wage response
+ * Gracefully handles individual failures (returns empty wages for that user)
+ */
+export async function getBulkUserWagesVault(
+  params: VaultParams & { userIds: number[] }
+): Promise<Record<number, SevenShiftsWageResponse>> {
+  const results: Record<number, SevenShiftsWageResponse> = {};
+
+  // Batch in groups of 5 to respect rate limits (10 req/s)
+  const BATCH_SIZE = 5;
+  for (let i = 0; i < params.userIds.length; i += BATCH_SIZE) {
+    const batch = params.userIds.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.allSettled(
+      batch.map(userId =>
+        getUserWagesVault({ ...params, userId })
+      )
+    );
+
+    batch.forEach((userId, idx) => {
+      const result = batchResults[idx];
+      if (result.status === 'fulfilled') {
+        results[userId] = result.value;
+      } else {
+        console.warn(`[7shifts] Failed to fetch wages for user ${userId}:`, result.reason);
+        results[userId] = { current_wages: [], upcoming_wages: [] };
+      }
+    });
+
+    // Small delay between batches to stay under rate limit
+    if (i + BATCH_SIZE < params.userIds.length) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Fetch user assignments (roles, departments, locations) — VAULT mode
+ */
+export async function getUserAssignmentsVault(
+  params: VaultParams & { userId: number }
+): Promise<any> {
+  const data = await callProxyVault(
+    "get_user_assignments",
+    params.organizationId,
+    params.integrationKey,
+    { userId: params.userId }
+  );
+  return data?.data || [];
+}
+
+/**
+ * Fetch company labor settings — VAULT mode
+ * Includes wage_based_roles_enabled flag
+ */
+export async function getLaborSettingsVault(
+  params: VaultParams
+): Promise<SevenShiftsLaborSettings> {
+  const data = await callProxyVault(
+    "get_labor_settings",
+    params.organizationId,
+    params.integrationKey
+  );
+  return data?.data || { wage_based_roles_enabled: false };
 }

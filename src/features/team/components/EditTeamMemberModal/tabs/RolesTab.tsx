@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Plus, Trash2, ChefHat, Briefcase, Building2, Loader2 } from "lucide-react";
+import { Plus, Trash2, ChefHat, Briefcase, Building2, Loader2, DollarSign } from "lucide-react";
 import type { TeamMember } from "../../../types";
 import { supabase } from "@/lib/supabase";
 import { ImportedBadge } from "@/shared/components/ImportedBadge";
@@ -97,11 +97,12 @@ export const RolesTab: React.FC<RolesTabProps> = ({
     fetchKitchenStations();
   }, []);
 
-  // Role functions
+  // Role functions (keep wages[] in sync as parallel array)
   const addRole = () => {
     setFormData({
       ...formData,
       roles: [...(formData.roles || []), ""],
+      wages: [...(formData.wages || []), 0],
     });
   };
 
@@ -113,8 +114,18 @@ export const RolesTab: React.FC<RolesTabProps> = ({
 
   const removeRole = (index: number) => {
     const newRoles = [...(formData.roles || [])];
+    const newWages = [...(formData.wages || [])];
     newRoles.splice(index, 1);
-    setFormData({ ...formData, roles: newRoles });
+    newWages.splice(index, 1);
+    setFormData({ ...formData, roles: newRoles, wages: newWages });
+  };
+
+  const updateWage = (index: number, value: number) => {
+    const newWages = [...(formData.wages || [])];
+    // Pad with zeros if wages array is shorter than roles array
+    while (newWages.length <= index) newWages.push(0);
+    newWages[index] = value;
+    setFormData({ ...formData, wages: newWages });
   };
 
   // Department functions
@@ -213,18 +224,32 @@ export const RolesTab: React.FC<RolesTabProps> = ({
           ) : undefined}
         />
 
-        <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+        <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
           {(formData.roles || []).length > 0 ? (
             (formData.roles || []).map((role, index) => (
-              <div key={index} className="flex gap-2 group">
+              <div key={index} className="flex gap-2 group items-center">
                 <input
                   type="text"
                   value={role}
                   onChange={(e) => updateRole(index, e.target.value)}
                   className="input flex-1 min-w-0"
-                  placeholder="e.g., Line Cook, Server, Bartender, Dishwasher"
+                  placeholder="e.g., Line Cook, Server, Bartender"
                   autoFocus={role === ""}
                 />
+                {/* Wage input — inline with role */}
+                <div className="relative flex-shrink-0 w-[110px]">
+                  <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-green-400 pointer-events-none" />
+                  <input
+                    type="number"
+                    value={(formData.wages || [])[index] || ''}
+                    onChange={(e) => updateWage(index, parseFloat(e.target.value) || 0)}
+                    className="input pl-7 pr-8 w-full text-right tabular-nums"
+                    placeholder="0.00"
+                    min="0"
+                    step="0.25"
+                  />
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">/hr</span>
+                </div>
                 <button
                   type="button"
                   onClick={() => removeRole(index)}
@@ -240,7 +265,7 @@ export const RolesTab: React.FC<RolesTabProps> = ({
         </div>
 
         <p className="mt-3 text-xs text-gray-500">
-          These roles appear on schedules and help organize shifts. One person can have multiple roles.
+          Set the hourly wage for each role. These rates power the Labour Intelligence row on the schedule.
         </p>
       </section>
 

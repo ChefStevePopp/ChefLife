@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Team Settings
  * Unified configuration for The Team core module:
  * Schedule display, Roster preferences, and Profile settings.
@@ -36,7 +36,14 @@ import toast from "react-hot-toast";
 import { LoadingLogo } from "@/features/shared/components";
 import { SECURITY_LEVELS } from "@/config/security";
 import { useDiagnostics } from "@/hooks/useDiagnostics";
-import { getUsersVault, type SevenShiftsUser } from "@/lib/7shifts";
+import {
+  getUsersVault,
+  getUserWagesVault,
+  getRolesVault,
+  type SevenShiftsUser,
+  type SevenShiftsWage,
+  type SevenShiftsWageResponse,
+} from "@/lib/7shifts";
 import {
   type CardDisplayConfig,
   type RosterDisplayConfig,
@@ -162,12 +169,18 @@ interface ChefLifeMember {
 
 type MatchType = 'exact' | 'suggested' | 'manual' | 'linked' | 'unmatched';
 
+interface VerificationState {
+  identity: boolean;
+  roles: boolean;
+  wages: boolean;
+}
+
 interface MatchCandidate {
   member: ChefLifeMember;
   matched7sUser: SevenShiftsUser | null;
   matchType: MatchType;
   confidence: number; // 0-100
-  confirmed: boolean;
+  verified: VerificationState;
 }
 
 /** Normalize a name string for comparison */
@@ -215,7 +228,7 @@ function buildMatches(
           matched7sUser: linked,
           matchType: 'linked',
           confidence: 100,
-          confirmed: true,
+          verified: { identity: true, roles: true, wages: true },
         });
         continue;
       }
@@ -233,7 +246,7 @@ function buildMatches(
         matched7sUser: match,
         matchType: 'exact',
         confidence: 95,
-        confirmed: false,
+        verified: { identity: false, roles: false, wages: false },
       });
       continue;
     }
@@ -250,13 +263,13 @@ function buildMatches(
           matched7sUser: match,
           matchType: 'exact',
           confidence: 90,
-          confirmed: false,
+          verified: { identity: false, roles: false, wages: false },
         });
         continue;
       }
     }
 
-    // Fuzzy name match — find best candidate above threshold
+    // Fuzzy name match â€” find best candidate above threshold
     let bestScore = 0;
     let bestIdx = -1;
     for (let i = 0; i < available7s.length; i++) {
@@ -278,7 +291,7 @@ function buildMatches(
         matched7sUser: match,
         matchType: 'suggested',
         confidence: Math.round(bestScore),
-        confirmed: false,
+        verified: { identity: false, roles: false, wages: false },
       });
     } else {
       results.push({
@@ -286,7 +299,7 @@ function buildMatches(
         matched7sUser: null,
         matchType: 'unmatched',
         confidence: 0,
-        confirmed: false,
+        verified: { identity: false, roles: false, wages: false },
       });
     }
   }
@@ -325,9 +338,18 @@ export const TeamSettings: React.FC = () => {
   const [isSavingMatches, setIsSavingMatches] = useState(false);
   const [unmatched7sUsers, setUnmatched7sUsers] = useState<SevenShiftsUser[]>([]);
 
+  // Wage expansion state (expandable row â€” privacy by design)
+  const [expandedWageRows, setExpandedWageRows] = useState<Set<string>>(new Set());
+  const [wageCache, setWageCache] = useState<Record<string, {
+    loading: boolean;
+    error: string | null;
+    data: SevenShiftsWageResponse | null;
+  }>>({});
+  const [roleNameMap, setRoleNameMap] = useState<Record<number, string>>({});
+
   const isOmega = securityLevel === SECURITY_LEVELS.OMEGA;
 
-  // ── Load config ────────────────────────────────────────────────
+  // â”€â”€ Load config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     const load = async () => {
       if (!organizationId) return;
@@ -376,12 +398,12 @@ export const TeamSettings: React.FC = () => {
     load();
   }, [organizationId]);
 
-  // ── Track changes ──────────────────────────────────────────────
+  // â”€â”€ Track changes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     setHasChanges(JSON.stringify(config) !== JSON.stringify(savedConfig));
   }, [config, savedConfig]);
 
-  // ── Save ───────────────────────────────────────────────────────
+  // â”€â”€ Save â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleSave = async () => {
     if (!organizationId || !user) return;
     setIsSaving(true);
@@ -438,13 +460,13 @@ export const TeamSettings: React.FC = () => {
     }
   };
 
-  // ── Reset ──────────────────────────────────────────────────────
+  // â”€â”€ Reset â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleReset = () => {
     setConfig(savedConfig);
     setHasChanges(false);
   };
 
-  // ── Card display helper ────────────────────────────────────────
+  // â”€â”€ Card display helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const updateCardDisplay = (key: keyof CardDisplayConfig, value: boolean) => {
     setConfig((prev) => ({
       ...prev,
@@ -452,7 +474,7 @@ export const TeamSettings: React.FC = () => {
     }));
   };
 
-  // ── Roster display helpers ─────────────────────────────────────
+  // â”€â”€ Roster display helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const updateRosterDisplay = <K extends keyof RosterDisplayConfig>(
     key: K,
     value: RosterDisplayConfig[K]
@@ -467,7 +489,7 @@ export const TeamSettings: React.FC = () => {
     updateRosterDisplay(key, value as any);
   };
 
-  // ── Employee matching workflow ──────────────────────────────────
+  // â”€â”€ Employee matching workflow â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const runMatchPreview = async () => {
     if (!organizationId) return;
     setIsLoadingMatch(true);
@@ -521,10 +543,20 @@ export const TeamSettings: React.FC = () => {
     }
   };
 
-  /** Toggle a candidate's confirmed status */
-  const toggleConfirm = (idx: number) => {
+  /** Helper: check if a candidate is fully verified (all 3 steps) */
+  const isFullyVerified = (c: MatchCandidate): boolean =>
+    c.verified.identity && c.verified.roles && c.verified.wages;
+
+  /** Helper: count verified steps for a candidate */
+  const verifiedStepCount = (c: MatchCandidate): number =>
+    [c.verified.identity, c.verified.roles, c.verified.wages].filter(Boolean).length;
+
+  /** Toggle a specific verification step for a candidate */
+  const toggleVerification = (idx: number, step: keyof VerificationState) => {
     setMatchCandidates(prev => prev.map((c, i) =>
-      i === idx ? { ...c, confirmed: !c.confirmed } : c
+      i === idx
+        ? { ...c, verified: { ...c.verified, [step]: !c.verified[step] } }
+        : c
     ));
   };
 
@@ -532,7 +564,7 @@ export const TeamSettings: React.FC = () => {
   const manualAssign = (idx: number, user: SevenShiftsUser) => {
     setMatchCandidates(prev => prev.map((c, i) =>
       i === idx
-        ? { ...c, matched7sUser: user, matchType: 'manual', confidence: 100, confirmed: true }
+        ? { ...c, matched7sUser: user, matchType: "manual", confidence: 100, verified: { identity: true, roles: false, wages: false } }
         : c
     ));
     // Remove from unmatched pool
@@ -547,23 +579,23 @@ export const TeamSettings: React.FC = () => {
     }
     setMatchCandidates(prev => prev.map((c, i) =>
       i === idx
-        ? { ...c, matched7sUser: null, matchType: 'unmatched', confidence: 0, confirmed: false }
+        ? { ...c, matched7sUser: null, matchType: "unmatched", confidence: 0, verified: { identity: false, roles: false, wages: false } }
         : c
     ));
   };
 
-  /** Save confirmed matches to database */
+  /** Save fully-verified matches (3/3) to database */
   const saveMatches = async () => {
     if (!organizationId || !user) return;
     setIsSavingMatches(true);
 
     try {
       const toSave = matchCandidates.filter(
-        c => c.confirmed && c.matched7sUser && c.matchType !== 'linked'
+        c => isFullyVerified(c) && c.matched7sUser && c.matchType !== "linked"
       );
 
       if (toSave.length === 0) {
-        toast('No new matches to save');
+        toast("No fully-verified matches to save (need 3/3)");
         setIsSavingMatches(false);
         return;
       }
@@ -571,48 +603,97 @@ export const TeamSettings: React.FC = () => {
       // Batch update each match
       for (const candidate of toSave) {
         const { error } = await supabase
-          .from('organization_team_members')
+          .from("organization_team_members")
           .update({
             external_id: String(candidate.matched7sUser!.id),
-            external_source: '7shifts',
+            external_source: "7shifts",
             external_data: candidate.matched7sUser as any,
             last_synced_at: new Date().toISOString(),
           })
-          .eq('id', candidate.member.id);
+          .eq("id", candidate.member.id);
 
         if (error) throw error;
       }
 
-      // Mark all saved as 'linked' in local state
+      // Mark all saved as linked in local state
       setMatchCandidates(prev => prev.map(c =>
-        c.confirmed && c.matched7sUser && c.matchType !== 'linked'
-          ? { ...c, matchType: 'linked', member: { ...c.member, external_id: String(c.matched7sUser!.id) } }
+        isFullyVerified(c) && c.matched7sUser && c.matchType !== "linked"
+          ? { ...c, matchType: "linked" as MatchType, member: { ...c.member, external_id: String(c.matched7sUser!.id) } }
           : c
       ));
 
       await nexus({
         organization_id: organizationId,
         user_id: user.id,
-        activity_type: 'settings_changed',
+        activity_type: "settings_changed",
         details: {
-          module: 'team',
-          action: 'employee_match',
+          module: "team",
+          action: "employee_match_3step",
           matched_count: toSave.length,
         },
       });
 
-      toast.success(`${toSave.length} employee match${toSave.length === 1 ? '' : 'es'} saved`);
+      toast.success(`${toSave.length} employee match${toSave.length === 1 ? "" : "es"} saved (3/3 verified)`);
     } catch (err: any) {
-      console.error('Error saving matches:', err);
-      toast.error('Failed to save matches');
+      console.error("Error saving matches:", err);
+      toast.error("Failed to save matches");
     } finally {
       setIsSavingMatches(false);
     }
   };
 
-  const confirmedCount = matchCandidates.filter(c => c.confirmed && c.matchType !== 'linked').length;
+  const fullyVerifiedCount = matchCandidates.filter(c => isFullyVerified(c) && c.matchType !== "linked").length;
+  const partiallyVerifiedCount = matchCandidates.filter(c => verifiedStepCount(c) > 0 && !isFullyVerified(c) && c.matchType !== "linked").length;
 
-  // ── Loading ────────────────────────────────────────────────────
+  // â”€â”€ Wage row expand/collapse (lazy load on first expand) â”€â”€â”€â”€â”€
+  const toggleWageRow = async (memberId: string, sevenShiftsUserId: number) => {
+    const newExpanded = new Set(expandedWageRows);
+    if (newExpanded.has(memberId)) {
+      newExpanded.delete(memberId);
+      setExpandedWageRows(newExpanded);
+      return;
+    }
+    newExpanded.add(memberId);
+    setExpandedWageRows(newExpanded);
+
+    // Already cached? Don't re-fetch
+    if (wageCache[memberId]?.data) return;
+
+    // Fetch wages on-demand
+    if (!organizationId) return;
+    setWageCache(prev => ({ ...prev, [memberId]: { loading: true, error: null, data: null } }));
+
+    try {
+      // Fetch roles map if we don't have it yet (one-time)
+      if (Object.keys(roleNameMap).length === 0) {
+        try {
+          const roles = await getRolesVault({ organizationId });
+          const map: Record<number, string> = {};
+          for (const r of roles) { map[r.id] = r.name || `Role ${r.id}`; }
+          setRoleNameMap(map);
+        } catch {
+          // Non-fatal â€” we'll show role IDs instead of names
+        }
+      }
+
+      const wages = await getUserWagesVault({
+        organizationId,
+        userId: sevenShiftsUserId,
+      });
+      setWageCache(prev => ({ ...prev, [memberId]: { loading: false, error: null, data: wages } }));
+    } catch (err: any) {
+      console.error(`Failed to fetch wages for user ${sevenShiftsUserId}:`, err);
+      setWageCache(prev => ({ ...prev, [memberId]: { loading: false, error: err.message || 'Failed to load wages', data: null } }));
+    }
+  };
+
+  /** Format wage_cents to dollar string */
+  const formatWage = (cents: number): string => {
+    const dollars = (cents / 100).toFixed(2);
+    return "\u0024" + dollars;
+  };
+
+  // â”€â”€ Loading â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -630,7 +711,7 @@ export const TeamSettings: React.FC = () => {
         </div>
       )}
 
-      {/* ── L5 Header ───────────────────────────────────────────── */}
+      {/* â”€â”€ L5 Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -684,7 +765,7 @@ export const TeamSettings: React.FC = () => {
         </div>
       </div>
 
-      {/* ── Tab Bar ─────────────────────────────────────────────── */}
+      {/* â”€â”€ Tab Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="flex gap-1 p-1 bg-[#1a1f2b] rounded-lg">
         {TABS.map((tab) => {
           const Icon = tab.icon;
@@ -706,7 +787,7 @@ export const TeamSettings: React.FC = () => {
         })}
       </div>
 
-      {/* ── Tab Content ─────────────────────────────────────────── */}
+      {/* â”€â”€ Tab Content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="bg-[#1a1f2b] rounded-lg shadow-lg p-6">
         {/* Schedule Tab */}
         {activeTab === "schedule" && (
@@ -847,7 +928,7 @@ export const TeamSettings: React.FC = () => {
                     Sort Direction
                   </label>
                   <div className="inline-flex rounded-lg border border-gray-700/50 overflow-hidden text-xs">
-                    {([['asc', 'A → Z'], ['desc', 'Z → A']] as const).map(([dir, label]) => (
+                    {([['asc', 'A â†’ Z'], ['desc', 'Z â†’ A']] as const).map(([dir, label]) => (
                       <button
                         key={dir}
                         onClick={() => updateRosterDisplay('sort_direction', dir)}
@@ -948,8 +1029,8 @@ export const TeamSettings: React.FC = () => {
                     </div>
                     <div className="text-xs text-gray-400">
                       {is7shiftsConnected
-                        ? 'Connected — roster enrichment available'
-                        : 'Not connected — roster uses manual data only'}
+                        ? 'Connected â€” roster enrichment available'
+                        : 'Not connected â€” roster uses manual data only'}
                     </div>
                   </div>
                 </div>
@@ -962,7 +1043,7 @@ export const TeamSettings: React.FC = () => {
                     onClick={() => navigate('/admin/integrations')}
                     className="text-xs text-primary-400 hover:text-primary-300 font-medium"
                   >
-                    Configure →
+                    Configure â†’
                   </button>
                 )}
               </div>
@@ -1016,19 +1097,26 @@ export const TeamSettings: React.FC = () => {
                         {matchCandidates.length > 0 ? 'Refresh Match' : 'Preview Match'}
                       </button>
 
-                      {confirmedCount > 0 && (
-                        <button
-                          onClick={saveMatches}
-                          disabled={isSavingMatches}
-                          className="btn-primary text-sm bg-green-600 hover:bg-green-500"
-                        >
-                          {isSavingMatches ? (
-                            <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
-                          ) : (
-                            <Save className="w-4 h-4 mr-1.5" />
+                      {(fullyVerifiedCount > 0 || partiallyVerifiedCount > 0) && (
+                        <div className="flex items-center gap-3">
+                          {partiallyVerifiedCount > 0 && (
+                            <span className="text-xs text-amber-400">
+                              {partiallyVerifiedCount} in progress
+                            </span>
                           )}
-                          Save {confirmedCount} Match{confirmedCount === 1 ? '' : 'es'}
-                        </button>
+                          <button
+                            onClick={saveMatches}
+                            disabled={isSavingMatches || fullyVerifiedCount === 0}
+                            className={`btn-primary text-sm ${fullyVerifiedCount > 0 ? "bg-green-600 hover:bg-green-500" : "opacity-50 cursor-not-allowed"}`}
+                          >
+                            {isSavingMatches ? (
+                              <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                            ) : (
+                              <Save className="w-4 h-4 mr-1.5" />
+                            )}
+                            Save {fullyVerifiedCount} Verified Match{fullyVerifiedCount === 1 ? "" : "es"}
+                          </button>
+                        </div>
                       )}
                     </div>
 
@@ -1070,14 +1158,32 @@ export const TeamSettings: React.FC = () => {
                               unmatched: 'None',
                             };
 
+                            const isLinked = candidate.matchType === "linked";
+                            const canExpand = !!candidate.matched7sUser && (
+                              isLinked ||
+                              candidate.matchType === "exact" ||
+                              candidate.matchType === "manual" ||
+                              candidate.matchType === "suggested" ||
+                              verifiedStepCount(candidate) > 0
+                            );
+                            const isExpanded = expandedWageRows.has(candidate.member.id);
+                            const wageState = wageCache[candidate.member.id];
+                            const stepCount = verifiedStepCount(candidate);
+                            const fullyDone = isFullyVerified(candidate);
+
                             return (
+                              <div key={candidate.member.id}>
                               <div
-                                key={candidate.member.id}
                                 className={`grid grid-cols-12 gap-2 px-4 py-3 items-center text-sm transition-colors ${
-                                  candidate.confirmed && candidate.matchType !== 'linked'
-                                    ? 'bg-green-500/5'
-                                    : 'hover:bg-gray-800/20'
-                                }`}
+                                  fullyDone && candidate.matchType !== "linked"
+                                    ? "bg-green-500/5"
+                                    : stepCount > 0 && candidate.matchType !== "linked"
+                                      ? "bg-amber-500/5"
+                                      : canExpand
+                                        ? "hover:bg-gray-800/30 cursor-pointer"
+                                        : "hover:bg-gray-800/20"
+                                } ${isExpanded ? "bg-gray-800/20" : ""}`}
+                                onClick={canExpand ? () => toggleWageRow(candidate.member.id, candidate.matched7sUser!.id) : undefined}
                               >
                                 {/* ChefLife member */}
                                 <div className="col-span-4">
@@ -1094,7 +1200,7 @@ export const TeamSettings: React.FC = () => {
                                 {/* Punch ID */}
                                 <div className="col-span-1 text-center">
                                   <span className="text-xs font-mono text-gray-400 bg-gray-800/50 px-1.5 py-0.5 rounded">
-                                    {candidate.member.punch_id || '—'}
+                                    {candidate.member.punch_id || 'â€”'}
                                   </span>
                                 </div>
 
@@ -1115,7 +1221,7 @@ export const TeamSettings: React.FC = () => {
                                       </div>
                                       <div className="text-xs text-gray-500">
                                         7s ID: {candidate.matched7sUser.id}
-                                        {candidate.matched7sUser.email && ` • ${candidate.matched7sUser.email}`}
+                                        {candidate.matched7sUser.email && ` â€¢ ${candidate.matched7sUser.email}`}
                                       </div>
                                     </div>
                                   ) : (
@@ -1130,7 +1236,7 @@ export const TeamSettings: React.FC = () => {
                                         }}
                                         className="bg-gray-800/50 border border-gray-700/50 rounded px-2 py-1 text-xs text-gray-400 w-full focus:outline-none focus:border-green-500/50"
                                       >
-                                        <option value="">Assign manually…</option>
+                                        <option value="">Assign manuallyâ€¦</option>
                                         {unmatched7sUsers.map(u => (
                                           <option key={u.id} value={u.id}>
                                             {u.first_name} {u.last_name} (ID: {u.id})
@@ -1143,35 +1249,199 @@ export const TeamSettings: React.FC = () => {
                                   )}
                                 </div>
 
-                                {/* Actions */}
+                                {/* Actions + Verification Progress */}
                                 <div className="col-span-2 flex items-center justify-end gap-1">
-                                  {candidate.matchType === 'linked' ? (
+                                  {candidate.matchType === "linked" ? (
                                     <span className="text-xs text-blue-400 flex items-center gap-1">
                                       <CheckCircle2 className="w-3.5 h-3.5" />
-                                      Saved
+                                      3/3
+                                      {canExpand && (
+                                        <ChevronDown className={`w-3.5 h-3.5 ml-1 text-gray-500 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                                      )}
                                     </span>
                                   ) : candidate.matched7sUser ? (
                                     <>
+                                      {/* Verification progress pill */}
+                                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                                        fullyDone
+                                          ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                                          : stepCount > 0
+                                            ? "bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                                            : "bg-gray-700/50 text-gray-500"
+                                      }`}>
+                                        {stepCount}/3
+                                      </span>
                                       <button
-                                        onClick={() => toggleConfirm(idx)}
-                                        className={`text-xs px-2.5 py-1 rounded font-medium transition-colors ${
-                                          candidate.confirmed
-                                            ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                                            : 'bg-gray-700/50 text-gray-400 hover:text-white border border-gray-700/50 hover:border-gray-600'
-                                        }`}
-                                      >
-                                        {candidate.confirmed ? '✓ Confirmed' : 'Confirm'}
-                                      </button>
-                                      <button
-                                        onClick={() => unlinkMatch(idx)}
+                                        onClick={(e) => { e.stopPropagation(); unlinkMatch(idx); }}
                                         className="p-1 text-gray-500 hover:text-red-400 transition-colors"
                                         title="Remove match"
                                       >
                                         <X className="w-3.5 h-3.5" />
                                       </button>
+                                      {canExpand && (
+                                        <ChevronDown className={`w-3.5 h-3.5 ml-0.5 text-gray-500 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                                      )}
                                     </>
                                   ) : null}
                                 </div>
+                              </div>
+
+                              {/* === 3-Step Verification Panel === */}
+                              {isExpanded && canExpand && (
+                                <div className="border-t border-gray-700/20 bg-gray-800/10">
+
+                                  {/* Step 1: Identity */}
+                                  <div className="px-4 py-3 border-b border-gray-700/10">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-2">
+                                        <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                                          candidate.verified.identity
+                                            ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                                            : "bg-gray-700/50 text-gray-500 border border-gray-600/30"
+                                        }`}>1</span>
+                                        <span className="text-xs font-medium text-white">Confirm Identity</span>
+                                        <span className="text-[10px] text-gray-500">
+                                          {candidate.matched7sUser ? `${candidate.matched7sUser.first_name} ${candidate.matched7sUser.last_name} (7s ID: ${candidate.matched7sUser.id})` : ""}
+                                        </span>
+                                      </div>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); toggleVerification(idx, "identity"); }}
+                                        className={`text-xs px-3 py-1 rounded font-medium transition-colors ${
+                                          candidate.verified.identity
+                                            ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                                            : "bg-gray-700/50 text-gray-400 hover:text-white border border-gray-700/50 hover:border-gray-600"
+                                        }`}
+                                      >
+                                        {candidate.verified.identity ? "\u2713 Verified" : "Verify"}
+                                      </button>
+                                    </div>
+                                    {candidate.matched7sUser?.email && (
+                                      <div className="ml-7 mt-1 text-[11px] text-gray-500">
+                                        {candidate.matched7sUser.email}
+                                        {candidate.matched7sUser.mobile_phone ? ` \u00B7 ${candidate.matched7sUser.mobile_phone}` : ""}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Step 2: Roles */}
+                                  <div className="px-4 py-3 border-b border-gray-700/10">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-2">
+                                        <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                                          candidate.verified.roles
+                                            ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                                            : "bg-gray-700/50 text-gray-500 border border-gray-600/30"
+                                        }`}>2</span>
+                                        <span className="text-xs font-medium text-white">Confirm Roles</span>
+                                        {candidate.matched7sUser?.type && (
+                                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400">
+                                            {candidate.matched7sUser.type}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); toggleVerification(idx, "roles"); }}
+                                        className={`text-xs px-3 py-1 rounded font-medium transition-colors ${
+                                          candidate.verified.roles
+                                            ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                                            : "bg-gray-700/50 text-gray-400 hover:text-white border border-gray-700/50 hover:border-gray-600"
+                                        }`}
+                                      >
+                                        {candidate.verified.roles ? "\u2713 Verified" : "Verify"}
+                                      </button>
+                                    </div>
+                                    <div className="ml-7 mt-1 text-[11px] text-gray-500 italic">
+                                      Role assignments from 7shifts will be used for scheduling sync
+                                    </div>
+                                  </div>
+
+                                  {/* Step 3: Wages */}
+                                  <div className="px-4 py-3">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-2">
+                                        <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                                          candidate.verified.wages
+                                            ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                                            : "bg-gray-700/50 text-gray-500 border border-gray-600/30"
+                                        }`}>3</span>
+                                        <span className="text-xs font-medium text-white">Confirm Wages</span>
+                                      </div>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); toggleVerification(idx, "wages"); }}
+                                        className={`text-xs px-3 py-1 rounded font-medium transition-colors ${
+                                          candidate.verified.wages
+                                            ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                                            : "bg-gray-700/50 text-gray-400 hover:text-white border border-gray-700/50 hover:border-gray-600"
+                                        }`}
+                                      >
+                                        {candidate.verified.wages ? "\u2713 Verified" : "Verify"}
+                                      </button>
+                                    </div>
+
+                                    {/* Wage detail â€” lazy loaded */}
+                                    <div className="ml-7 mt-2">
+                                      {wageState?.loading ? (
+                                        <div className="flex items-center gap-2 text-xs text-gray-500 py-1">
+                                          <Loader2 className="w-3 h-3 animate-spin" />
+                                          Loading wages...
+                                        </div>
+                                      ) : wageState?.error ? (
+                                        <div className="flex items-center gap-2 text-xs text-red-400 py-1">
+                                          <AlertCircle className="w-3 h-3" />
+                                          {wageState.error}
+                                        </div>
+                                      ) : wageState?.data ? (
+                                        <div className="space-y-2">
+                                          {wageState.data.current_wages.length > 0 ? (
+                                            <div className="grid gap-1">
+                                              {wageState.data.current_wages.map((w, wi) => (
+                                                <div key={wi} className="flex items-center gap-3 text-xs bg-gray-800/30 rounded px-3 py-1.5">
+                                                  <span className="text-white font-medium tabular-nums">{formatWage(w.wage_cents)}</span>
+                                                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${w.wage_type === "hourly" ? "bg-blue-500/10 text-blue-400" : "bg-purple-500/10 text-purple-400"}`}>
+                                                    {w.wage_type === "hourly" ? "/hr" : "salary"}
+                                                  </span>
+                                                  {w.role_id ? (
+                                                    <span className="text-gray-400">{roleNameMap[w.role_id] || `Role #${w.role_id}`}</span>
+                                                  ) : (
+                                                    <span className="text-gray-500 italic">All roles</span>
+                                                  )}
+                                                  <span className="text-gray-600 ml-auto">eff. {w.effective_date}</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          ) : (
+                                            <div className="text-[11px] text-gray-600 italic">No current wages in 7shifts</div>
+                                          )}
+                                          {wageState.data.upcoming_wages.length > 0 && (
+                                            <div>
+                                              <div className="text-[10px] uppercase tracking-wide text-amber-500/70 mb-1 font-medium">Upcoming</div>
+                                              <div className="grid gap-1">
+                                                {wageState.data.upcoming_wages.map((w, wi) => (
+                                                  <div key={wi} className="flex items-center gap-3 text-xs bg-amber-500/5 border border-amber-500/10 rounded px-3 py-1.5">
+                                                    <span className="text-amber-300 font-medium tabular-nums">{formatWage(w.wage_cents)}</span>
+                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${w.wage_type === "hourly" ? "bg-blue-500/10 text-blue-400" : "bg-purple-500/10 text-purple-400"}`}>
+                                                      {w.wage_type === "hourly" ? "/hr" : "salary"}
+                                                    </span>
+                                                    {w.role_id ? (
+                                                      <span className="text-gray-400">{roleNameMap[w.role_id] || `Role #${w.role_id}`}</span>
+                                                    ) : (
+                                                      <span className="text-gray-500 italic">All roles</span>
+                                                    )}
+                                                    <span className="text-amber-500/50 ml-auto">starts {w.effective_date}</span>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <div className="text-[11px] text-gray-600 italic">Expand to load wage data</div>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                </div>
+                              )}
                               </div>
                             );
                           })}

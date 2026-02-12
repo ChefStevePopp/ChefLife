@@ -484,10 +484,11 @@ export const useScheduleStore = create<ScheduleState>()(
             return shiftsData;
           }
 
-          // Get all team members for this organization
+          // ── ESSENTIAL TEAM DATA (avatars, identity) ──────────────
+          // This query must succeed — it powers avatars and shift assignment
           const { data: teamMembers, error: teamError } = await supabase
             .from("organization_team_members")
-            .select("id, punch_id, email, avatar_url")
+            .select("id, punch_id, email, avatar_url, first_name, last_name")
             .eq("organization_id", organizationId);
 
           if (teamError) {
@@ -496,7 +497,30 @@ export const useScheduleStore = create<ScheduleState>()(
             return shiftsData;
           }
 
-          // Create lookup maps
+          // ── OPTIONAL WAGE DATA (labour intelligence) ────────────
+          // Separate query so a missing/broken wages column never takes avatars down
+          let wageMap = new Map<string, { roles: string[]; wages: number[] }>();
+          try {
+            const { data: wageData, error: wageError } = await supabase
+              .from("organization_team_members")
+              .select("id, punch_id, roles, wages")
+              .eq("organization_id", organizationId);
+
+            if (!wageError && wageData) {
+              for (const m of wageData) {
+                if (m.roles?.length && m.wages?.length) {
+                  wageMap.set(m.id, { roles: m.roles, wages: m.wages });
+                  if (m.punch_id) {
+                    wageMap.set(m.punch_id, { roles: m.roles, wages: m.wages });
+                  }
+                }
+              }
+            }
+          } catch (wageErr) {
+            console.warn("Wage enrichment failed (non-fatal):", wageErr);
+          }
+
+          // Create lookup maps for essential data
           const teamMembersByPunchId = new Map(
             (teamMembers || []).filter(m => m.punch_id).map(m => [m.punch_id, m])
           );
@@ -504,20 +528,37 @@ export const useScheduleStore = create<ScheduleState>()(
             (teamMembers || []).map(m => [m.id, m])
           );
 
-          // Merge avatar_url into shifts
+          // Merge avatar_url + wage_rate into shifts
           const shifts = shiftsData.map(shift => {
             let avatar_url = null;
+            let wage_rate: number | null = null;
             
-            // Try to match by employee_id (punch_id or direct ID)
             if (shift.employee_id) {
+              // ── Avatar (essential) ──
               const byPunchId = teamMembersByPunchId.get(shift.employee_id);
               const byId = teamMembersById.get(shift.employee_id);
               avatar_url = byPunchId?.avatar_url || byId?.avatar_url || null;
+              
+              // ── Wage (optional enrichment from separate map) ──
+              const wageInfo = wageMap.get(shift.employee_id);
+              if (wageInfo && shift.role) {
+                const roleIdx = wageInfo.roles.findIndex(
+                  (r: string) => r.toLowerCase() === shift.role!.toLowerCase()
+                );
+                if (roleIdx !== -1 && wageInfo.wages[roleIdx] != null) {
+                  wage_rate = wageInfo.wages[roleIdx];
+                } else if (wageInfo.wages.length > 0) {
+                  wage_rate = wageInfo.wages[0]; // Fallback to first wage
+                }
+              } else if (wageInfo?.wages.length) {
+                wage_rate = wageInfo.wages[0]; // No role on shift, use first
+              }
             }
 
             return {
               ...shift,
               avatar_url,
+              wage_rate,
             };
           });
 

@@ -286,6 +286,9 @@ export interface TeamMember {
   // Employment
   hire_date?: string | null;  // ISO date string
   
+  // Wages (parallel to roles[] — roles[i] earns wages[i] per hour)
+  wages?: number[];
+
   // Import tracking
   import_source?: 'manual' | 'csv' | '7shifts' | null;
   import_file_url?: string | null;

@@ -91,7 +91,7 @@ const hasChanges = (original: TeamMember, current: TeamMember): boolean => {
     'first_name', 'last_name', 'display_name', 'email', 'phone', 'punch_id',
     'avatar_url', 'kitchen_role', 'roles', 'departments', 'locations',
     'kitchen_stations', 'notification_preferences', 'security_level', 'certifications',
-    'hire_date'
+    'hire_date', 'wages'
   ];
 
   for (const field of fieldsToCompare) {
@@ -214,6 +214,7 @@ export const EditTeamMemberModal: React.FC<EditTeamMemberModalProps> = ({
         updates.kitchen_role = formData.kitchen_role;
         updates.kitchen_stations = formData.kitchen_stations || [];
         updates.security_level = formData.security_level;
+        updates.wages = formData.wages || [];
       }
 
       await updateTeamMember(member.id, updates);

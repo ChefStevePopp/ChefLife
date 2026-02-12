@@ -26,6 +26,7 @@ export interface ScheduleShift {
   notes?: string;
   created_at?: string;
   avatar_url?: string | null; // Added from team member join
+  wage_rate?: number | null; // Hourly rate matched from team member wages[]
 }
 
 export interface SevenShiftsIntegration {

@@ -222,6 +222,75 @@ export const ScheduleManager: React.FC = () => {
 
   // ── Module Config & Tier Data ──────────────────────────────────
   const { organizationId } = useAuth();
+
+  // ── Previous Week Shifts (for labour delta comparison) ────────
+  const [previousWeekShifts, setPreviousWeekShifts] = useState<import('@/types/schedule').ScheduleShift[]>([]);
+
+  useEffect(() => {
+    if (!displayedSchedule || allSchedules.length < 2) {
+      setPreviousWeekShifts([]);
+      return;
+    }
+
+    // Find the schedule immediately before the displayed one (by start_date)
+    const sorted = [...allSchedules].sort((a, b) => a.start_date.localeCompare(b.start_date));
+    const currentIdx = sorted.findIndex(s => s.id === displayedSchedule.id);
+    const prevSchedule = currentIdx > 0 ? sorted[currentIdx - 1] : null;
+
+    if (!prevSchedule) {
+      setPreviousWeekShifts([]);
+      return;
+    }
+
+    // Fetch shifts for previous schedule (direct query — doesn't overwrite scheduleShifts)
+    const fetchPrev = async () => {
+      try {
+        const { data } = await supabase
+          .from('schedule_shifts')
+          .select('*')
+          .eq('schedule_id', prevSchedule.id);
+
+        if (data && data.length > 0 && organizationId) {
+          // Enrich with wage_rate (same logic as store)
+          const { data: team } = await supabase
+            .from('organization_team_members')
+            .select('id, punch_id, wages, roles')
+            .eq('organization_id', organizationId);
+
+          const byPunch = new Map((team || []).filter(m => m.punch_id).map(m => [m.punch_id, m]));
+          const byId = new Map((team || []).map(m => [m.id, m]));
+
+          const enriched = data.map(shift => {
+            let wage_rate: number | null = null;
+            if (shift.employee_id) {
+              const member = byPunch.get(shift.employee_id) || byId.get(shift.employee_id);
+              if (member?.roles && member?.wages && shift.role) {
+                const idx = (member.roles as string[]).findIndex((r: string) => r.toLowerCase() === shift.role!.toLowerCase());
+                if (idx !== -1 && (member.wages as number[])[idx] != null) {
+                  wage_rate = (member.wages as number[])[idx];
+                } else if ((member.wages as number[]).length > 0) {
+                  wage_rate = (member.wages as number[])[0];
+                }
+              } else if (member?.wages && (member.wages as number[]).length > 0) {
+                wage_rate = (member.wages as number[])[0];
+              }
+            }
+            return { ...shift, wage_rate };
+          });
+
+          setPreviousWeekShifts(enriched);
+        } else {
+          setPreviousWeekShifts(data || []);
+        }
+      } catch (err) {
+        console.warn('Could not fetch previous week shifts for comparison:', err);
+        setPreviousWeekShifts([]);
+      }
+    };
+
+    fetchPrev();
+  }, [displayedSchedule?.id, allSchedules.length, organizationId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const { teamPerformance, fetchTeamPerformance, fetchCurrentCycle } = usePerformanceStore();
   const [perfModuleEnabled, setPerfModuleEnabled] = useState(false);
   const [cardDisplayConfig, setCardDisplayConfig] = useState(DEFAULT_TEAM_CONFIG.card_display);
@@ -675,6 +744,7 @@ export const ScheduleManager: React.FC = () => {
                   timeFormat={timeFormat}
                   tierMap={tierMap}
                   cardDisplay={cardDisplayConfig}
+                  previousWeekShifts={previousWeekShifts}
                 />
               )}
             </div>
