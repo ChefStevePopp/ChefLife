@@ -61,6 +61,20 @@ All JSX is written and renders conditionally when `hasWageData` is true:
 - No team members currently have `wages[]` populated, so the Labour Intelligence row doesn't render
 - Need to either: populate via The Roster modal once built, OR run a manual SQL update for testing
 
+### 4. Recipe Draft State + Version Control Redesign (DESIGN DECISION — CONFIRMED)
+- **Problem**: Recipes currently increment version on every save, even during initial creation. A new recipe can reach v3 before anyone sees it.
+- **Confirmed architecture**:
+  - **Draft state**: No version number (display as `DRAFT`). Saves freely, no version bumps, no notifications, no audit trail beyond creation timestamps. Visible only to Alpha/Beta/Omega security tiers.
+  - **First publish** → `v1.0.0`. This is the birth certificate. Recipe enters operational visibility, costs track, allergen declaration activates, line cooks can see it.
+  - **Post-publish** follows existing MAJOR.MINOR.PATCH hierarchy (same as policies): Patch=trust, Minor=broadcast, Major=mandatory meeting.
+  - **Draft revision state**: When editing a published recipe, live version stays visible to team while changes accumulate in a draft layer. Publishing the revision triggers the appropriate version bump.
+- **Implementation needs**: Add `status` field (draft/published/archived), `published_version` field, gate version increment behind publish action not save action, security tier visibility gates.
+- **NOT STARTED** — design confirmed, needs its own focused session
+
+### 5. Expandable Info Section Overflow Fix (CostingSummary + AllergenControl)
+- **Fixed**: `CostingSummary.tsx` line 131 — added optional chaining `settings?.recipe_unit_measures` (settings was null during new recipe creation)
+- **Fixed**: `index.css` expandable-info-section — added `overflow: visible` to `.expanded` state on both `.expandable-info-section` and `.expandable-info-content` so absolute-positioned dropdowns (like ManualOverrides allergen picker) aren't clipped
+
 ---
 
 ## FILES MODIFIED THIS SESSION
@@ -71,6 +85,8 @@ All JSX is written and renders conditionally when `hasWageData` is true:
 | `src/stores/scheduleStore.ts` | Extended `fetchShifts()` with wage matching from `roles[]/wages[]` parallel arrays, fixed dual-lookup for avatar |
 | `src/features/admin/components/sections/ScheduleManager/components/ScheduleWeekView.tsx` | Complete L5 filter bar rebuild with department toggles, role popover, labour intelligence row |
 | `src/features/admin/components/sections/ScheduleManager/index.tsx` | Added `previousWeekShifts` state + effect, passed as prop to ScheduleWeekView |
+| `src/features/recipes/components/RecipeEditor/BasicInformation/CostingSummary.tsx` | Added null guard: `settings?.recipe_unit_measures` |
+| `src/index.css` | Added `overflow: visible` to `.expandable-info-section.expanded` and its `.expandable-info-content` |
 
 ## DB CHANGES
 
