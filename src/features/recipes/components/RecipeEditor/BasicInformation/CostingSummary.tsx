@@ -128,7 +128,7 @@ export const CostingSummary: React.FC<CostingSummaryProps> = ({
                 required
               >
                 <option value="">Select unit...</option>
-                {settings.recipe_unit_measures?.map((measure) => (
+                {settings?.recipe_unit_measures?.map((measure) => (
                   <option key={measure} value={measure}>
                     {measure}
                   </option>
