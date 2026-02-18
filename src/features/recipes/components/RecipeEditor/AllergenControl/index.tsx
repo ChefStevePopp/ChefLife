@@ -20,6 +20,8 @@ interface AllergenControlProps {
   onConfirmDeclaration?: () => void;
   /** Whether allergenInfo differs from the last-saved baseline (passed from parent) */
   allergensDirty?: boolean;
+  /** Whether the allergen review gate is active (ingredients/allergens changed, review required before save) */
+  needsReview?: boolean;
 }
 
 // Default empty overrides
@@ -57,7 +59,8 @@ export const AllergenControl: React.FC<AllergenControlProps> = ({
   recipe,
   onChange,
   onConfirmDeclaration,
-  allergensDirty
+  allergensDirty,
+  needsReview
 }) => {
   const { showDiagnostics } = useDiagnostics();
   const { fetchIngredients } = useMasterIngredientsStore();
@@ -198,6 +201,39 @@ export const AllergenControl: React.FC<AllergenControlProps> = ({
       {showDiagnostics && (
         <div className="text-xs text-gray-500 font-mono">
           src/features/recipes/components/RecipeEditor/AllergenControl/index.tsx
+        </div>
+      )}
+
+      {/* ================================================================== */}
+      {/* REVIEW REQUIRED BANNER — Persistent CTA when save gate is active    */}
+      {/* This replaces the ephemeral toast. User sees exactly why they're     */}
+      {/* here and has one clear action to take.                               */}
+      {/* ================================================================== */}
+      {needsReview && onConfirmDeclaration && (
+        <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-lg bg-rose-500/20 flex items-center justify-center flex-shrink-0">
+            <Shield className="w-5 h-5 text-rose-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-rose-200">
+              Allergen review required before saving
+            </p>
+            <p className="text-xs text-rose-300/70 mt-0.5">
+              Ingredients have changed since the last declaration. Review the allergen profile below, then confirm.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onConfirmDeclaration}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl
+                       bg-rose-500/20 hover:bg-rose-500/30
+                       border border-rose-500/40 hover:border-rose-500/60
+                       text-sm font-semibold text-rose-300
+                       transition-all duration-200 flex-shrink-0"
+          >
+            <FileCheck className="w-4 h-4" />
+            Confirm & Save
+          </button>
         </div>
       )}
       

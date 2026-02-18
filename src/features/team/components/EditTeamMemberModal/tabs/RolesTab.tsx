@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from "react";
-import { Plus, Trash2, ChefHat, Briefcase, Building2, Loader2, DollarSign } from "lucide-react";
+import { Plus, Trash2, ChefHat, Briefcase, Building2, Loader2, DollarSign, ShieldAlert, Lock, Unlock } from "lucide-react";
 import type { TeamMember } from "../../../types";
 import { supabase } from "@/lib/supabase";
 import { ImportedBadge } from "@/shared/components/ImportedBadge";
+import { SECURITY_LEVELS, type SecurityLevel } from "@/config/security";
 
 interface RolesTabProps {
   formData: TeamMember;
   setFormData: (data: TeamMember) => void;
+  editorSecurityLevel?: number;
 }
 
 // Section header component - consistent with L5 design system
@@ -58,9 +60,24 @@ const AddButton: React.FC<{ onClick: () => void; color: string }> = ({ onClick, 
 export const RolesTab: React.FC<RolesTabProps> = ({
   formData,
   setFormData,
+  editorSecurityLevel = SECURITY_LEVELS.ECHO,
 }) => {
   const [kitchenStations, setKitchenStations] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+
+  // ── Management Wage Override ──────────────────────────────────
+  // Management (Bravo and above) wages are locked by default — salaried, excluded from labour cost.
+  // Alpha editors can unlock with a 2-stage confirm to include them in labour calculations.
+  const memberSecurityLevel = (formData.security_level ?? SECURITY_LEVELS.ECHO) as number;
+  const isMemberManagement = memberSecurityLevel <= SECURITY_LEVELS.BRAVO;
+  const isEditorAlpha = editorSecurityLevel <= SECURITY_LEVELS.ALPHA;
+  // If management member already has wages (from previous override), start unlocked
+  const hasExistingWages = (formData.wages || []).some(w => w > 0);
+  const [wageOverrideStage, setWageOverrideStage] = useState<0 | 1 | 2>(
+    isMemberManagement && hasExistingWages ? 2 : 0
+  );
+  // Stage 0: locked (default), Stage 1: confirm prompt, Stage 2: unlocked
+  const wagesUnlocked = !isMemberManagement || wageOverrideStage === 2;
 
   // Fetch kitchen stations from operations_settings
   useEffect(() => {
@@ -236,20 +253,29 @@ export const RolesTab: React.FC<RolesTabProps> = ({
                   placeholder="e.g., Line Cook, Server, Bartender"
                   autoFocus={role === ""}
                 />
-                {/* Wage input — inline with role */}
-                <div className="relative flex-shrink-0 w-[110px]">
-                  <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-green-400 pointer-events-none" />
-                  <input
-                    type="number"
-                    value={(formData.wages || [])[index] || ''}
-                    onChange={(e) => updateWage(index, parseFloat(e.target.value) || 0)}
-                    className="input pl-7 pr-8 w-full text-right tabular-nums"
-                    placeholder="0.00"
-                    min="0"
-                    step="0.25"
-                  />
-                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">/hr</span>
-                </div>
+                {/* Wage input — inline with role, gated for management */}
+                {wagesUnlocked ? (
+                  <div className="relative flex-shrink-0 w-[110px]">
+                    <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-green-400 pointer-events-none" />
+                    <input
+                      type="number"
+                      value={(formData.wages || [])[index] || ''}
+                      onChange={(e) => updateWage(index, parseFloat(e.target.value) || 0)}
+                      className="input pl-7 pr-8 w-full text-right tabular-nums"
+                      placeholder="0.00"
+                      min="0"
+                      step="0.25"
+                    />
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">/hr</span>
+                  </div>
+                ) : (
+                  <div className="relative flex-shrink-0 w-[110px]">
+                    <div className="input pl-7 pr-8 w-full text-right tabular-nums bg-gray-800/80 text-gray-600 cursor-not-allowed flex items-center justify-end">
+                      <Lock className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600 pointer-events-none" />
+                      <span className="text-sm">—</span>
+                    </div>
+                  </div>
+                )}
                 <button
                   type="button"
                   onClick={() => removeRole(index)}
@@ -264,9 +290,59 @@ export const RolesTab: React.FC<RolesTabProps> = ({
           )}
         </div>
 
-        <p className="mt-3 text-xs text-gray-500">
-          Set the hourly wage for each role. These rates power the Labour Intelligence row on the schedule.
-        </p>
+        {/* Management Wage Gate — salaried exclusion + Alpha override */}
+        {isMemberManagement ? (
+          <div className="mt-3 pt-3 border-t border-gray-700/30">
+            {wageOverrideStage === 2 ? (
+              <div className="flex items-center gap-2 text-xs">
+                <Unlock className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-amber-400 font-medium">Override active</span>
+                <span className="text-gray-500">— wages will be included in labour cost calculations</span>
+                <button
+                  type="button"
+                  onClick={() => setWageOverrideStage(0)}
+                  className="ml-auto text-gray-500 hover:text-gray-300 text-xs underline underline-offset-2"
+                >
+                  Re-lock
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-gray-500" />
+                  <span className="text-xs text-gray-500">Salaried — excluded from labour cost calculations</span>
+                </div>
+                {isEditorAlpha && (
+                  <button
+                    type="button"
+                    onClick={() => setWageOverrideStage(prev => prev === 0 ? 1 : 2)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                      wageOverrideStage === 0
+                        ? 'text-gray-400 hover:text-amber-400 hover:bg-amber-500/10 border border-gray-700/50 hover:border-amber-500/30'
+                        : 'text-amber-200 bg-amber-500/20 border border-amber-500/40 ring-1 ring-amber-500/20 animate-pulse'
+                    }`}
+                  >
+                    {wageOverrideStage === 0 ? (
+                      <>
+                        <Lock className="w-3 h-3" />
+                        Override — Include in Labour
+                      </>
+                    ) : (
+                      <>
+                        <ShieldAlert className="w-3 h-3" />
+                        Confirm Override
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="mt-3 text-xs text-gray-500">
+            Set the hourly wage for each role. These rates power the Labour Intelligence row on the schedule.
+          </p>
+        )}
       </section>
 
       {/* Section: Kitchen Stations */}

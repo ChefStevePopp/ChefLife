@@ -339,7 +339,7 @@ export const EditTeamMemberModal: React.FC<EditTeamMemberModalProps> = ({
                 />
               )}
               {activeTab === "roles" && !isSelfEdit && (
-                <RolesTab formData={formData} setFormData={setFormData} />
+                <RolesTab formData={formData} setFormData={setFormData} editorSecurityLevel={editorSecurityLevel} />
               )}
               {activeTab === "permissions" && !isSelfEdit && (
                 <PermissionsTab 

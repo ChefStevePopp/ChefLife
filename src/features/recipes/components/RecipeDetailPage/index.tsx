@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Save,
@@ -12,6 +12,7 @@ import {
   FileEdit,
   CheckCircle,
   Info,
+  Shield,
 } from "lucide-react";
 import { useRecipeStore } from "../../stores/recipeStore";
 import { useRecipeNavigationStore } from "@/stores/recipeNavigationStore";
@@ -229,6 +230,29 @@ export const RecipeDetailPage: React.FC = () => {
     prevAllergenFingerprintRef.current = fp;
   // Re-run when any boolean column changes (formData reference updates on every onChange)
   }, [formData]);
+
+  // =========================================================================
+  // COMPUTED: Does the current state require allergen review before save?
+  // Reuses the same logic as the handleSave gate, but available for UI rendering.
+  // =========================================================================
+  const needsAllergenReview = useMemo(() => {
+    if (isNew || !originalData || !formData) return false;
+    if (allergenReviewedRef.current) return false;
+
+    // Check 1: boolean allergen columns differ from baseline
+    const origBools = getRecipeAllergenBooleans(originalData);
+    const currBools = getRecipeAllergenBooleans(formData);
+    const allergenInfoDiffers =
+      JSON.stringify([...origBools.contains].sort()) !== JSON.stringify([...currBools.contains].sort()) ||
+      JSON.stringify([...origBools.mayContain].sort()) !== JSON.stringify([...currBools.mayContain].sort());
+
+    // Check 2: ingredient composition changed
+    const ingredientFp = (ings: any[]) =>
+      (ings || []).map((i: any) => i.master_ingredient_id || i.prepared_recipe_id || i.id).sort().join('|');
+    const ingredientsDiffer = ingredientFp(formData.ingredients) !== ingredientFp(originalData.ingredients);
+
+    return allergenInfoDiffers || ingredientsDiffer;
+  }, [isNew, originalData, formData]);
 
   // ---------------------------------------------------------------------------
   // FETCH SETTINGS
@@ -975,6 +999,7 @@ export const RecipeDetailPage: React.FC = () => {
             recipe={formData as Recipe}
             onChange={handleChange}
             onConfirmDeclaration={handleConfirmDeclaration}
+            needsReview={needsAllergenReview}
             allergensDirty={
               originalData
                 ? (() => {
@@ -1067,24 +1092,57 @@ export const RecipeDetailPage: React.FC = () => {
                 >
                   Cancel
                 </button>
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={isSaving || !formData.name}
-                  className="btn-primary text-sm py-1.5 px-4"
-                >
-                  {isSaving ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4 mr-1" />
-                      {isNew ? "Create Recipe" : "Save Changes"}
-                    </>
-                  )}
-                </button>
+                {needsAllergenReview && activeTab !== 'allergens' ? (
+                  /* Not on Allergens tab — redirect there first */
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('allergens')}
+                    className="btn-primary text-sm py-1.5 px-4 bg-rose-600 hover:bg-rose-500 border-rose-500/50"
+                  >
+                    <Shield className="w-4 h-4 mr-1" />
+                    Review Allergens
+                  </button>
+                ) : needsAllergenReview && activeTab === 'allergens' ? (
+                  /* ON the Allergens tab — confirm & save in one click */
+                  <button
+                    type="button"
+                    onClick={handleConfirmDeclaration}
+                    disabled={isSaving || !formData.name}
+                    className="btn-primary text-sm py-1.5 px-4 bg-rose-600 hover:bg-rose-500 border-rose-500/50"
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Shield className="w-4 h-4 mr-1" />
+                        Confirm & Save
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  /* Normal save */
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={isSaving || !formData.name}
+                    className="btn-primary text-sm py-1.5 px-4"
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4 mr-1" />
+                        {isNew ? "Create Recipe" : "Save Changes"}
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
           </div>
