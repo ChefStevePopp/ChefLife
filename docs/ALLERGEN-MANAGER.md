@@ -284,6 +284,14 @@ The 9 major food allergens that account for 90% of reactions:
 - [x] Responsive grid layouts
 - [x] Integration with ModulesManager and routing
 
+### Phase 1.5: Custom Allergen Registry (Q1-Q2 2026)
+- [ ] Organization-defined custom allergens (replaces 3-slot free-text system)
+- [ ] Registry CRUD in Allergen Manager accordion
+- [ ] MIL multi-select integration (unlimited customs per ingredient)
+- [ ] Recipe cascade integration (customs flow through auto-sync)
+- [ ] Audit trail + declaration integration
+- [ ] See: [ROADMAP-Custom-Allergen-Registry.md](./roadmaps/ROADMAP-Custom-Allergen-Registry.md)
+
 ### Phase 2: Customer Portal (Q2 2026)
 - [ ] Public-facing allergen information page
 - [ ] QR code generation for table tents

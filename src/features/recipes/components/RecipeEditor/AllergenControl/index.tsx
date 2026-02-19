@@ -12,6 +12,7 @@ import { useAllergenCascade } from './useAllergenCascade';
 import type { AllergenType } from '@/features/allergens/types';
 import type { ManualAllergenOverrides } from './types';
 import type { Recipe } from '../../../types/recipe';
+import { ALLERGENS } from '@/features/allergens/constants';
 
 interface AllergenControlProps {
   recipe: Recipe;
@@ -113,6 +114,9 @@ export const AllergenControl: React.FC<AllergenControlProps> = ({
   // Expandable info section
   const [showInfo, setShowInfo] = useState(false);
   
+  // Reset confirmation gate — prevents accidental wipe of manual allergens
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  
   // Cascade for UI display (autoDetected sources, allergensWithContext badges)
   // allergenInfo SYNC is handled by useAllergenAutoSync at RecipeEditor level — not here.
   const { autoDetected, declaration, allergensWithContext, isLoading } = useAllergenCascade({
@@ -186,6 +190,7 @@ export const AllergenControl: React.FC<AllergenControlProps> = ({
   
   const handleResetToAuto = useCallback(() => {
     onChange({ allergenManualOverrides: DEFAULT_OVERRIDES });
+    setShowResetConfirm(false);
   }, [onChange]);
   
   const handlePrint = useCallback(() => {
@@ -265,13 +270,60 @@ export const AllergenControl: React.FC<AllergenControlProps> = ({
             <div className="subheader-divider" />
             
             {hasManualOverrides && (
-              <button
-                onClick={handleResetToAuto}
-                className="btn-ghost px-2"
-                title="Reset to Auto-Detected Only"
-              >
-                <RotateCcw className="w-4 h-4" />
-              </button>
+              <div className="relative">
+                <button
+                  onClick={() => setShowResetConfirm(!showResetConfirm)}
+                  className={`btn-ghost px-2 ${showResetConfirm ? 'text-rose-400' : ''}`}
+                  title="Reset to Auto-Detected Only"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+                {showResetConfirm && (
+                  <div className="absolute right-0 top-full mt-2 z-50 w-72 rounded-xl border border-rose-500/40 bg-gray-900 shadow-xl p-4 space-y-3">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-rose-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-rose-200">Remove all manual allergens?</p>
+                        <p className="text-xs text-gray-400 mt-1">This will delete:</p>
+                        <ul className="text-xs text-gray-300 mt-1 space-y-0.5">
+                          {manualOverrides.manualContains.map(a => (
+                            <li key={a} className="flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                              {ALLERGENS[a]?.label || a} <span className="text-gray-500">(contains)</span>
+                            </li>
+                          ))}
+                          {manualOverrides.manualMayContain.map(a => (
+                            <li key={a} className="flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                              {ALLERGENS[a]?.label || a} <span className="text-gray-500">(may contain)</span>
+                            </li>
+                          ))}
+                          {manualOverrides.promotedToContains.map(a => (
+                            <li key={a} className="flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                              {ALLERGENS[a]?.label || a} <span className="text-gray-500">(promoted)</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        onClick={() => setShowResetConfirm(false)}
+                        className="flex-1 text-xs py-1.5 rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleResetToAuto}
+                        className="flex-1 text-xs py-1.5 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30 transition-colors"
+                      >
+                        Remove All
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
             <button
               onClick={handlePrint}

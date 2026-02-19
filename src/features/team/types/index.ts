@@ -286,8 +286,9 @@ export interface TeamMember {
   // Employment
   hire_date?: string | null;  // ISO date string
   
-  // Wages (parallel to roles[] — roles[i] earns wages[i] per hour)
-  wages?: number[];
+  // Compensation
+  pay_type?: 'hourly' | 'salary';  // Default 'hourly'. Maps to 7shifts wage_type.
+  wages?: number[];  // Parallel to roles[] — roles[i] earns wages[i] per hour
 
   // Import tracking
   import_source?: 'manual' | 'csv' | '7shifts' | null;

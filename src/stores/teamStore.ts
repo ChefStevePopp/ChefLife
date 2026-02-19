@@ -74,6 +74,7 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
       if (updates.kitchen_stations) updateData.kitchen_stations = updates.kitchen_stations;
       if (updates.security_level !== undefined) updateData.security_level = updates.security_level;
       if (updates.hire_date !== undefined) updateData.hire_date = updates.hire_date;
+      if (updates.pay_type !== undefined) updateData.pay_type = updates.pay_type;
       if (updates.wages !== undefined) updateData.wages = updates.wages;
 
       const { error: updateError } = await supabase

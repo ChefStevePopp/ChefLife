@@ -499,19 +499,27 @@ export const useScheduleStore = create<ScheduleState>()(
 
           // ── OPTIONAL WAGE DATA (labour intelligence) ────────────
           // Separate query so a missing/broken wages column never takes avatars down
-          let wageMap = new Map<string, { roles: string[]; wages: number[] }>();
+          let wageMap = new Map<string, { roles: string[]; wages: number[]; salaried: boolean }>();
           try {
             const { data: wageData, error: wageError } = await supabase
               .from("organization_team_members")
-              .select("id, punch_id, roles, wages")
+              .select("id, punch_id, roles, wages, pay_type")
               .eq("organization_id", organizationId);
 
             if (!wageError && wageData) {
               for (const m of wageData) {
-                if (m.roles?.length && m.wages?.length) {
-                  wageMap.set(m.id, { roles: m.roles, wages: m.wages });
+                const isSalaried = m.pay_type === 'salary';
+                // Salaried: include in map with salaried flag (wage_rate=0, not "missing")
+                // Hourly: include with actual wages
+                if (isSalaried || (m.roles?.length && m.wages?.length)) {
+                  const entry = {
+                    roles: m.roles || [],
+                    wages: m.wages || [],
+                    salaried: isSalaried,
+                  };
+                  wageMap.set(m.id, entry);
                   if (m.punch_id) {
-                    wageMap.set(m.punch_id, { roles: m.roles, wages: m.wages });
+                    wageMap.set(m.punch_id, entry);
                   }
                 }
               }
@@ -541,17 +549,22 @@ export const useScheduleStore = create<ScheduleState>()(
               
               // ── Wage (optional enrichment from separate map) ──
               const wageInfo = wageMap.get(shift.employee_id);
-              if (wageInfo && shift.role) {
-                const roleIdx = wageInfo.roles.findIndex(
-                  (r: string) => r.toLowerCase() === shift.role!.toLowerCase()
-                );
-                if (roleIdx !== -1 && wageInfo.wages[roleIdx] != null) {
-                  wage_rate = wageInfo.wages[roleIdx];
+              if (wageInfo) {
+                if (wageInfo.salaried) {
+                  // Salaried: wage_rate = 0 (known, not missing — excluded from cost)
+                  wage_rate = 0;
+                } else if (shift.role) {
+                  const roleIdx = wageInfo.roles.findIndex(
+                    (r: string) => r.toLowerCase() === shift.role!.toLowerCase()
+                  );
+                  if (roleIdx !== -1 && wageInfo.wages[roleIdx] != null) {
+                    wage_rate = wageInfo.wages[roleIdx];
+                  } else if (wageInfo.wages.length > 0) {
+                    wage_rate = wageInfo.wages[0]; // Fallback to first wage
+                  }
                 } else if (wageInfo.wages.length > 0) {
-                  wage_rate = wageInfo.wages[0]; // Fallback to first wage
+                  wage_rate = wageInfo.wages[0]; // No role on shift, use first
                 }
-              } else if (wageInfo?.wages.length) {
-                wage_rate = wageInfo.wages[0]; // No role on shift, use first
               }
             }
 

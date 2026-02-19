@@ -96,14 +96,17 @@ const calcLabourCost = (shifts: ScheduleShift[]): { total: number; missingWageCo
   for (const s of shifts) {
     const hrs = calcShiftHours(s.start_time, s.end_time, s.break_duration);
     if (s.wage_rate != null && s.wage_rate > 0) {
+      // Hourly with wage data — include in labour cost
       total += hrs * s.wage_rate;
-    } else {
-      // Track unique employees missing wages
+    } else if (s.wage_rate === null || s.wage_rate === undefined) {
+      // Truly missing wage data (not salaried) — track for amber warning
+      // wage_rate = 0 means salaried/intentional, not missing
       if (!seen.has(s.employee_name)) {
         missingWageCount++;
         seen.add(s.employee_name);
       }
     }
+    // wage_rate === 0 → salaried, deliberately excluded, NOT counted as missing
   }
   
   return { total, missingWageCount };

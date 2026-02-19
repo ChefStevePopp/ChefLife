@@ -561,6 +561,7 @@ WHERE id = $1 AND organization_id = $2;
 - [ALLERGEN-DATA-FLOW-REVIEW.md](../ALLERGEN-DATA-FLOW-REVIEW.md) — Full data flow trace + architecture decisions
 - [ALLERGEN-DECLARATION-ARCHITECTURE.md](../ALLERGEN-DECLARATION-ARCHITECTURE.md) — Versioning, NEXUS, declaration lifecycle
 - [ALLERGEN-MANAGER.md](../ALLERGEN-MANAGER.md) — Three-state system, stations, white-label, compliance
+- [ROADMAP-Custom-Allergen-Registry.md](./ROADMAP-Custom-Allergen-Registry.md) — Custom allergen registry (replaces 3-slot free-text system)
 - [Session conversation Jan 9, 2026](https://claude.ai/chat/7536260c-5a72-42e7-9a16-1a3b993f0610) — Original boolean + Environment tier discussion
 - [ROADMAP-Data.md](./ROADMAP-Data.md) — MIL allergen columns (done)
 - [ROADMAP-Kitchen.md](./ROADMAP-Kitchen.md) — Recipe allergens tab (pending)

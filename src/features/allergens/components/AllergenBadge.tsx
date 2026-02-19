@@ -19,9 +19,23 @@ export const AllergenBadge: React.FC<AllergenBadgeProps> = ({
   className = "",
 }) => {
   const allergen = ALLERGENS[type];
-  if (!allergen) return null;
 
-  const Icon = Icons[allergen.icon as keyof typeof Icons];
+  // =========================================================================
+  // CUSTOM ALLERGEN FALLBACK
+  // =========================================================================
+  // Custom allergens from master ingredient fields (allergen_custom1_name etc)
+  // flow through the cascade as lowercase strings (e.g. "wine"). They won't
+  // exist in the ALLERGENS constant. Rather than returning null and silently
+  // dropping them, we render a fallback badge with the raw type name.
+  // =========================================================================
+  const isCustom = !allergen;
+  const customLabel = isCustom
+    ? type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, ' ')
+    : '';
+
+  const Icon = isCustom
+    ? Icons.AlertTriangle
+    : Icons[allergen.icon as keyof typeof Icons];
   if (!Icon) return null;
 
   const sizeClasses = {
@@ -30,7 +44,13 @@ export const AllergenBadge: React.FC<AllergenBadgeProps> = ({
     lg: "w-10 h-10",
   };
 
-  const severityColor = SEVERITY_COLORS[allergen.severity];
+  const badgeColor = isCustom ? 'violet' : allergen.color;
+  const badgeLabel = isCustom ? customLabel : allergen.label;
+  const badgeSeverity = isCustom ? 'medium' : allergen.severity;
+  const severityColor = SEVERITY_COLORS[badgeSeverity];
+  const badgeDescription = isCustom
+    ? 'Custom allergen from ingredient data'
+    : allergen.description;
 
   return (
     <div className={`group relative inline-flex items-center ${className}`}>
@@ -40,14 +60,14 @@ export const AllergenBadge: React.FC<AllergenBadgeProps> = ({
           ${sizeClasses[size]}
           rounded-full
           flex items-center justify-center
-          bg-${allergen.color}-500/20
-          text-${allergen.color}-400
+          bg-${badgeColor}-500/20
+          text-${badgeColor}-400
           transition-transform
           hover:scale-110
           cursor-help
         `}
         role="img"
-        aria-label={`${allergen.label} allergen indicator`}
+        aria-label={`${badgeLabel} allergen indicator`}
       >
         <Icon
           className={size === "sm" ? "w-4 h-4" : "w-5 h-5"}
@@ -57,7 +77,7 @@ export const AllergenBadge: React.FC<AllergenBadgeProps> = ({
 
       {/* Optional Label */}
       {showLabel && (
-        <span className="ml-2 text-sm text-gray-300">{allergen.label}</span>
+        <span className="ml-2 text-sm text-gray-300">{badgeLabel}</span>
       )}
 
       {/* Tooltip - only if not disabled */}
@@ -67,14 +87,19 @@ export const AllergenBadge: React.FC<AllergenBadgeProps> = ({
           role="tooltip"
         >
           <div className="font-medium mb-1 flex items-center gap-2">
-            {allergen.label}
+            {badgeLabel}
+            {isCustom && (
+              <span className="px-1.5 py-0.5 rounded-full text-xs bg-violet-500/20 text-violet-400">
+                custom
+              </span>
+            )}
             <span
               className={`px-1.5 py-0.5 rounded-full text-xs bg-${severityColor}-500/20 text-${severityColor}-400`}
             >
-              {allergen.severity}
+              {badgeSeverity}
             </span>
           </div>
-          <p className="text-gray-300 text-xs">{allergen.description}</p>
+          <p className="text-gray-300 text-xs">{badgeDescription}</p>
           <div
             className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full border-4 border-transparent border-t-gray-800"
             aria-hidden="true"

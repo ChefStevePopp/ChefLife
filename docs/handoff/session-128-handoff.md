@@ -1,4 +1,4 @@
-# Session 128 Handoff — Wages Editor + Labour Intelligence + Alpha Override
+# Session 128 Handoff — Pay Type, Wages, Labour Intelligence, 7shifts Wage Architecture
 
 ## Date: February 18, 2026
 
@@ -6,77 +6,77 @@
 
 ## COMPLETED ✅
 
-### 1. Wage Data Populated — All Hourly Team Members
+### 1. `pay_type` Field — Persistent Hourly/Salary Selector
+- **Migration**: `add_pay_type_to_team_members` — `pay_type text NOT NULL DEFAULT 'hourly'` with CHECK constraint `('hourly', 'salary')`
+- **Type updated**: `TeamMember.pay_type?: 'hourly' | 'salary'` in `src/features/team/types/index.ts`
+- **Change detection**: Added to `fieldsToCompare` in EditTeamMemberModal
+- **Submit path**: Added to `handleSubmit` updates
+- **Store**: `teamStore.updateTeamMember` already handles `pay_type` via `if (updates.pay_type !== undefined)` guard
+- **Fetch**: Uses `select("*")` — `pay_type` included automatically
+- **Maps to**: 7shifts `wage_type` ('hourly' | 'weekly_salary')
+
+### 2. RolesTab — Complete Rewrite Using Existing Patterns
+- **File**: `src/features/team/components/EditTeamMemberModal/tabs/RolesTab.tsx`
+- **TwoStageButton** — Used existing `@/components/ui/TwoStageButton` with `variant="warning"`, `icon={Lock}`, `confirmIcon={Pencil}`, `timeout={3000}`
+- **Segmented toggle**: Hourly (green) / Salary (amber) — persistent to DB, drives all wage visibility
+- **When hourly**: Wage inputs visible for all editors, helper text "Hourly wages power the Labour Intelligence row"
+- **When salary**: Wage inputs locked (🔒 + em dash), helper text "Salaried — excluded from Labour Intelligence"
+- **Alpha override**: TwoStageButton appears only when `isSalaried && isEditorAlpha` — unlocks wage inputs temporarily for analysis
+- **Re-lock**: Simple underline text button to re-lock after override
+- **No security-level assumptions**: Pay type is data-driven, any security level can be hourly or salary
+
+### 3. Wage Data Populated — All Hourly Team Members
 - **18 of 21** scheduled employees now have wages in `organization_team_members.wages[]`
-- Rate patterns established and applied consistently:
-  - DISH / AM DISH / NON-KITCHEN: $17.20 (Ontario minimum)
-  - LINE / AM LINE: $19.00
-  - COLD PREP: $18.00
-  - EXPO: $17.50
-  - BAR (FOH - BAR): $18.00
-  - PMCA: $18.00
-  - PIES: $18.50
-  - CATERING / CATERING - OFFSITE: $19.00
-  - ADMIN: $20.00
-  - SUPERVISOR (FOH - SUPERVISOR): $20.00
-  - FOH - SERVERS / HOST / BUS / TAKE-OUT / TRAINING / PATIO: $17.20
-- **3 intentionally empty** (management/salaried): Chef Steve (level 1), Chef Lori (level 1), Chef John Rumbles (level 2)
-- Also populated 7 non-scheduled team members for future schedule coverage
+- **3 set to `pay_type = 'salary'`**: Chef Steve (1117), Chef Lori (4104), Chef John Rumbles (0501)
+- Rate patterns applied consistently (see Wage Rate Map below)
+- Also populated 7 non-scheduled team members for future coverage
 
-### 2. Alpha-Gated 2-Stage Wage Override — RolesTab
-- **Location**: `src/features/team/components/EditTeamMemberModal/tabs/RolesTab.tsx`
-- **Behavior for management members** (security_level ≤ 2 / Bravo and above):
-  - Wage inputs show locked state (🔒 icon + em dash) by default
-  - Footer message: "Salaried — excluded from labour cost calculations"
-  - **Alpha editors only** (security_level ≤ 1) see the override button
-  - **Stage 0**: "Override — Include in Labour" button (subtle gray, hover amber)
-  - **Stage 1**: "Confirm Override" button (amber glow, animated pulse)
-  - **Stage 2**: Wage inputs unlock, "Override active" message with "Re-lock" link
-  - If management member already has wages from a previous override → starts at Stage 2
-- **Non-management members**: Wage inputs visible and editable as before, with helper text
-- **Props added**: `editorSecurityLevel` passed from `EditTeamMemberModal/index.tsx` → `RolesTab`
+### 4. scheduleStore Wage Enrichment — pay_type Aware
+- **Already implemented** in `scheduleStore.ts > fetchShifts()`:
+  - Queries `id, punch_id, roles, wages, pay_type` in optional wage enrichment
+  - `pay_type === 'salary'` → `wageMap` entry with `salaried: true`
+  - `wage_rate = 0` for salaried (known, not missing)
+  - `wage_rate = null` for truly missing (hourly with no data)
+  - `wage_rate > 0` for hourly with data (included in cost)
 
-### 3. S. Development Popp — Nested Array Fix
-- **Root cause**: `roles` column contained `{{...}}` (2D text array) instead of `{...}` (1D)
-- **Fix**: Direct SQL update to flatten to proper 1D array matching Chef Steve Popp's role set
-- **Impact**: Role matching in scheduleStore wage enrichment will now work correctly for this member
+### 5. Labour Intelligence — Correct Missing Count
+- **`calcLabourCost()`** in ScheduleWeekView already handles all three states:
+  - `wage_rate > 0` → add to labour cost total
+  - `wage_rate === null` → count as missing (amber warning)
+  - `wage_rate === 0` → salaried, deliberately excluded, NOT counted as missing
+- **Expected result**: 0 missing (all 18 hourly have wages, 3 salaried at wage_rate=0)
 
-### 4. Store Fault-Tolerance — Already Implemented (Verified)
-- `scheduleStore.ts > fetchShifts()` already splits into two queries:
-  - Essential: `id, punch_id, email, avatar_url, first_name, last_name` — must succeed
-  - Optional: `id, punch_id, roles, wages` → builds `wageMap` in separate try/catch
-  - If wage query fails, avatars and shift rendering remain unaffected
-
-### 5. Wages Editor in RolesTab — Already Implemented (Verified)
-- Inline `$` + `/hr` inputs next to each role name in the Scheduled Roles section
-- Parallel array management: `addRole()` creates both entries, `removeRole()` splices both
-- `updateWage()` pads with zeros if wages array is shorter than roles array
-- Form submission includes `wages` in updates (both admin and non-admin paths)
-- Change detection (`hasChanges`) includes `wages` field comparison
+### 6. S. Development Popp — Nested Array Fix
+- Roles flattened from 2D `{{...}}` to 1D `{...}` array
 
 ---
 
-## NOT YET COMPLETED ❌
+## 7SHIFTS WAGE INTEGRATION STATUS
 
-### 1. Visual QA — Labour Intelligence Row 2
-- With 18 of 21 employees now having wages, Row 2 should render showing:
-  - `$X,XXX Labour` cost pill
-  - `3 missing` amber warning (the 3 management members)
-  - Week-over-week delta (if previous schedule has enriched shifts)
-  - Editable target % (default 28%, persisted to localStorage)
-  - Required sales pill
-- **Needs live browser verification** — all JSX is in place, data is populated
+### What's Built
+The 7shifts API client (`src/lib/7shifts.ts` v6) has full wage plumbing:
+- `getUserWagesVault()` — per-user wage data with `wage_cents`, `role_id`, `effective_date`
+- `getBulkUserWagesVault()` — batch with rate-limit-safe 5-at-a-time batching
+- `getUserAssignmentsVault()` — role/department/location assignments
+- `getLaborSettingsVault()` — company-level `wage_based_roles_enabled` flag
+- `SevenShiftsUser.wage_type` — maps to our `pay_type`
 
-### 2. Visual QA — Alpha Override Button
-- Need to verify the 2-stage button renders correctly when editing Chef Steve, Chef Lori, or Chef John
-- Verify locked wage inputs show properly with 🔒 icon
-- Verify non-Alpha editors (Bravo/Charlie/Delta/Echo) do NOT see the override button
-- Verify override unlock → wage inputs become functional → save persists
+### What's NOT Built Yet
+The schedule sync flow (`sync7shiftsSchedule` in scheduleStore) does NOT call wage endpoints. Currently:
+- 7shifts → roles, shifts, schedule data ✅
+- 7shifts → wages, pay_type ❌ (manual entry only)
 
-### 3. Recipe Draft State + Version Control (DESIGN CONFIRMED — NOT STARTED)
-- Architecture confirmed in Session 127 — needs its own focused session
-- Draft state, first publish = v1.0.0, revision layer, security-gated visibility
-- See Session 127 handoff section 4 for full architecture
+### Future Integration Path
+When implemented, 7shifts wage sync would:
+1. Call `getBulkUserWagesVault()` during team/schedule sync
+2. Map `wage_cents / 100` → `wages[]` entries (per role_id → role name matching)
+3. Map `wage_type: 'weekly_salary'` → `pay_type: 'salary'`
+4. Map `wage_type: 'hourly'` → `pay_type: 'hourly'`
+5. Write to `wages[]` and `pay_type` columns
+6. **Integration overrides manual** — same pattern as roles/departments with `import_source`
+
+### Manual Wages Are Correct For Now
+Until 7shifts wage sync is built, manual entry is the source of truth. The `TwoStageButton` override and `pay_type` toggle ensure Alpha operators can manage this cleanly.
 
 ---
 
@@ -84,35 +84,23 @@
 
 | File | Changes |
 |------|---------|
-| `src/features/team/components/EditTeamMemberModal/index.tsx` | Added `editorSecurityLevel` prop pass-through to `RolesTab` |
-| `src/features/team/components/EditTeamMemberModal/tabs/RolesTab.tsx` | Added Alpha-gated 2-stage wage override for management members, locked wage inputs, security imports |
+| `src/features/team/types/index.ts` | Added `pay_type?: 'hourly' \| 'salary'` to TeamMember |
+| `src/features/team/components/EditTeamMemberModal/index.tsx` | Added `pay_type` to change detection + submit + prop pass-through |
+| `src/features/team/components/EditTeamMemberModal/tabs/RolesTab.tsx` | Full rewrite: segmented toggle, TwoStageButton override, pay_type-driven wage visibility |
 
 ## DB CHANGES
 
 | Change | Table | Detail |
 |--------|-------|--------|
-| Wage data populated | `organization_team_members` | 19 members updated with wages parallel to roles (12 scheduled + 7 non-scheduled) |
-| Nested array fix | `organization_team_members` | S. Development Popp roles flattened from 2D to 1D array |
+| New column | `organization_team_members` | `pay_type text NOT NULL DEFAULT 'hourly'` with CHECK constraint |
+| Wage data | `organization_team_members` | 19 members updated with wages (12 scheduled + 7 non-scheduled) |
+| Pay type | `organization_team_members` | 3 management members set to `pay_type = 'salary'` |
+| Array fix | `organization_team_members` | S. Development Popp roles flattened from 2D to 1D |
 
 ---
 
-## KEY TECHNICAL NOTES
+## WAGE RATE MAP (Reference)
 
-### Management Wage Override Flow
-```
-Editor opens management member → RolesTab
-  ├── Member security_level ≤ 2? → Management detected
-  │     ├── Has existing wages? → Start at Stage 2 (unlocked)
-  │     └── No wages? → Start at Stage 0 (locked)
-  │           ├── Stage 0: Lock icon on wage inputs, "Salaried" message
-  │           ├── Editor is Alpha? → Show override button
-  │           │     ├── Click 1: "Override — Include in Labour" → Stage 1
-  │           │     └── Click 2: "Confirm Override" → Stage 2 (unlocked)
-  │           └── Editor is NOT Alpha? → No override option visible
-  └── Member security_level > 2? → Normal wage inputs (always visible)
-```
-
-### Wage Rate Map (Reference)
 ```
 Role Category          Rate     Notes
 ─────────────────────  ───────  ────────────────────────
@@ -130,19 +118,12 @@ ADMIN                  $20.00   Administrative
 SUPERVISOR             $20.00   Leadership premium
 ```
 
-### Labour Intelligence Expected State
-With wage data populated, the ScheduleWeekView Labour Intelligence row should show:
-- **Labour Cost**: Sum of (shift_hours × wage_rate) for all shifts with wages
-- **Missing**: 3 (Chef Steve, Chef Lori, Chef John — intentionally salaried)
-- **Target**: 28% default, editable, localStorage-persisted
-- **Required Sales**: Labour Cost ÷ (Target% / 100)
-- **Delta**: Comparison to previous week (if previous schedule exists and has wage-enriched shifts)
-
 ---
 
 ## NEXT SESSION PRIORITIES
 
-1. **Visual QA** — Load the schedule view in browser and verify Labour Intelligence Row 2 renders with all pills
-2. **Test Alpha Override** — Open Chef Steve's profile → Roles tab → verify locked state → override flow
-3. **Recipe Draft State + Version Control** — Full implementation session
-4. **Consider**: Should the "3 missing" count in Labour Intelligence exclude management members? Currently it counts anyone without wage_rate on their shifts. Could add logic to exclude security_level ≤ 2 from the missing count, since they're intentionally excluded. Design decision needed.
+1. **Visual QA** — Load schedule view, verify Labour Intelligence Row 2 renders with 0 missing
+2. **Test Pay Type Toggle** — Open Chef Steve → Roles → verify Salary selected, wages locked, TwoStageButton override works
+3. **Test Hourly Member** — Open any Echo member → verify Hourly selected, wages visible
+4. **Recipe Draft State + Version Control** — Full implementation session (architecture confirmed Session 127)
+5. **7shifts Wage Sync** — Future session: wire `getBulkUserWagesVault()` into team sync flow

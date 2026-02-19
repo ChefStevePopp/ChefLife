@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Save,
@@ -144,6 +144,9 @@ export const RecipeDetailPage: React.FC = () => {
   
   // Active tab state
   const [activeTab, setActiveTab] = useState("recipe");
+  
+  // Allergen review gate — state-based (not ref) so UI re-renders properly
+  const [allergenReviewPending, setAllergenReviewPending] = useState(false);
 
   // =========================================================================
   // VERSION SNAPSHOT — Comparison baseline for VersionHistory change detection
@@ -192,44 +195,13 @@ export const RecipeDetailPage: React.FC = () => {
   );
 
   // =========================================================================
-  // ALLERGEN REVIEW GATE — Save interceptor
+  // ALLERGEN REVIEW GATE — State-based save interceptor
   // =========================================================================
-  // When allergens change (add OR remove), the operator MUST explicitly
-  // confirm the declaration via the "Confirm Declaration & Save" button
-  // on the Allergens tab. Save is blocked until confirmation.
-  //
-  // Flow: Save clicked → allergens/ingredients differ from baseline?
-  //       → redirect to Allergens tab → operator clicks "Confirm"
-  //       → gate satisfied + save fires in one action.
-  //
-  // Key principle: Visiting the tab isn't reviewing. Looking isn't
-  // accepting responsibility. Only explicit confirmation counts.
-  //
-  // allergenReviewedRef resets whenever allergenInfo changes. ONLY
-  // handleConfirmDeclaration sets it to true.
+  // When allergens/ingredients change, handleSave() sets allergenReviewPending
+  // and redirects to Allergens tab. needsAllergenReview (computed) drives
+  // persistent UI: banner + floating bar button. handleConfirmDeclaration
+  // clears the gate and calls handleSave(skipAllergenGate=true).
   // =========================================================================
-  const allergenReviewedRef = useRef(false);
-
-  // Detect when auto-sync changes allergenInfo — reset the review gate.
-  // ANY change to the declaration (add or remove) requires explicit confirmation
-  // via the "Confirm Declaration & Save" button. Visiting the tab alone
-  // doesn't count — looking isn't accepting responsibility.
-  const prevAllergenFingerprintRef = useRef<string>('');
-  useEffect(() => {
-    if (!formData) return;
-    // Read from boolean columns (Phase 3)
-    const bools = getRecipeAllergenBooleans(formData);
-    const fp = JSON.stringify({
-      c: [...bools.contains].sort(),
-      m: [...bools.mayContain].sort(),
-    });
-    if (prevAllergenFingerprintRef.current && fp !== prevAllergenFingerprintRef.current) {
-      // Allergens changed — require explicit confirmation again
-      allergenReviewedRef.current = false;
-    }
-    prevAllergenFingerprintRef.current = fp;
-  // Re-run when any boolean column changes (formData reference updates on every onChange)
-  }, [formData]);
 
   // =========================================================================
   // COMPUTED: Does the current state require allergen review before save?
@@ -237,7 +209,6 @@ export const RecipeDetailPage: React.FC = () => {
   // =========================================================================
   const needsAllergenReview = useMemo(() => {
     if (isNew || !originalData || !formData) return false;
-    if (allergenReviewedRef.current) return false;
 
     // Check 1: boolean allergen columns differ from baseline
     const origBools = getRecipeAllergenBooleans(originalData);
@@ -420,58 +391,20 @@ export const RecipeDetailPage: React.FC = () => {
     loadRecipe();
   }, [id, isNew, organizationId, recipeIds, setCurrentIndex, initialType, initialMajorGroup]);
 
-  const handleSave = async () => {
+  const handleSave = async (skipAllergenGate = false) => {
     if (!formData || !organizationId) return;
 
     // -----------------------------------------------------------------------
     // ALLERGEN REVIEW GATE — Intercept save if declaration changed
     // -----------------------------------------------------------------------
-    // Two checks, because auto-sync runs in useEffect (asynchronous):
-    //
-    //   CHECK 1: allergenInfo already differs from baseline
-    //            → auto-sync caught up, declaration visibly changed
-    //
-    //   CHECK 2: ingredient composition changed vs baseline
-    //            → auto-sync may NOT have caught up yet (race condition)
-    //            → different ingredients = potential allergen change
-    //            → removing an allergen-carrying ingredient is just as
-    //              dangerous as adding one — must review either way
-    //
-    // Life-safety: both additions AND removals require review.
+    // skipAllergenGate=true when called from handleConfirmDeclaration.
+    // Otherwise, if allergens/ingredients differ from baseline, block save
+    // and redirect to Allergens tab with persistent review banner.
     // -----------------------------------------------------------------------
-    if (!isNew && originalData && !allergenReviewedRef.current) {
-      // Check 1: boolean allergen columns differ from baseline
-      const origBools = getRecipeAllergenBooleans(originalData);
-      const currBools = getRecipeAllergenBooleans(formData);
-      const origContains = JSON.stringify([...origBools.contains].sort());
-      const origMayContain = JSON.stringify([...origBools.mayContain].sort());
-      const currContains = JSON.stringify([...currBools.contains].sort());
-      const currMayContain = JSON.stringify([...currBools.mayContain].sort());
-      const allergenInfoDiffers = origContains !== currContains || origMayContain !== currMayContain;
-
-      // Check 2: ingredient composition changed (catches auto-sync race)
-      const ingredientFp = (ings: any[]) =>
-        (ings || []).map(i => i.master_ingredient_id || i.prepared_recipe_id || i.id).sort().join('|');
-      const ingredientsDiffer = ingredientFp(formData.ingredients) !== ingredientFp(originalData.ingredients);
-
-      if (allergenInfoDiffers || ingredientsDiffer) {
-        setActiveTab('allergens');
-        toast(
-          allergenInfoDiffers
-            ? 'Allergen declaration changed \u2014 please review before saving.'
-            : 'Ingredients changed \u2014 please review allergen declaration before saving.',
-          {
-            icon: '\u{1F6E1}\uFE0F',
-            duration: 5000,
-            style: {
-              background: '#1a1a2e',
-              color: '#f9fafb',
-              border: '1px solid rgba(244,63,94,0.3)',
-            },
-          }
-        );
-        return;
-      }
+    if (!skipAllergenGate && needsAllergenReview) {
+      setAllergenReviewPending(true);
+      setActiveTab('allergens');
+      return;
     }
 
     setIsSaving(true);
@@ -558,7 +491,7 @@ export const RecipeDetailPage: React.FC = () => {
           return;
         }
         // Stamp declaration timestamp when operator explicitly confirmed
-        if (allergenReviewedRef.current) {
+        if (skipAllergenGate && needsAllergenReview) {
           saveData.allergen_declared_at = new Date().toISOString();
         }
 
@@ -641,7 +574,7 @@ export const RecipeDetailPage: React.FC = () => {
           }
 
           // --- Allergen declaration confirmation (explicit button) ---
-          if (allergenReviewedRef.current) {
+          if (skipAllergenGate && needsAllergenReview) {
             nexus({
               organization_id: organizationId,
               user_id: user.id,
@@ -684,6 +617,7 @@ export const RecipeDetailPage: React.FC = () => {
               .limit(1)
               .maybeSingle();
 
+            // Immutable audit trail record
             supabase.from('recipe_allergen_declarations').insert({
               recipe_id: recipeId,
               organization_id: organizationId,
@@ -715,7 +649,7 @@ export const RecipeDetailPage: React.FC = () => {
         // Stay on page — reset baseline so dirty tracking clears
         setOriginalData(saveData as Recipe);
         // Reset review gate for next edit cycle
-        allergenReviewedRef.current = false;
+        setAllergenReviewPending(false);
       }
     } catch (err) {
       console.error("Error saving recipe:", err);
@@ -730,8 +664,8 @@ export const RecipeDetailPage: React.FC = () => {
   // Satisfies the review gate, then triggers save in one action.
   // -------------------------------------------------------------------------
   const handleConfirmDeclaration = () => {
-    allergenReviewedRef.current = true;
-    handleSave();
+    setAllergenReviewPending(false);
+    handleSave(true); // skipAllergenGate=true — operator confirmed
   };
 
   // -------------------------------------------------------------------------
@@ -1034,7 +968,7 @@ export const RecipeDetailPage: React.FC = () => {
       {/* =====================================================================
        * FLOATING ACTION BAR
        * ===================================================================== */}
-      {(changedTabs.length > 0 || isNew) && (
+      {(changedTabs.length > 0 || isNew || needsAllergenReview) && (
         <div
           className={`floating-action-bar ${
             changedTabs.length > 0 ? "warning" : ""
