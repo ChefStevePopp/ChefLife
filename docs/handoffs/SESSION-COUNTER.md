@@ -1,7 +1,7 @@
 # ChefLife Session Counter
 
-**Current Session:** 91
-**Last Updated:** 2026-02-09
+**Current Session:** 130
+**Last Updated:** 2026-02-19
 
 ## How to Use
 
@@ -45,11 +45,13 @@
 | 90 | Feb 9, 2026 | Gap Scanner Audit Tool Build + Points Tab Integration | (journal transcripts) |
 | 91 | Feb 9, 2026 | VIM Badge Standardization + Utils Doc | HANDOFF-SESSION-91-GapAudit-Continuation.md |
 
-## Next Session (92)
+## Next Session (131)
 
 **Primary Focus:**
-- Gap Audit workflow — process the 6 unresolved gaps via Alpha/Omega decisions
-- See: HANDOFF-SESSION-91-GapAudit-Continuation.md
+- Regionalization Strategy — create REGIONALIZATION-STRATEGY.md, update CHEFLIFE-ANATOMY.md and L5-BUILD-STRATEGY.md
+- Add jurisdiction columns to organizations table
+- Then proceed with 7shifts/Employment Records (now jurisdiction-aware)
+- See: HANDOFF-2026-02-19-Session130-Regionalization-Strategy.md
 
 ## Naming Convention
 
